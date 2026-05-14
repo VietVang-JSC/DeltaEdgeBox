@@ -1,24 +1,31 @@
 # 🎯 DeltaPOS Edge Box
 
-**Hệ thống POS offline-first cho Windows** - Dành riêng cho cửa hàng cần hoạt động khi không có internet.
-
-> **⚠️ Lưu ý quan trọng**: Edge Box chỉ cài đặt cho các cửa hàng được cấu hình chế độ **offline-first**. Các cửa hàng khác sử dụng DeltaPosWeb online bình thường qua trình duyệt.
+**Hệ thống POS offline-first cho Windows** - Giải pháp cho cửa hàng không có internet ổn định.
 
 ---
 
-## 🎯 Khi Nào Cần Edge Box?
+## 🌐 Kiến Trúc Hybrid Deployment
 
-### ✅ Cài Edge Box nếu:
-- Cửa hàng ở vùng internet không ổn định/thường mất mạng
-- Cần bán hàng 24/7 kể cả khi offline
-- Muốn có backup local + tự động sync lên cloud
+DeltaPOS hỗ trợ **2 chế độ triển khai** tùy theo nhu cầu từng cửa hàng:
 
-### ❌ Không cần Edge Box nếu:
-- Cửa hàng có internet ổn định
-- Chỉ cần truy cập POS qua trình duyệt web
-- Không yêu cầu hoạt động offline
+### 1️⃣ Online Mode (Mặc Định)
+- **Dành cho**: Cửa hàng có internet ổn định
+- **Cách dùng**: Truy cập DeltaPosWeb qua browser
+- **Cài đặt**: Không cần (just open browser)
+- **Database**: Cloud (MySQL/PostgreSQL)
+- **Internet**: Required 24/7
 
-→ Các cửa hàng này dùng **DeltaPosWeb online** (truy cập qua browser, không cần cài đặt).
+### 2️⃣ Edge Box Mode (Offline-First)
+- **Dành cho**: Cửa hàng internet không ổn định/vùng sâu vùng xa
+- **Cách dùng**: Cài Edge Box trên PC local
+- **Cài đặt**: Cần install Windows package (5 phút)
+- **Database**: Local SQLite + Auto-sync lên cloud
+- **Internet**: Optional (hoạt động offline, sync khi online)
+
+> **💡 Một công ty có thể dùng CẢ HAI chế độ cùng lúc:**
+> - Store A, B (thành phố, internet tốt) → Online Mode
+> - Store C, D (vùng xa, internet kém) → Edge Box Mode
+> - Tất cả đều quản lý từ cùng một admin dashboard
 
 ---
 
@@ -84,39 +91,36 @@ notepad .env
 
 ## 🏗️ Kiến Trúc Hệ Thống
 
-### Mô Hình Hybrid Deployment
+### Flow Hoạt Động
 
+#### Online Mode (Store A, C):
 ```
-┌──────────────────────────────────────────────┐
-│          DeltaPOS Cloud (Central)            │
-│   • Central Database (MySQL/PostgreSQL)      │
-│   • Multi-store Management                   │
-│   • Analytics Dashboard                      │
-└─────────────┬────────────────┬───────────────┘
-              │                │
-     Internet │                │ Internet
-              │                │
-    ┌─────────▼──────┐  ┌─────▼──────────────┐
-    │ Store A        │  │ Store B            │
-    │ Online Only    │  │ Edge Box (Offline) │
-    │ Browser-based  │  │ Local SQLite       │
-    │ No install     │  │ Auto-sync when on  │
-    └────────────────┘  └────────────────────┘
+User → Browser → DeltaPosWeb Frontend
+                    ↓
+            Cloud APIs (free-pos-backend)
+                    ↓
+            MySQL/PostgreSQL Database
 ```
+- Không cần cài đặt
+- Cần internet liên tục
+- Data lưu trực tiếp trên cloud
 
-### Giải Thích:
-
-**Store A - Online Only (Không cần Edge Box)**:
-- Truy cập POS qua trình duyệt web
-- Cần internet liên tục để hoạt động
-- Không cần cài đặt gì cả
-- Phù hợp: Cửa hàng có internet ổn định
-
-**Store B - Offline-First (Cần Edge Box)**:
-- Cài đặt Edge Box trên PC local
-- Hoạt động được khi không có internet
-- Tự động sync lên cloud khi online
-- Phù hợp: Cửa hàng internet không ổn định
+#### Edge Box Mode (Store B, D):
+```
+User → Edge Box UI (local PC)
+        ↓
+  Local SQLite Database
+        ↓
+  Windows Services (background)
+        ↓ (khi có internet)
+  Sync Queue → Cloud APIs
+                    ↓
+            Cloud Database (merge data)
+```
+- Cài đặt trên PC local (5 phút)
+- Hoạt động offline 24/7
+- Tự động sync khi online
+- Backup local + cloud
 
 ---
 
@@ -138,6 +142,26 @@ notepad .env
 
 ## ⚙️ Cấu Hình
 
+### Configuration Per-Store Trong Cloud Admin
+
+Trước khi cài Edge Box, admin cần cấu hình store trong cloud dashboard:
+
+**Bước 1**: Vào Admin Dashboard → Store Management  
+**Bước 2**: Chọn store cần enable Edge Box mode  
+**Bước 3**: Update config:
+```json
+{
+  "mode": "edge_box",
+  "edge_box_enabled": true,
+  "sync_interval": 300,
+  "backup_enabled": true
+}
+```
+**Bước 4**: Generate API key cho store  
+**Bước 5**: Cung cấp API key cho kỹ thuật viên cài Edge Box
+
+---
+
 ### File `.env` - Các thông tin cần chỉnh:
 
 ```env
@@ -149,7 +173,7 @@ STORE_PHONE=Số điện thoại
 
 # Cloud API (để sync)
 CLOUD_API_URL=https://api.deltapos.cloud
-API_KEY=your_api_key
+API_KEY=your_api_key_from_cloud_admin  # 👈 Lấy từ cloud dashboard
 API_SECRET=your_api_secret
 
 # Backblaze B2 (để backup)
@@ -398,6 +422,59 @@ php artisan db:seed
 - Giữ ít nhất 20GB ổ cứng trống
 - Dọn dẹp logs cũ hàng tháng
 - Monitor RAM usage (nên dưới 2GB)
+
+---
+
+## ❓ FAQ - Câu Hỏi Thường Gặp
+
+### Q1: Edge Box khác gì với DeltaPosWeb online?
+
+**Edge Box**:
+- Cài đặt trên PC local của cửa hàng
+- Dùng SQLite database local
+- Hoạt động offline, sync khi online
+- Cần cài đặt Windows services
+- Dành cho cửa hàng internet không ổn định
+
+**DeltaPosWeb Online**:
+- Truy cập qua trình duyệt web
+- Dùng cloud database (MySQL/PostgreSQL)
+- Cần internet liên tục
+- Không cần cài đặt gì
+- Dành cho cửa hàng có internet ổn định
+
+### Q2: Một công ty có thể dùng cả 2 loại cùng lúc không?
+
+**Có!** Đây chính là mô hình hybrid:
+- Store A, B, C (internet tốt) → Dùng DeltaPosWeb online
+- Store D, E (internet kém) → Dùng Edge Box offline-first
+- Tất cả đều sync về cùng một cloud backend
+- Admin dashboard quản lý tất cả stores thống nhất
+
+### Q3: Làm sao để biết store nào cần Edge Box?
+
+Admin vào Cloud Dashboard → Store Management:
+- Check cấu hình `config.mode` của store
+- Nếu `mode = "online"` → Store dùng browser-based POS
+- Nếu `mode = "edge_box"` → Store cần cài Edge Box package
+
+### Q4: Edge Box có cần internet không?
+
+**Không bắt buộc!**
+- Edge Box hoạt động hoàn toàn offline
+- Internet chỉ cần để:
+  - Sync dữ liệu lên cloud
+  - Nhận updates từ cloud (products, prices, v.v.)
+  - Backup lên Backblaze B2
+- Không có internet vẫn bán hàng bình thường
+
+### Q5: Dữ liệu có an toàn không khi offline?
+
+**Rất an toàn!**
+- Database local được backup hàng ngày
+- Backup lưu cả local + cloud (Backblaze B2)
+- Khi có internet, data tự động sync lên cloud
+- Conflict resolution đảm bảo data consistency
 
 ---
 
