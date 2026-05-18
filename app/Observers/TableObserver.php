@@ -2,16 +2,25 @@
 
 namespace App\Observers;
 
-use App\Models\Models\Table;
+use App\Models\Table;
+use App\Services\SyncService;
+use Illuminate\Support\Facades\Log;
 
 class TableObserver
 {
+    protected $syncService;
+
+    public function __construct(SyncService $syncService)
+    {
+        $this->syncService = $syncService;
+    }
+
     /**
      * Handle the Table "created" event.
      */
     public function created(Table $table): void
     {
-        //
+        $this->queueForSync($table, 'create');
     }
 
     /**
@@ -19,7 +28,7 @@ class TableObserver
      */
     public function updated(Table $table): void
     {
-        //
+        $this->queueForSync($table, 'update');
     }
 
     /**
@@ -27,7 +36,7 @@ class TableObserver
      */
     public function deleted(Table $table): void
     {
-        //
+        $this->queueForSync($table, 'delete', 2);
     }
 
     /**
@@ -44,5 +53,29 @@ class TableObserver
     public function forceDeleted(Table $table): void
     {
         //
+    }
+
+    protected function queueForSync(Table $table, string $operation, int $priority = 1): void
+    {
+        try {
+            $this->syncService->queueForSync(
+                table: 'tables',
+                operation: $operation,
+                recordId: $table->id,
+                data: $table->toArray(),
+                priority: $priority
+            );
+
+            Log::debug("Table {$operation} queued for sync", [
+                'table_id' => $table->id,
+                'operation' => $operation,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to queue table for sync', [
+                'table_id' => $table->id,
+                'operation' => $operation,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

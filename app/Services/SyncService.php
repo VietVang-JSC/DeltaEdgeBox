@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SyncQueue;
 use App\Models\SyncMetadata;
+use App\Models\SyncConflict;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -75,12 +76,15 @@ class SyncService
 
         Log::info("Processing {$items->count()} sync items");
 
-        $results = ['success' => 0, 'failed' => 0, 'errors' => []];
+        $results = ['success' => 0, 'failed' => 0, 'skipped' => false, 'errors' => []];
 
         foreach ($items as $item) {
             try {
-                $this->processSyncItem($item);
-                $results['success']++;
+                if ($this->processSyncItem($item)) {
+                    $results['success']++;
+                } else {
+                    $results['failed']++;
+                }
             } catch (\Exception $e) {
                 $results['failed']++;
                 $results['errors'][] = [
@@ -96,7 +100,7 @@ class SyncService
     /**
      * Process single sync item with retry logic
      */
-    protected function processSyncItem(SyncQueue $item): void
+    protected function processSyncItem(SyncQueue $item): bool
     {
         $startTime = microtime(true);
 
@@ -123,6 +127,32 @@ class SyncService
             $duration = (microtime(true) - $startTime) * 1000;
 
             if ($response->successful()) {
+                $responseBody = $response->json() ?? [];
+
+                if ($this->hasSyncConflicts($responseBody)) {
+                    $this->storeConflicts($item, $responseBody);
+
+                    $item->update([
+                        'status' => 'failed',
+                        'last_error' => 'Sync conflict returned by cloud',
+                        'response_code' => $response->status(),
+                    ]);
+
+                    $this->logSync($item, 'failed', 'Sync conflict returned by cloud', $duration);
+
+                    Log::warning("Sync conflict: {$item->table_name} #{$item->record_id}", [
+                        'sync_queue_id' => $item->id,
+                        'table' => $item->table_name,
+                        'record_id' => $item->record_id,
+                    ]);
+
+                    return false;
+                }
+
+                if (array_key_exists('success', $responseBody) && $responseBody['success'] === false) {
+                    throw new \Exception('Cloud sync rejected item: ' . $response->body());
+                }
+
                 // Success: mark as synced
                 $item->update([
                     'status' => 'synced',
@@ -139,6 +169,8 @@ class SyncService
 
                 Log::debug("Synced: {$item->table_name} #{$item->record_id}");
 
+                return true;
+
             } else {
                 // HTTP error: retry with backoff
                 throw new \Exception("HTTP {$response->status()}: {$response->body()}");
@@ -147,6 +179,56 @@ class SyncService
         } catch (\Exception $e) {
             // Network/timeout error: retry with backoff
             $this->handleSyncFailure($item, $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Check whether cloud response contains conflict results.
+     */
+    protected function hasSyncConflicts(array $responseBody): bool
+    {
+        if (!empty($responseBody['conflicts'])) {
+            return true;
+        }
+
+        foreach ($responseBody['results'] ?? [] as $result) {
+            if (($result['status'] ?? null) === 'conflict') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Store cloud conflicts locally for review instead of retrying forever.
+     */
+    protected function storeConflicts(SyncQueue $item, array $responseBody): void
+    {
+        $conflicts = $responseBody['conflicts'] ?? [];
+
+        if (empty($conflicts)) {
+            $conflicts = array_values(array_filter($responseBody['results'] ?? [], function ($result) {
+                return ($result['status'] ?? null) === 'conflict';
+            }));
+        }
+
+        foreach ($conflicts as $conflict) {
+            SyncConflict::create([
+                'store_id' => $this->storeId,
+                'sync_queue_id' => $item->id,
+                'cloud_conflict_id' => $conflict['conflict_id'] ?? $conflict['id'] ?? null,
+                'table_name' => $item->table_name,
+                'record_id' => $item->record_id,
+                'operation_type' => $item->operation,
+                'local_data' => json_decode($item->payload, true) ?: [],
+                'cloud_data' => $conflict['cloud_data'] ?? null,
+                'resolution_strategy' => $conflict['resolution_strategy'] ?? null,
+                'resolution_status' => 'unresolved',
+                'error_message' => $conflict['message'] ?? 'Sync conflict returned by cloud',
+            ]);
         }
     }
 
@@ -250,8 +332,20 @@ class SyncService
     public function isOnline(): bool
     {
         try {
-            $response = Http::timeout(5)->get($this->cloudApiUrl . '/api/health');
-            return $response->successful();
+            $healthResponse = Http::timeout(5)->get($this->cloudApiUrl . '/api/health');
+
+            if ($healthResponse->successful()) {
+                return true;
+            }
+
+            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/cloud/sync-status";
+            $statusResponse = Http::withHeaders([
+                'Authorization' => "Bearer {$this->apiKey}",
+                'X-Store-API-Key' => $this->apiKey,
+                'X-Store-ID' => $this->storeId,
+            ])->timeout(5)->get($statusUrl);
+
+            return $statusResponse->successful();
         } catch (\Exception $e) {
             return false;
         }
@@ -269,6 +363,9 @@ class SyncService
             'is_online' => $this->isOnline(),
             'sync_status' => $metadata?->sync_status ?? 'idle',
             'pending_count' => $metadata?->pending_records_count ?? 0,
+            'unresolved_conflicts_count' => SyncConflict::where('store_id', $this->storeId)
+                ->where('resolution_status', 'unresolved')
+                ->count(),
             'last_sync_at' => $metadata?->last_sync_timestamp,
             'last_error' => $metadata?->last_error,
         ];
