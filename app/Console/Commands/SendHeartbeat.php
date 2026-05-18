@@ -15,7 +15,7 @@ class SendHeartbeat extends Command
     public function handle(): void
     {
         $storeId = config('app.store_id', env('STORE_ID'));
-        $apiKey = config('app.api_key', env('API_KEY'));
+        $apiKey = config('app.api_key', env('STORE_API_KEY'));
         $cloudUrl = config('app.cloud_api_url', env('CLOUD_API_URL'));
 
         if (!$apiKey || !$cloudUrl) {

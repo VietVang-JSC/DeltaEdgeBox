@@ -17,7 +17,7 @@ class SyncService
     public function __construct()
     {
         $this->cloudApiUrl = config('app.cloud_api_url', env('CLOUD_API_URL'));
-        $this->apiKey = config('app.api_key', env('API_KEY'));
+        $this->apiKey = config('app.api_key', env('STORE_API_KEY'));
         $this->storeId = config('app.store_id', env('STORE_ID'));
     }
 
@@ -105,7 +105,7 @@ class SyncService
             $item->update(['status' => 'syncing']);
 
             // Build API endpoint
-            $endpoint = "/api/cloud/sync/{$item->table_name}";
+            $endpoint = "/api/EdgeBox/sync";
             $url = rtrim($this->cloudApiUrl, '/') . $endpoint;
 
             // Send to cloud
@@ -114,6 +114,7 @@ class SyncService
                 'Content-Type' => 'application/json',
                 'X-Store-ID' => $this->storeId,
             ])->timeout(30)->post($url, [
+                'table_name' => $item->table_name,
                 'operation' => $item->operation,
                 'record_id' => $item->record_id,
                 'data' => json_decode($item->payload, true),
@@ -263,7 +264,17 @@ class SyncService
     public function getSyncStatus(): array
     {
         $metadata = SyncMetadata::where('store_id', $this->storeId)->first();
+        $cloudStatus = null;
+        try{  
+                $response = Http::withHeaders([
+                'Authorization' => "Bearer {$this->apiKey}",
+                'X-Store-ID'    => $this->storeId,
+            ])->timeout(5)->get(rtrim($this->cloudApiUrl, '/') . '/api/EdgeBox/sync-status');
 
+            if ($response->successful()) {
+                $cloudStatus = $response->json();
+            }
+        } catch (\Exception) {}
         return [
             'store_id' => $this->storeId,
             'is_online' => $this->isOnline(),
@@ -271,6 +282,45 @@ class SyncService
             'pending_count' => $metadata?->pending_records_count ?? 0,
             'last_sync_at' => $metadata?->last_sync_timestamp,
             'last_error' => $metadata?->last_error,
+            'cloud_status' => $cloudStatus,
         ];
     }
+
+    // Bulk upload for large datasets (e.g. initial sync or re-sync)
+    public function processBulkUpload(\Illuminate\Support\Collection $items): array
+    {
+        $ids = $items->pluck('id')->toArray();
+        SyncQueue::whereIn('id', $ids)->update(['status' => 'syncing']);
+
+        $response = Http::withHeaders([
+            'Authorization' => "Bearer {$this->apiKey}",
+            'Content-Type' => 'application/json',
+            'X-Store-ID' => $this->storeId,
+        ])->timeout(30)->post(rtrim($this->cloudApiUrl, '/') . '/api/EdgeBox/bulk-upload', [
+            'store_id' => $this->storeId,
+            'records'  => $items->map(fn($item) => [
+                'queue_id'   => $item->id,
+                'table_name' => $item->table_name,
+                'operation'  => $item->operation,
+                'record_id'  => $item->record_id,
+                'data'       => json_decode($item->payload, true),
+                'timestamp'  => now()->toISOString(),
+            ])->toArray(),
+        ]);
+
+        if ($response->successful()) {
+            SyncQueue::whereIn('id', $ids)->update([
+                'status'    => 'synced',
+                'synced_at' => now(),
+            ]);
+            SyncMetadata::where('store_id', $this->storeId)
+                ->decrement('pending_records_count', count($ids));
+            return ['success' => count($ids), 'failed' => 0];
+        }
+
+        // On failure, reset status to pending for retry
+        SyncQueue::whereIn('id', $ids)->update(['status' => 'pending']);
+        return ['success' => 0, 'failed' => count($ids)];
+    }
 }
+
