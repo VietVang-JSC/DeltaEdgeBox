@@ -1,14 +1,19 @@
 <?php
 
 namespace App\Observers;
-
-use App\Models\Models\Customer;
+use App\Services\SyncService;
+use App\Models\Customer;
 
 class CustomerObserver
 {
     /**
      * Handle the Customer "created" event.
      */
+    protected $syncService;
+      public function __construct(SyncService $syncService)
+    {
+        $this->syncService = $syncService;
+    }
     public function created(Customer $customer): void
     {
         //
