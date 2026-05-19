@@ -20,10 +20,10 @@ use App\Http\Controllers\Api\PrinterController;
 
 // Health check endpoints (public)
 Route::get('/health', [HealthController::class, 'index']);
-Route::get('/health/detailed', [HealthController::class, 'detailed']);
+Route::get('/health/detailed', [HealthController::class, 'detailed'])->middleware('edge.api.key');
 
-// Sync status endpoints (public for now, can add auth later)
-Route::prefix('sync')->group(function () {
+// Sync status endpoints
+Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/status', [SyncStatusController::class, 'index']);
     Route::get('/pending', [SyncStatusController::class, 'pending']);
     Route::get('/logs', [SyncStatusController::class, 'logs']);
