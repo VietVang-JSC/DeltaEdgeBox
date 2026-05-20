@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
+use App\Services\SyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -58,6 +59,16 @@ class PaymentController extends Controller
                 }
 
                 return $payment->load('details');
+            });
+
+            app()->terminating(function () {
+                try {
+                    app(SyncService::class)->processQueue(10);
+                } catch (\Throwable $th) {
+                    Log::warning('Edge payment post-response sync failed', [
+                        'error' => $th->getMessage(),
+                    ]);
+                }
             });
 
             return response()->json([

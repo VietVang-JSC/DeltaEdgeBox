@@ -44,11 +44,7 @@ class SyncService
             'max_retries' => 10,
         ]);
 
-        // Update metadata
-        SyncMetadata::updateOrCreate(
-            ['store_id' => $this->storeId],
-            ['pending_records_count' => DB::raw('pending_records_count + 1')]
-        );
+        $this->incrementPendingCount();
     }
 
     /**
@@ -64,9 +60,19 @@ class SyncService
         }
 
         // Get pending items, ordered by priority and age
-        $items = SyncQueue::where('status', 'pending')
+        $items = SyncQueue::where(function ($query) {
+                $query->where('status', 'pending')
+                    ->orWhere(function ($retryQuery) {
+                        $retryQuery->where('status', 'retrying')
+                            ->where(function ($dueQuery) {
+                                $dueQuery->whereNull('next_retry_at')
+                                    ->orWhere('next_retry_at', '<=', now());
+                            });
+                    });
+            })
             ->orderBy('priority', 'desc')
             ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc')
             ->limit($batchSize)
             ->get();
 
@@ -117,6 +123,7 @@ class SyncService
                 'Authorization' => "Bearer {$this->apiKey}",
                 'Content-Type' => 'application/json',
                 'X-Store-ID' => $this->storeId,
+                'X-Store-API-Key' => $this->apiKey,
             ])->timeout(30)->post($url, [
                 'operation' => $item->operation,
                 'record_id' => $item->record_id,
@@ -158,14 +165,14 @@ class SyncService
                     'status' => 'synced',
                     'synced_at' => now(),
                     'response_code' => $response->status(),
+                    'last_error' => null,
+                    'next_retry_at' => null,
                 ]);
 
                 // Log success
                 $this->logSync($item, 'success', null, $duration);
 
-                // Update metadata
-                SyncMetadata::where('store_id', $this->storeId)
-                    ->decrement('pending_records_count');
+                $this->decrementPendingCount();
 
                 Log::debug("Synced: {$item->table_name} #{$item->record_id}");
 
@@ -282,6 +289,34 @@ class SyncService
         }
     }
 
+    protected function incrementPendingCount(): void
+    {
+        SyncMetadata::firstOrCreate(
+            ['store_id' => $this->storeId],
+            [
+                'sync_status' => 'idle',
+                'pending_records_count' => 0,
+            ]
+        );
+
+        SyncMetadata::where('store_id', $this->storeId)->increment('pending_records_count');
+    }
+
+    protected function decrementPendingCount(): void
+    {
+        $metadata = SyncMetadata::firstOrCreate(
+            ['store_id' => $this->storeId],
+            [
+                'sync_status' => 'idle',
+                'pending_records_count' => 0,
+            ]
+        );
+
+        if ($metadata->pending_records_count > 0) {
+            $metadata->decrement('pending_records_count');
+        }
+    }
+
     /**
      * Log sync attempt
      */
@@ -327,17 +362,11 @@ class SyncService
     }
 
     /**
-     * Check internet connectivity
+     * Check cloud sync endpoint availability.
      */
     public function isOnline(): bool
     {
         try {
-            $healthResponse = Http::timeout(5)->get($this->cloudApiUrl . '/api/health');
-
-            if ($healthResponse->successful()) {
-                return true;
-            }
-
             $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/cloud/sync-status";
             $statusResponse = Http::withHeaders([
                 'Authorization' => "Bearer {$this->apiKey}",
