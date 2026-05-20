@@ -3,7 +3,9 @@
 namespace App\Providers;
 
 use App\Models\Payment;
+use App\Models\PaymentDetail;
 use App\Observers\PaymentObserver;
+use App\Observers\PaymentDetailObserver;
 use Illuminate\Support\ServiceProvider;
 use App\Observers\CustomerObserver;
 use App\Observers\TableObserver;
@@ -27,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Register observers (uncomment when models exist)
         Payment::observe(PaymentObserver::class);
+        PaymentDetail::observe(PaymentDetailObserver::class);
         // Order::observe(OrderObserver::class);
         Customer::observe(CustomerObserver::class);
         Table::observe(TableObserver::class);

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\SyncStatusController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\PrinterController;
+use App\Http\Controllers\Api\PaymentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,10 +21,10 @@ use App\Http\Controllers\Api\PrinterController;
 
 // Health check endpoints (public)
 Route::get('/health', [HealthController::class, 'index']);
-Route::get('/health/detailed', [HealthController::class, 'detailed']);
+Route::get('/health/detailed', [HealthController::class, 'detailed'])->middleware('edge.api.key');
 
-// Sync status endpoints (public for now, can add auth later)
-Route::prefix('sync')->group(function () {
+// Sync status endpoints
+Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/status', [SyncStatusController::class, 'index']);
     Route::get('/pending', [SyncStatusController::class, 'pending']);
     Route::get('/logs', [SyncStatusController::class, 'logs']);
@@ -52,6 +53,11 @@ Route::prefix('printers')->group(function () {
     // Browser printing endpoints
     Route::post('/print-on-browser', [PrinterController::class, 'printOnBrowser']);
     Route::post('/print-real-browser', [PrinterController::class, 'printRealBrowser']);
+});
+
+// Legacy POS payment compatibility endpoints
+Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
+    Route::post('/create_payment', [PaymentController::class, 'createPayment']);
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {

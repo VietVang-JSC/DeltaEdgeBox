@@ -27,7 +27,7 @@ class Kernel extends ConsoleKernel
                  ->dailyAt('23:59');
 
         // Optional: Run sync worker via scheduler (alternative to daemon mode)
-        // $schedule->command('sync:worker --batch=50')->everyTenSeconds()->withoutOverlapping();
+        $schedule->command('sync:worker --batch=50')->everyTenSeconds()->withoutOverlapping();
     }
 
     /**
