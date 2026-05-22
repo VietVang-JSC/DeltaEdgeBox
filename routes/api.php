@@ -27,6 +27,7 @@ Route::get('/health/detailed', [HealthController::class, 'detailed'])->middlewar
 Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/status', [SyncStatusController::class, 'index']);
     Route::get('/pending', [SyncStatusController::class, 'pending']);
+    Route::get('/queue', [SyncStatusController::class, 'queue']);
     Route::get('/logs', [SyncStatusController::class, 'logs']);
     Route::post('/trigger', [SyncStatusController::class, 'trigger']);
 });
