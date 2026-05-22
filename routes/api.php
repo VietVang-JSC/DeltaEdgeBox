@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\SyncStatusController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\PrinterController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\TableController;
+use App\Http\Controllers\MasterSyncController;
 
 /*
 |--------------------------------------------------------------------------
@@ -30,6 +32,14 @@ Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/logs', [SyncStatusController::class, 'logs']);
     Route::post('/trigger', [SyncStatusController::class, 'trigger']);
 });
+
+
+// Master data sync endpoint
+Route::prefix('edge')
+    ->middleware('edge.api.key')
+    ->group(function () {
+        Route::get('/master-sync', [MasterSyncController::class, 'sync']);
+    });
 
 // Backup management endpoints
 Route::prefix('backup')->group(function () {
@@ -59,6 +69,19 @@ Route::prefix('printers')->group(function () {
 Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
 });
+
+
+// Table management endpoints
+Route::prefix('user/table')
+    ->middleware('edge.api.key')
+    ->group(function () {
+        Route::get('/', [TableController::class, 'index']);
+        Route::post('/create', [TableController::class, 'store']);
+        Route::get('/{id}', [TableController::class, 'show']);
+        Route::put('/update/{id}', [TableController::class, 'update']);
+        Route::delete('/delete/{id}', [TableController::class, 'destroy']);
+    });
+
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
