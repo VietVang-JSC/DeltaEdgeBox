@@ -11,6 +11,7 @@ use App\Observers\CustomerObserver;
 use App\Observers\TableObserver;
 use App\Models\Customer;
 use App\Models\Table;
+use Illuminate\Support\Facades\Log;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -27,11 +28,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Register observers (uncomment when models exist)
-        Payment::observe(PaymentObserver::class);
-        PaymentDetail::observe(PaymentDetailObserver::class);
-        // Order::observe(OrderObserver::class);
-        Customer::observe(CustomerObserver::class);
-        Table::observe(TableObserver::class);
+        try {
+            Payment::observe(PaymentObserver::class);
+            PaymentDetail::observe(PaymentDetailObserver::class);
+            // Order::observe(OrderObserver::class);
+            Customer::observe(CustomerObserver::class);
+            Table::observe(TableObserver::class);
+        } catch (\Throwable $exception) {
+            Log::critical('Failed to register sync observers', [
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 }
