@@ -18,9 +18,13 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     protected $fillable = [
+        'store_id',
         'name',
         'email',
         'password',
+        'role',
+        'status',
+        'phone',
     ];
 
     /**
@@ -41,5 +45,12 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'store_id' => 'integer',
+        'status' => 'boolean',
     ];
+
+    public function store()
+    {
+        return $this->belongsTo(Store::class);
+    }
 }

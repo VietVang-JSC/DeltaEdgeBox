@@ -59,7 +59,7 @@ class TableObserver
     {
         try {
             $this->syncService->queueForSync(
-                table: 'tables',
+                table: 'table',
                 operation: $operation,
                 recordId: $table->id,
                 data: $table->toArray(),
