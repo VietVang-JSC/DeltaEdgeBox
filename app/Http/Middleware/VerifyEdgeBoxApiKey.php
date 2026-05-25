@@ -11,6 +11,11 @@ class VerifyEdgeBoxApiKey
     {
         $configuredKey = config('edge_box.api_key');
 
+        \Log::info('Edge Key Debug', [
+        'configured_key' => $configuredKey,
+        'request_key'    => $request->header('X-Edge-Api-Key'),
+        'all_headers'    => $request->headers->all(),
+    ]);
         if (empty($configuredKey)) {
             return response()->json([
                 'message' => 'Edge Box API key is not configured.',

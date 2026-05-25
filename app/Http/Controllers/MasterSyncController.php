@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
+use App\Services\MasterDataSyncService;
 
 use Illuminate\Http\Request;
 

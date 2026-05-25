@@ -38,7 +38,7 @@ Route::prefix('sync')->middleware('edge.api.key')->group(function () {
 Route::prefix('edge')
     ->middleware('edge.api.key')
     ->group(function () {
-        Route::get('/master-sync', [MasterSyncController::class, 'sync']);
+        Route::post('/master-sync', [MasterSyncController::class, 'sync']);
     });
 
 // Backup management endpoints

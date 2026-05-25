@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
+
 class MasterDataSyncService
 {
     protected $cloudApiUrl;
@@ -18,7 +19,7 @@ class MasterDataSyncService
     public function __construct()
     {
         $this->cloudApiUrl = env('CLOUD_API_URL');
-        $this->apiKey      = env('EDGE_API_KEY');
+        $this->apiKey = config('edge_box.api_key');
         $this->storeId     = env('STORE_ID');
     }
 
@@ -34,13 +35,13 @@ class MasterDataSyncService
              */
 
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'X-Edge-Api-Key' => $this->apiKey,
                 'Accept'        => 'application/json',
                 'X-Store-ID'    => $this->storeId,
             ])
             ->timeout(60)
-            ->get(
-                rtrim($this->cloudApiUrl, '/') . '/api/edge/master-sync',
+            ->post(
+                rtrim($this->cloudApiUrl, '/') . '/api/edge-cloud/master-sync',
                 [
                     'store_id' => $this->storeId,
                 ]
@@ -58,7 +59,17 @@ class MasterDataSyncService
                 ];
             }
 
-            $data = $response->json();
+            $data = $response->json()['data'];
+            
+            if (!$data) {
+
+                return [
+                    'success' => false,
+                    'message' => 'Invalid response structure'
+                ];
+            }
+
+            
 
             DB::beginTransaction();
 
@@ -68,21 +79,22 @@ class MasterDataSyncService
 
             foreach ($data['tables'] ?? [] as $table) {
 
-                Table::updateOrCreate(
-                    [
-                        'id' => $table['id']
-                    ],
-                    [
-                        'store_id' => $table['store_id'],
-                        'name'     => $table['name'],
-                        'code'     => $table['code'],
-                        'capacity' => $table['capacity'],
-                        'status'   => $table['status'],
-                        'note'     => $table['note'] ?? null,
-                        'admin_id' => $table['admin_id'] ?? null,
-                        'updated_at' => $table['updated_at'] ?? now(),
-                    ]
-                );
+               Table::updateOrCreate(
+                [
+                    'id' => $table['id']
+                ],
+                [
+                    'store_id'  => $table['store_id'],
+                    'name'      => $table['tablename'], 
+                    'status'    => $table['status'],
+                    'admin_id'  => $table['admin_id'] ?? null,
+                    'updated_at'=> $table['updated_at'] ?? now(),
+
+                    'code'      => $table['tablename'],
+                    'capacity'  => $table['number_of_people'] ?? 0,
+                    'note'      => $table['listitem'] ?? null,
+                ]
+            );
             }
 
             /*
@@ -91,16 +103,18 @@ class MasterDataSyncService
 
             foreach ($data['categories'] ?? [] as $category) {
 
-                Category::updateOrCreate(
-                    [
-                        'id' => $category['id']
-                    ],
-                    [
-                        'name'       => $category['name'],
-                        'status'     => $category['status'] ?? 1,
-                        'updated_at' => $category['updated_at'] ?? now(),
-                    ]
-                );
+              Category::updateOrCreate(
+                [
+                    'id' => $category['id']
+                ],
+                [
+                    'store_id'  => $category['store_id'],
+                    'name'      => $category['category_name'], 
+                    'status'    => $category['status'] ?? 1,
+                    'admin_id'  => $category['admin_id'] ?? null,
+                    'updated_at'=> $category['updated_at'] ?? now(),
+                ]
+            );
             }
 
             /*
@@ -109,20 +123,25 @@ class MasterDataSyncService
 
             foreach ($data['products'] ?? [] as $product) {
 
-                Product::updateOrCreate(
-                    [
-                        'id' => $product['id']
-                    ],
-                    [
-                        'category_id' => $product['category_id'],
-                        'name'        => $product['name'],
-                        'sku'         => $product['sku'],
-                        'price'       => $product['price'],
-                        'status'      => $product['status'],
-                        'quantity'    => $product['quantity'] ?? 0,
-                        'updated_at'  => $product['updated_at'] ?? now(),
-                    ]
-                );
+               Product::updateOrCreate(
+                [
+                    'id' => $product['id']
+                ],
+                [
+                    'category_id' => $product['category_id'],
+                    'store_id'    => $product['store_id'],
+                    'name'        => $product['title'], 
+                    'code'        => $product['product_code'],
+                    'sku'         => $product['product_code'], 
+                    'price'       => $product['price'],
+                    'status'      => $product['status'],
+                    'quantity'    => $product['quantity']
+                                        ?? ($product['inventory']['quantity'] ?? 0),
+
+                    'admin_id'    => $product['admin_id'] ?? null,
+                    'updated_at'  => $product['updated_at'] ?? now(),
+                ]
+            );
             }
 
             DB::commit();
