@@ -9,6 +9,9 @@ use App\Http\Controllers\Api\PrinterController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\TableController;
 use App\Http\Controllers\MasterSyncController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\InventoryController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -20,6 +23,8 @@ use App\Http\Controllers\MasterSyncController;
 | be assigned to the "api" middleware group. Make something great!
 |
 */
+// Login endpoint (public)
+Route::post('/edge/login', [UserController::class, 'loginWeb']);
 
 // Health check endpoints (public)
 Route::get('/health', [HealthController::class, 'index']);
@@ -81,6 +86,16 @@ Route::prefix('user/table')
         Route::put('/update/{id}', [TableController::class, 'update']);
         Route::delete('/delete/{id}', [TableController::class, 'destroy']);
     });
+
+
+// Inventory management endpoints 
+Route::prefix('inventory')->middleware('edge.api.key')->group(function () {
+    Route::get('/',           [InventoryController::class, 'index']);
+    Route::get('/low-stock',  [InventoryController::class, 'lowStock']);
+    Route::get('/history',    [InventoryController::class, 'history']);
+    Route::post('/adjust',    [InventoryController::class, 'adjust']);
+    Route::post('/restock',   [InventoryController::class, 'restock']);
+});
 
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
