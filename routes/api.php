@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\SyncStatusController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\PrinterController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\TableController;
+use App\Http\Controllers\Api\PosWebFilterController;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,6 +61,20 @@ Route::prefix('printers')->group(function () {
 // Legacy POS payment compatibility endpoints
 Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
+});
+
+// Legacy POS table compatibility endpoints
+Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
+    Route::get('/list', [TableController::class, 'index']);
+    Route::get('/get_table/{id?}', [TableController::class, 'show']);
+    Route::post('/check_in_table', [TableController::class, 'checkIn']);
+    Route::post('/check_out_table_new', [TableController::class, 'checkOut']);
+    Route::post('/update_order_table', [TableController::class, 'updateOrder']);
+    Route::post('/change-table', [TableController::class, 'changeTable']);
+});
+
+Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
+    Route::post('/filter', [PosWebFilterController::class, 'filter']);
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {

@@ -15,6 +15,11 @@ use Illuminate\Support\Facades\Log;
 
 class PosWebFilterController extends Controller
 {
+    private function defaultTimeZone(): string
+    {
+        return config('app.timezone', 'Asia/Ho_Chi_Minh');
+    }
+
     public function filter(Request $request)
     {
         try {
@@ -25,6 +30,9 @@ class PosWebFilterController extends Controller
             $customers = $this->customers($storeId);
             $payments = $this->pendingPayments($storeId);
             $tables = $this->tables($storeId);
+            $store = $this->storePayload($storeId);
+            $billSetting = $this->billSettingPayload($store);
+            $bankPayment = $this->bankPaymentPayload();
 
             return response()->json([
                 'status' => true,
@@ -39,6 +47,9 @@ class PosWebFilterController extends Controller
                     'data_table' => $tables,
                     'data_bookings' => [],
                     'threshold_message' => [],
+                    'data_stores' => [$store],
+                    'data_bill_setting' => [$billSetting],
+                    'data_bank_payment' => [$bankPayment],
                     'total_records_product' => count($products),
                 ],
             ]);
@@ -69,16 +80,67 @@ class PosWebFilterController extends Controller
 
         $payload['store'] = $store ? $store->toArray() : [
             'id' => $storeId,
-            'time_zone' => 'Asia/Ho_Chi_Minh',
+            'time_zone' => $this->defaultTimeZone(),
             'is_tax_included' => 0,
             'service_charge' => 0,
         ];
 
-        $payload['store']['time_zone'] = $payload['store']['time_zone'] ?? 'Asia/Ho_Chi_Minh';
+        $payload['store']['time_zone'] = $payload['store']['time_zone'] ?? $this->defaultTimeZone();
         $payload['store']['is_tax_included'] = $payload['store']['is_tax_included'] ?? 0;
         $payload['store']['service_charge'] = $payload['store']['service_charge'] ?? 0;
 
         return $payload;
+    }
+
+    private function storePayload(int $storeId): array
+    {
+        $store = Store::find($storeId) ?: Store::first();
+        $payload = $store ? $store->toArray() : [
+            'id' => $storeId,
+            'name' => 'Edge Store',
+            'code' => 'EDGE-' . $storeId,
+            'address' => null,
+            'phone' => null,
+            'email' => null,
+            'status' => true,
+        ];
+
+        $payload['id'] = $payload['id'] ?? $storeId;
+        $payload['time_zone'] = $payload['time_zone'] ?? $this->defaultTimeZone();
+        $payload['is_tax_included'] = $payload['is_tax_included'] ?? 0;
+        $payload['setting_print_kitchen'] = $payload['setting_print_kitchen'] ?? [];
+        $payload['service_charge'] = $payload['service_charge'] ?? 0;
+        $payload['qr_footer_text'] = $payload['qr_footer_text'] ?? '';
+        $payload['deployment_mode'] = $payload['deployment_mode'] ?? 'offline-first';
+        $payload['edge_routing_active'] = $payload['edge_routing_active'] ?? true;
+        $payload['edge_box_url'] = $payload['edge_box_url'] ?? config('app.url');
+        $payload['edge_box_store_id'] = $payload['edge_box_store_id'] ?? $storeId;
+        $payload['edge_enabled_at'] = $payload['edge_enabled_at'] ?? null;
+        $payload['edge_config_version'] = $payload['edge_config_version'] ?? 1;
+
+        return $payload;
+    }
+
+    private function billSettingPayload(array $store): array
+    {
+        return [
+            'store_name' => $store['name'] ?? 'Edge Store',
+            'store_address' => $store['address'] ?? '',
+            'store_phone' => $store['phone'] ?? '',
+            'footer_content' => $store['qr_footer_text'] ?? '',
+            'wifi_information' => '',
+            'logo' => '',
+            'qr_footer_text' => $store['qr_footer_text'] ?? '',
+        ];
+    }
+
+    private function bankPaymentPayload(): array
+    {
+        return [
+            'bank_code' => '',
+            'account_number' => '',
+            'account_owner' => '',
+        ];
     }
 
     private function products(int $storeId): array
@@ -104,8 +166,14 @@ class PosWebFilterController extends Controller
         $payload['price_after_tax'] = $payload['price_after_tax'] ?? $payload['price'];
         $payload['vat'] = $payload['vat'] ?? 0;
         $payload['product_extra_list'] = $payload['product_extra_list'] ?? [];
+        $payload['product_extras'] = $payload['product_extras'] ?? $payload['product_extra_list'];
         $payload['combo_products'] = $payload['combo_products'] ?? [];
         $payload['optional_products'] = $payload['optional_products'] ?? [];
+        $payload['number_of_options'] = $payload['number_of_options'] ?? 0;
+        $payload['types'] = $payload['types'] ?? ['product_types' => []];
+        $payload['time_prices'] = $payload['time_prices'] ?? [];
+        $payload['product_time_prices'] = $payload['product_time_prices'] ?? $payload['time_prices'];
+        $payload['is_restricted_time'] = $payload['is_restricted_time'] ?? 0;
         $payload['totalQuantity'] = $payload['totalQuantity'] ?? ($payload['quantity'] ?? 0);
         $payload['minQuantity'] = $payload['minQuantity'] ?? 0;
         $payload['inventory_required'] = $payload['inventory_required'] ?? 0;

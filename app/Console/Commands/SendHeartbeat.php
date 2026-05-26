@@ -55,6 +55,7 @@ class SendHeartbeat extends Command
                     ['store_id' => $storeId],
                     [
                         'sync_status' => 'idle',
+                        'last_error' => null,
                         'updated_at' => now(),
                     ]
                 );
