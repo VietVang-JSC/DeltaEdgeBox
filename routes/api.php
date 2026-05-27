@@ -7,10 +7,12 @@ use App\Http\Controllers\Api\SyncStatusController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\PrinterController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PaymentPrintController;
 use App\Http\Controllers\MasterSyncController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\Api\TableController;
+use App\Http\Controllers\Api\KitchenPrintController;
 use App\Http\Controllers\Api\PosWebFilterController;
 
 /*
@@ -74,6 +76,15 @@ Route::prefix('printers')->group(function () {
 // Legacy POS payment compatibility endpoints
 Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
+    Route::post('/update_payment', [PaymentController::class, 'updatePayment']);
+});
+
+Route::prefix('payment')->middleware('edge.api.key')->group(function () {
+    Route::get('/print-for-web', [PaymentPrintController::class, 'printForWeb']);
+});
+
+Route::prefix('admin/payment')->middleware('edge.api.key')->group(function () {
+    Route::get('/print_payment', [PaymentPrintController::class, 'printPayment']);
 });
 
 
@@ -94,6 +105,10 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
     Route::post('/check_out_table_new', [TableController::class, 'checkOut']);
     Route::post('/update_order_table', [TableController::class, 'updateOrder']);
     Route::post('/change-table', [TableController::class, 'changeTable']);
+    Route::post('/check-payment-printed', [KitchenPrintController::class, 'checkPrintedStatus']);
+    Route::get('/kitchen/print-all', [KitchenPrintController::class, 'printAll']);
+    Route::get('/kitchen/print-next-web', [KitchenPrintController::class, 'printNextWeb']);
+    Route::get('/kitchen/print-on-browser', [KitchenPrintController::class, 'printOnBrowser']);
 });
 
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {

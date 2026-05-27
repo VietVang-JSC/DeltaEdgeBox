@@ -165,7 +165,7 @@ return [
 
     'cloud_api_url' => env('CLOUD_API_URL'),
 
-    'api_key' => env('STORE_API_KEY'),
+    'api_key' => env('API_KEY'),
     /*
     |--------------------------------------------------------------------------
     | Autoloaded Service Providers
