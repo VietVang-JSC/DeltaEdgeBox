@@ -34,6 +34,8 @@ class PaymentDetail extends Model
         'unit_price_excluding_tax',
         'discounted_price_excluding_tax',
         'printed_quantity',
+        'created_at',
+        'updated_at',
     ];
 
     protected $casts = [

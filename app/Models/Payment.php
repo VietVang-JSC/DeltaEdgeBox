@@ -42,6 +42,8 @@ class Payment extends Model
         'payment_transaction_id',
         'sub_total_before_discount',
         'total_incl_vat_before_discount',
+        'created_at',
+        'updated_at',
     ];
 
     protected $casts = [
