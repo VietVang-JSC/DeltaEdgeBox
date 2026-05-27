@@ -7,11 +7,11 @@ use App\Http\Controllers\Api\SyncStatusController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\PrinterController;
 use App\Http\Controllers\Api\PaymentController;
-use App\Http\Controllers\TableController;
 use App\Http\Controllers\MasterSyncController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\InventoryController;
-
+use App\Http\Controllers\Api\TableController;
+use App\Http\Controllers\Api\PosWebFilterController;
 
 /*
 |--------------------------------------------------------------------------
@@ -34,6 +34,7 @@ Route::get('/health/detailed', [HealthController::class, 'detailed'])->middlewar
 Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/status', [SyncStatusController::class, 'index']);
     Route::get('/pending', [SyncStatusController::class, 'pending']);
+    Route::get('/queue', [SyncStatusController::class, 'queue']);
     Route::get('/logs', [SyncStatusController::class, 'logs']);
     Route::post('/trigger', [SyncStatusController::class, 'trigger']);
 });
@@ -76,18 +77,6 @@ Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
 });
 
 
-// Table management endpoints
-Route::prefix('user/table')
-    ->middleware('edge.api.key')
-    ->group(function () {
-        Route::get('/', [TableController::class, 'index']);
-        Route::post('/create', [TableController::class, 'store']);
-        Route::get('/{id}', [TableController::class, 'show']);
-        Route::put('/update/{id}', [TableController::class, 'update']);
-        Route::delete('/delete/{id}', [TableController::class, 'destroy']);
-    });
-
-
 // Inventory management endpoints 
 Route::prefix('inventory')->middleware('edge.api.key')->group(function () {
     Route::get('/',           [InventoryController::class, 'index']);
@@ -97,6 +86,19 @@ Route::prefix('inventory')->middleware('edge.api.key')->group(function () {
     Route::post('/restock',   [InventoryController::class, 'restock']);
 });
 
+// Legacy POS table compatibility endpoints
+Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
+    Route::get('/list', [TableController::class, 'index']);
+    Route::get('/get_table/{id?}', [TableController::class, 'show']);
+    Route::post('/check_in_table', [TableController::class, 'checkIn']);
+    Route::post('/check_out_table_new', [TableController::class, 'checkOut']);
+    Route::post('/update_order_table', [TableController::class, 'updateOrder']);
+    Route::post('/change-table', [TableController::class, 'changeTable']);
+});
+
+Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
+    Route::post('/filter', [PosWebFilterController::class, 'filter']);
+});
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();

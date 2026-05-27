@@ -21,7 +21,13 @@ class User extends Authenticatable implements JWTSubject
     protected $fillable = [
         'phone',
        // 'email',
+        'store_id',
+        'name',
+        'email',
         'password',
+        'role',
+        'status',
+        'phone',
     ];
 
     /**
@@ -42,6 +48,8 @@ class User extends Authenticatable implements JWTSubject
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'store_id' => 'integer',
+        'status' => 'boolean',
     ];
 
     public function getJWTIdentifier()
@@ -58,4 +66,8 @@ class User extends Authenticatable implements JWTSubject
     // {
     //     return $this->belongsTo(Store::class);
     // }
+    public function store()
+    {
+        return $this->belongsTo(Store::class);
+    }
 }
