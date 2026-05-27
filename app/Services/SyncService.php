@@ -115,7 +115,7 @@ class SyncService
             $item->update(['status' => 'syncing']);
 
             // Build API endpoint
-            $endpoint = "/api/EdgeBox/sync";
+            $endpoint = "/api/cloud/sync";
             $url = rtrim($this->cloudApiUrl, '/') . $endpoint;
 
             // Send to cloud
@@ -125,11 +125,13 @@ class SyncService
                 'X-Store-ID' => $this->storeId,
                 'X-Store-API-Key' => $this->apiKey,
             ])->timeout(30)->post($url, [
-                'table_name' => $item->table_name,
-                'operation' => $item->operation,
-                'record_id' => $item->record_id,
-                'data' => json_decode($item->payload, true),
-                'timestamp' => now()->toISOString(),
+                'operations' => [[
+                    'type' => $item->operation,
+                    'table' => $item->table_name,
+                    'local_id' => $item->record_id,
+                    'data' => json_decode($item->payload, true),
+                    'timestamp' => now()->toISOString(),
+                ]],
             ]);
 
             $duration = (microtime(true) - $startTime) * 1000;
@@ -393,7 +395,7 @@ class SyncService
                 $response = Http::withHeaders([
                 'Authorization' => "Bearer {$this->apiKey}",
                 'X-Store-ID'    => $this->storeId,
-            ])->timeout(5)->get(rtrim($this->cloudApiUrl, '/') . '/api/EdgeBox/sync-status');
+            ])->timeout(5)->get(rtrim($this->cloudApiUrl, '/') . '/api/cloud/sync-status');
 
             if ($response->successful()) {
                 $cloudStatus = $response->json();
@@ -450,4 +452,3 @@ class SyncService
         return ['success' => 0, 'failed' => count($ids)];
     }
 }
-

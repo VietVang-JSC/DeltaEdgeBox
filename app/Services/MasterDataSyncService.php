@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Table;
 use App\Models\Product;
 use App\Models\Category;
+use App\Models\Printer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -123,25 +124,38 @@ class MasterDataSyncService
 
             foreach ($data['products'] ?? [] as $product) {
 
-               Product::updateOrCreate(
-                [
-                    'id' => $product['id']
-                ],
-                [
-                    'category_id' => $product['category_id'],
-                    'store_id'    => $product['store_id'],
-                    'name'        => $product['title'], 
-                    'code'        => $product['product_code'],
-                    'sku'         => $product['product_code'], 
-                    'price'       => $product['price'],
-                    'status'      => $product['status'],
-                    'quantity'    => $product['quantity']
-                                        ?? ($product['inventory']['quantity'] ?? 0),
+               $this->upsertProduct($product);
+            }
 
-                    'admin_id'    => $product['admin_id'] ?? null,
-                    'updated_at'  => $product['updated_at'] ?? now(),
-                ]
-            );
+            /*
+            | PRINTERS
+            */
+
+            foreach ($data['printers'] ?? [] as $printer) {
+                $active = (bool) ($printer['active'] ?? true);
+
+                Printer::updateOrCreate(
+                    [
+                        'id' => $printer['id'],
+                    ],
+                    [
+                        'store_id' => $printer['store_id'] ?? $this->storeId,
+                        'name' => $printer['name'] ?? null,
+                        'printer_type' => $printer['printer_type'] ?? 'kitchen',
+                        'connection_type' => $printer['connection_type'] ?? 'network',
+                        'ip_address' => $printer['ip_address'] ?? null,
+                        'port' => $printer['port'] ?? 9100,
+                        'device_path' => $printer['device_path'] ?? null,
+                        'active' => $active,
+                        'default' => $printer['default'] ?? null,
+                        'paper_size' => $printer['paper_size'] ?? '58',
+                        'is_active' => $printer['is_active'] ?? $active,
+                        'status' => $printer['status'] ?? ($active ? 'online' : 'offline'),
+                        'last_status_check' => $printer['last_status_check'] ?? null,
+                        'created_at' => $printer['created_at'] ?? now(),
+                        'updated_at' => $printer['updated_at'] ?? now(),
+                    ]
+                );
             }
 
             DB::commit();
@@ -153,6 +167,7 @@ class MasterDataSyncService
                     'tables'    => count($data['tables'] ?? []),
                     'categories'=> count($data['categories'] ?? []),
                     'products'  => count($data['products'] ?? []),
+                    'printers'  => count($data['printers'] ?? []),
                 ]
             ];
 
@@ -168,5 +183,44 @@ class MasterDataSyncService
                 'error'   => $e->getMessage(),
             ];
         }
+    }
+
+    private function upsertProduct(array $product): void
+    {
+        $code = $product['product_code'];
+        $payload = [
+            'category_id' => $product['category_id'],
+            'store_id'    => $product['store_id'],
+            'name'        => $product['title'],
+            'code'        => $code,
+            'sku'         => $code,
+            'price'       => $product['price'],
+            'status'      => $product['status'],
+            'quantity'    => $product['quantity'] ?? ($product['inventory']['quantity'] ?? 0),
+            'admin_id'    => $product['admin_id'] ?? null,
+            'updated_at'  => $product['updated_at'] ?? now(),
+        ];
+
+        $existingByCode = Product::where('code', $code)->first();
+        if ($existingByCode && (int) $existingByCode->id !== (int) $product['id']) {
+            $existingByCode->update($payload);
+
+            Log::warning('Master sync product id conflict resolved by code', [
+                'cloud_id' => $product['id'],
+                'edge_id' => $existingByCode->id,
+                'code' => $code,
+            ]);
+
+            return;
+        }
+
+        Product::updateOrCreate(
+            [
+                'id' => $product['id'],
+            ],
+            array_merge($payload, [
+                'created_at' => $product['created_at'] ?? now(),
+            ])
+        );
     }
 }
