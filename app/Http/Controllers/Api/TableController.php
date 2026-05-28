@@ -286,15 +286,31 @@ class TableController extends Controller
             $payment = Payment::create($payload);
         }
 
+        $printedQuantities = $payment->details()
+            ->whereNull('deleted_at')
+            ->get()
+            ->mapWithKeys(function ($detail) {
+                $key = $detail->product_key ?: 'product:' . $detail->product_id;
+
+                return [$key => (int) $detail->printed_quantity];
+            });
+
         $payment->details()->delete();
         foreach ($items as $item) {
+            $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
+            $printedQuantity = min((int) ($printedQuantities[$detailKey] ?? 0), (int) $item['quantity']);
+
             PaymentDetail::create([
                 'payment_id' => $payment->id,
                 'product_id' => $item['product_id'],
+                'product_key' => $item['product_key'],
                 'quantity' => $item['quantity'],
                 'price' => $item['price'],
                 'total' => $item['total'],
                 'note' => $item['note'] ?? null,
+                'product_extra' => $item['product_extra'] ?? null,
+                'optional_products' => $item['optional_products'] ?? null,
+                'printed_quantity' => $printedQuantity,
             ]);
         }
 
@@ -329,28 +345,34 @@ class TableController extends Controller
         $decoded = json_decode($listitem, true) ?: [];
         $rawItems = $decoded['item'] ?? $decoded ?? [];
 
-        return array_values(array_filter(array_map(function ($item) {
+        $items = [];
+        foreach ($rawItems as $productKey => $item) {
             if (!is_array($item)) {
-                return null;
+                continue;
             }
 
             $productId = $item['product_id'] ?? $item['id'] ?? null;
             if (!$productId) {
-                return null;
+                continue;
             }
 
             $quantity = (int) ($item['quantity'] ?? 1);
             $price = (float) ($item['price'] ?? 0);
             $total = (float) ($item['TotalPrice'] ?? $item['total'] ?? ($price * $quantity));
 
-            return [
+            $items[] = [
                 'product_id' => (int) $productId,
+                'product_key' => is_string($productKey) ? $productKey : null,
                 'quantity' => $quantity,
                 'price' => $price,
                 'total' => $total,
                 'note' => $item['note'] ?? $item['noted'] ?? null,
+                'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : null,
+                'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
             ];
-        }, $rawItems)));
+        }
+
+        return $items;
     }
 
     private function summarizeItems(array $items, Request $request): array

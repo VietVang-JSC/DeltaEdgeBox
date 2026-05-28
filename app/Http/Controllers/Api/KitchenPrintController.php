@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Table;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class KitchenPrintController extends Controller
 {
@@ -25,7 +26,14 @@ class KitchenPrintController extends Controller
             return $this->error('Table not found', 404);
         }
 
-        return $this->success($this->tablePrintPayload($table));
+        return DB::transaction(function () use ($table) {
+            $products = $this->listPrintableItems($table, true);
+            if (empty($products)) {
+                return $this->error('No items to print', 404);
+            }
+
+            return $this->success($this->tablePrintPayload($table, $products));
+        });
     }
 
     public function printOnBrowser(Request $request)
@@ -35,7 +43,14 @@ class KitchenPrintController extends Controller
             return $this->error('Table not found', 404);
         }
 
-        return $this->success($this->tablePrintPayload($table));
+        return DB::transaction(function () use ($table) {
+            $products = $this->listPrintableItems($table, true);
+            if (empty($products)) {
+                return $this->error('No items to print', 404);
+            }
+
+            return $this->success($this->tablePrintPayload($table, $products));
+        });
     }
 
     public function checkPrintedStatus(Request $request)
@@ -79,7 +94,7 @@ class KitchenPrintController extends Controller
         return $query->first();
     }
 
-    private function tablePrintPayload(Table $table): array
+    private function tablePrintPayload(Table $table, ?array $products = null): array
     {
         $payment = $table->payment;
         $user = $payment && $payment->user ? $payment->user->toArray() : null;
@@ -89,7 +104,7 @@ class KitchenPrintController extends Controller
             'table_id' => $table->id,
             'tablename' => $table->tablename ?? $table->name ?? null,
             'number_of_people' => $table->number_of_people ?? 0,
-            'products' => $this->listItems($table),
+            'products' => $products ?? $this->listItems($table),
             'user' => $user,
             'payment_code' => $payment->payment_code ?? null,
             'payment' => $payment ? $payment->toArray() : null,
@@ -116,6 +131,114 @@ class KitchenPrintController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    private function listPrintableItems(Table $table, bool $markPrinted = false): array
+    {
+        if (!$table->payment || !$table->listitem) {
+            return [];
+        }
+
+        $decoded = json_decode($table->listitem, true) ?: [];
+        $rawItems = $decoded['item'] ?? $decoded ?? [];
+
+        $details = $table->payment->details()
+            ->whereColumn('printed_quantity', '<', 'quantity')
+            ->whereNull('deleted_at')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $items = [];
+        foreach ($details as $detail) {
+            $printCount = (int) $detail->quantity - (int) $detail->printed_quantity;
+            if ($printCount <= 0) {
+                continue;
+            }
+
+            $item = $this->findListItemForDetail($rawItems, $detail);
+            if (!$item) {
+                $item = [
+                    'id' => $detail->product_id,
+                    'product_id' => $detail->product_id,
+                    'quantity' => $detail->quantity,
+                    'price' => $detail->price,
+                    'total' => $detail->total,
+                    'note' => $detail->note,
+                ];
+            }
+
+            $item['diff_quantity'] = $printCount;
+            $item['printed_quantity'] = (int) $detail->printed_quantity + $printCount;
+            $item['print_status'] = ((int) $detail->printed_quantity + $printCount) >= (int) $detail->quantity;
+
+            $items[] = $item;
+
+            if ($markPrinted) {
+                $detail->increment('printed_quantity', $printCount);
+            }
+        }
+
+        if ($markPrinted && !empty($items)) {
+            $this->syncPrintedStateToTableListItem($table);
+        }
+
+        return $items;
+    }
+
+    private function findListItemForDetail(array $rawItems, $detail): ?array
+    {
+        if (!empty($detail->product_key) && isset($rawItems[$detail->product_key]) && is_array($rawItems[$detail->product_key])) {
+            return $rawItems[$detail->product_key];
+        }
+
+        foreach ($rawItems as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $productId = $item['product_id'] ?? $item['id'] ?? null;
+            if ((string) $productId === (string) $detail->product_id) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
+    private function syncPrintedStateToTableListItem(Table $table): void
+    {
+        $decoded = json_decode($table->listitem, true) ?: [];
+        $rawItems = $decoded['item'] ?? $decoded ?? [];
+        $details = $table->payment->details()->whereNull('deleted_at')->get();
+
+        foreach ($details as $detail) {
+            foreach ($rawItems as $key => $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $productId = $item['product_id'] ?? $item['id'] ?? null;
+                $matchesKey = !empty($detail->product_key) && (string) $key === (string) $detail->product_key;
+                $matchesProduct = (string) $productId === (string) $detail->product_id;
+
+                if (!$matchesKey && !$matchesProduct) {
+                    continue;
+                }
+
+                $rawItems[$key]['printed_quantity'] = (int) $detail->printed_quantity;
+                $rawItems[$key]['diff_quantity'] = max((int) $detail->quantity - (int) $detail->printed_quantity, 0);
+                $rawItems[$key]['print_status'] = (int) $detail->printed_quantity >= (int) $detail->quantity;
+            }
+        }
+
+        if (isset($decoded['item'])) {
+            $decoded['item'] = $rawItems;
+            $table->listitem = json_encode($decoded);
+        } else {
+            $table->listitem = json_encode($rawItems);
+        }
+
+        $table->save();
     }
 
     private function success(array $data)
