@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Table;
 use App\Models\Product;
 use App\Models\Category;
+use App\Models\PaymentMethod;
 use App\Models\Printer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -158,6 +159,25 @@ class MasterDataSyncService
                 );
             }
 
+            /*
+            | PAYMENT METHODS
+            */
+
+            foreach ($data['payment_methods'] ?? [] as $paymentMethod) {
+                PaymentMethod::withTrashed()->updateOrCreate(
+                    [
+                        'store_id' => $paymentMethod['store_id'] ?? $this->storeId,
+                        'value' => $paymentMethod['value'],
+                    ],
+                    [
+                        'name' => $paymentMethod['name'],
+                        'created_at' => $paymentMethod['created_at'] ?? now(),
+                        'updated_at' => $paymentMethod['updated_at'] ?? now(),
+                        'deleted_at' => $paymentMethod['deleted_at'] ?? null,
+                    ]
+                );
+            }
+
             DB::commit();
 
             return [
@@ -168,6 +188,7 @@ class MasterDataSyncService
                     'categories'=> count($data['categories'] ?? []),
                     'products'  => count($data['products'] ?? []),
                     'printers'  => count($data['printers'] ?? []),
+                    'payment_methods' => count($data['payment_methods'] ?? []),
                 ]
             ];
 

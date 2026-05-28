@@ -70,6 +70,7 @@ class SyncService
                             });
                     });
             })
+            ->orderByRaw($this->syncDependencyOrderSql())
             ->orderBy('priority', 'desc')
             ->orderBy('created_at', 'asc')
             ->orderBy('id', 'asc')
@@ -82,14 +83,18 @@ class SyncService
 
         Log::info("Processing {$items->count()} sync items");
 
-        $results = ['success' => 0, 'failed' => 0, 'skipped' => false, 'errors' => []];
+        $results = ['success' => 0, 'failed' => 0, 'deferred' => 0, 'skipped' => false, 'errors' => []];
 
         foreach ($items as $item) {
             try {
-                if ($this->processSyncItem($item)) {
+                $processed = $this->processSyncItem($item);
+
+                if ($processed === true) {
                     $results['success']++;
-                } else {
+                } elseif ($processed === false) {
                     $results['failed']++;
+                } else {
+                    $results['deferred']++;
                 }
             } catch (\Exception $e) {
                 $results['failed']++;
@@ -106,11 +111,17 @@ class SyncService
     /**
      * Process single sync item with retry logic
      */
-    protected function processSyncItem(SyncQueue $item): bool
+    protected function processSyncItem(SyncQueue $item): ?bool
     {
         $startTime = microtime(true);
 
         try {
+            if ($this->shouldDeferForMissingDependency($item)) {
+                $this->deferDependencyBlockedItem($item);
+
+                return null;
+            }
+
             // Mark as syncing
             $item->update(['status' => 'syncing']);
 
@@ -194,6 +205,62 @@ class SyncService
         }
     }
 
+    protected function syncDependencyOrderSql(): string
+    {
+        return "CASE table_name
+            WHEN 'products' THEN 10
+            WHEN 'customers' THEN 20
+            WHEN 'table' THEN 30
+            WHEN 'tables' THEN 30
+            WHEN 'orders' THEN 40
+            WHEN 'payments' THEN 50
+            WHEN 'order_items' THEN 60
+            WHEN 'payment_details' THEN 70
+            ELSE 100
+        END ASC";
+    }
+
+    protected function shouldDeferForMissingDependency(SyncQueue $item): bool
+    {
+        if (!in_array($item->table_name, ['payment_details', 'table', 'tables'], true)) {
+            return false;
+        }
+
+        $payload = json_decode($item->payload, true) ?: [];
+        $paymentId = $payload['payment_id'] ?? null;
+
+        if (!$paymentId) {
+            return false;
+        }
+
+        return SyncQueue::where('store_id', $item->store_id)
+            ->where('table_name', 'payments')
+            ->where('record_id', $paymentId)
+            ->whereIn('status', ['pending', 'retrying', 'syncing', 'failed'])
+            ->exists();
+    }
+
+    protected function deferDependencyBlockedItem(SyncQueue $item): void
+    {
+        $payload = json_decode($item->payload, true) ?: [];
+        $paymentId = $payload['payment_id'] ?? null;
+        $nextRetryAt = now()->addSeconds(30);
+
+        $item->update([
+            'status' => 'retrying',
+            'last_error' => "Waiting for parent payment sync payment_id={$paymentId}",
+            'next_retry_at' => $nextRetryAt,
+        ]);
+
+        Log::info('Sync item deferred until parent payment is synced', [
+            'sync_queue_id' => $item->id,
+            'table' => $item->table_name,
+            'record_id' => $item->record_id,
+            'payment_id' => $paymentId,
+            'next_retry_at' => $nextRetryAt,
+        ]);
+    }
+
     /**
      * Check whether cloud response contains conflict results.
      */
@@ -234,8 +301,8 @@ class SyncService
                 'record_id' => $item->record_id,
                 'operation_type' => $item->operation,
                 'local_data' => json_decode($item->payload, true) ?: [],
-                'cloud_data' => $conflict['cloud_data'] ?? null,
-                'resolution_strategy' => $conflict['resolution_strategy'] ?? null,
+                'cloud_data' => $conflict['cloud_data'] ?? [],
+                'resolution_strategy' => $conflict['resolution_strategy'] ?? 'manual',
                 'resolution_status' => 'unresolved',
                 'error_message' => $conflict['message'] ?? 'Sync conflict returned by cloud',
             ]);

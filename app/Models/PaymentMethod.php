@@ -14,6 +14,7 @@ class PaymentMethod extends Model
         'value',
         'name',
         'store_id',
+        'deleted_at',
     ];
 
     protected $casts = [
