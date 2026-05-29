@@ -23,6 +23,7 @@ class Product extends Model
         'status',
         'is_combo',
         'admin_id',
+        'is_restricted_time',
     ];
 
     protected $casts = [
@@ -35,6 +36,7 @@ class Product extends Model
         'status' => 'boolean',
         'is_combo' => 'boolean',
         'admin_id' => 'integer',
+        'is_restricted_time' => 'boolean',
     ];
 
     public function store()
@@ -50,5 +52,10 @@ class Product extends Model
     public function paymentDetails()
     {
         return $this->hasMany(PaymentDetail::class);
+    }
+
+    public function timePrices()
+    {
+        return $this->hasMany(ProductTimePrice::class);
     }
 }

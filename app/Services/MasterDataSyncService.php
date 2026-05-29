@@ -219,6 +219,7 @@ class MasterDataSyncService
             'status'      => $product['status'],
             'quantity'    => $product['quantity'] ?? ($product['inventory']['quantity'] ?? 0),
             'admin_id'    => $product['admin_id'] ?? null,
+            'is_restricted_time' => $product['is_restricted_time'] ?? 0,
             'updated_at'  => $product['updated_at'] ?? now(),
         ];
 
@@ -232,16 +233,48 @@ class MasterDataSyncService
                 'code' => $code,
             ]);
 
-            return;
+            $dbProductId = $existingByCode->id;
+        } else {
+            $dbProduct = Product::updateOrCreate(
+                [
+                    'id' => $product['id'],
+                ],
+                array_merge($payload, [
+                    'created_at' => $product['created_at'] ?? now(),
+                ])
+            );
+            $dbProductId = $dbProduct->id;
         }
 
-        Product::updateOrCreate(
-            [
-                'id' => $product['id'],
-            ],
-            array_merge($payload, [
-                'created_at' => $product['created_at'] ?? now(),
-            ])
-        );
+        // Đồng bộ các khung giờ giá của sản phẩm này
+        \App\Models\ProductTimePrice::where('product_id', $dbProductId)->delete();
+        foreach ($product['time_prices'] ?? [] as $tp) {
+            \App\Models\ProductTimePrice::create([
+                'id' => $tp['id'],
+                'product_id' => $dbProductId,
+                'store_id' => $tp['store_id'],
+                'start_time' => $tp['start_time'],
+                'end_time' => $tp['end_time'],
+                'price' => $tp['price'],
+                'price_after_tax' => $tp['price_after_tax'] ?? $tp['price'],
+                'priority' => $tp['priority'] ?? 0,
+                'days_of_week_mask' => isset($tp['days_of_week_mask']) ? $tp['days_of_week_mask'] : (function() use ($tp) {
+                    $days = $tp['days_of_week'] ?? null;
+                    if ($days === null || count($days) === 7) {
+                        return null;
+                    }
+                    $mask = 0;
+                    foreach ($days as $day) {
+                        $mask |= (1 << (int) $day);
+                    }
+                    return $mask;
+                })(),
+                'start_date' => $tp['start_date'] ?? null,
+                'end_date' => $tp['end_date'] ?? null,
+                'is_active' => $tp['is_active'] ?? 1,
+                'created_at' => $tp['created_at'] ?? now(),
+                'updated_at' => $tp['updated_at'] ?? now(),
+            ]);
+        }
     }
 }

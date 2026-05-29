@@ -25,7 +25,7 @@ class PosWebFilterController extends Controller
         try {
             $storeId = $this->storeId($request);
             $user = $this->userPayload($request, $storeId);
-            $products = $this->products($storeId);
+            $products = $this->products($storeId, $request);
             $categories = $this->categories($storeId);
             $customers = $this->customers($storeId);
             $payments = $this->pendingPayments($storeId);
@@ -34,13 +34,30 @@ class PosWebFilterController extends Controller
             $billSetting = $this->billSettingPayload($store);
             $bankPayment = $this->bankPaymentPayload();
 
+            // Check if pagination is requested
+            $pagination = $request->input('products.clauses.pagination');
+            $dataProduct = $products;
+            if ($pagination) {
+                $pageSize = (int)data_get($pagination, 'pageSize', 15);
+                $currentPage = (int)data_get($pagination, 'currentPage', 1);
+                $offset = ($currentPage - 1) * $pageSize;
+                
+                $paginatedList = array_slice($products, $offset, $pageSize);
+                $dataProduct = [
+                    'data_list' => $paginatedList,
+                    'total' => count($products),
+                    'pageSize' => $pageSize,
+                    'currentPage' => $currentPage,
+                ];
+            }
+
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
                 'message' => 'success',
                 'data' => [
                     'data_users' => [$user],
-                    'data_product' => $products,
+                    'data_product' => $dataProduct,
                     'category_list' => $categories,
                     'customer_list' => $customers,
                     'data_payment' => $payments,
@@ -143,14 +160,23 @@ class PosWebFilterController extends Controller
         ];
     }
 
-    private function products(int $storeId): array
+    private function products(int $storeId, Request $request = null): array
     {
-        return Product::query()
+        $query = Product::query()
+            ->with('timePrices')
             ->where(function ($query) use ($storeId) {
                 $query->whereNull('store_id')->orWhere('store_id', $storeId);
             })
-            ->where('status', 1)
-            ->limit(500)
+            ->where('status', 1);
+
+        if ($request) {
+            $whereRaw = $request->input('products.query.WhereRaw');
+            if ($whereRaw) {
+                $query->whereRaw($whereRaw);
+            }
+        }
+
+        return $query->limit(500)
             ->get()
             ->map(fn (Product $product) => $this->productPayload($product))
             ->values()
@@ -164,7 +190,10 @@ class PosWebFilterController extends Controller
         $payload['title'] = $payload['title'] ?? $payload['name'] ?? '';
         $payload['price'] = $payload['price'] ?? $payload['sale_price'] ?? 0;
         $payload['price_after_tax'] = $payload['price_after_tax'] ?? $payload['price'];
+        $payload['unit_price'] = $payload['price'];
         $payload['vat'] = $payload['vat'] ?? 0;
+        $payload['tax_name'] = $this->taxName($payload['vat']);
+        $payload['original_tax'] = $payload['vat'] < 0 ? $payload['vat'] : null;
         $payload['product_extra_list'] = $payload['product_extra_list'] ?? [];
         $payload['product_extras'] = $payload['product_extras'] ?? $payload['product_extra_list'];
         $payload['combo_products'] = $payload['combo_products'] ?? [];
@@ -174,13 +203,38 @@ class PosWebFilterController extends Controller
         $payload['time_prices'] = $payload['time_prices'] ?? [];
         $payload['product_time_prices'] = $payload['product_time_prices'] ?? $payload['time_prices'];
         $payload['is_restricted_time'] = $payload['is_restricted_time'] ?? 0;
+        $payload['available_frames'] = [];
         $payload['totalQuantity'] = $payload['totalQuantity'] ?? ($payload['quantity'] ?? 0);
         $payload['minQuantity'] = $payload['minQuantity'] ?? 0;
         $payload['inventory_required'] = $payload['inventory_required'] ?? 0;
         $payload['second_product_code'] = $payload['second_product_code'] ?? null;
         $payload['third_product_code'] = $payload['third_product_code'] ?? null;
 
+        // Load category relation for admin product list view
+        if (!isset($payload['category']) && $product->category_id) {
+            $category = Category::find($product->category_id);
+            $payload['category'] = $category ? $category->toArray() : null;
+            if ($payload['category']) {
+                $payload['category']['category_name'] = $payload['category']['category_name'] ?? $payload['category']['name'] ?? '';
+            }
+        }
+
         return $payload;
+    }
+
+    //xu ly tax name giong cloud hien tai tai file ETaxName.php
+    private function taxName($vat): string
+    {
+        $map = [
+            -3 => 'Khác',
+            -2 => 'Không kê khai',
+            -1 => 'Không thuế',
+            0  => '0%',
+            5  => '5%',
+            8  => '8%',
+            10 => '10%',
+        ];
+        return $map[$vat] ?? '0%';
     }
 
     private function categories(int $storeId): array
