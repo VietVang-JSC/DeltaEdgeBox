@@ -162,6 +162,10 @@ class PosWebFilterController extends Controller
 
     private function products(int $storeId, Request $request = null): array
     {
+        $store = Store::find($storeId) ?: Store::first();
+        $timezone = $store ? ($store->time_zone ?? 'Asia/Ho_Chi_Minh') : 'Asia/Ho_Chi_Minh';
+        $isTaxIncluded = $store ? (int) ($store->is_tax_included ?? 0) : 0;
+
         $query = Product::query()
             ->with('timePrices')
             ->where(function ($query) use ($storeId) {
@@ -178,19 +182,57 @@ class PosWebFilterController extends Controller
 
         return $query->limit(500)
             ->get()
-            ->map(fn (Product $product) => $this->productPayload($product))
+            ->map(fn (Product $product) => $this->productPayload($product, $timezone, $isTaxIncluded))
             ->values()
             ->all();
     }
 
-    private function productPayload(Product $product): array
+    private function applyTimePrice(Product $product, string $timezone, &$availableFrames = []): Product
     {
+        $now = now()->setTimezone($timezone);
+        $currentDay = $now->dayOfWeek;
+        $currentTime = $now->format('H:i:s');
+
+        $timePrices = $product->timePrices ?? collect();
+        $applied = false;
+
+        foreach ($timePrices as $tp) {
+            if (empty($tp->is_active)) {
+                continue;
+            }
+
+            $days = $tp->days_of_week;
+
+            if (is_array($days) && in_array($currentDay, $days)) {
+                $availableFrames[] = substr($tp->start_time, 0, 5) . '-' . substr($tp->end_time, 0, 5);
+
+                if (!$applied && $currentTime >= $tp->start_time && $currentTime <= $tp->end_time) {
+                    $product->price = $tp->price ?? $product->price;
+                    $product->price_after_tax = $tp->price_after_tax ?? $product->price_after_tax;
+                    $applied = true;
+                }
+            }
+        }
+
+        return $product;
+    }
+
+    private function productPayload(Product $product, string $timezone = null, ?int $isTaxIncluded = null): array
+    {
+        if ($timezone === null || $isTaxIncluded === null) {
+            $store = Store::find($product->store_id) ?: Store::first();
+            $timezone = $timezone ?? ($store ? ($store->time_zone ?? 'Asia/Ho_Chi_Minh') : 'Asia/Ho_Chi_Minh');
+            $isTaxIncluded = $isTaxIncluded ?? ($store ? (int) ($store->is_tax_included ?? 0) : 0);
+        }
+        $availableFrames = [];
+        $product = $this->applyTimePrice($product, $timezone, $availableFrames);
+
         $payload = $product->toArray();
         $payload['product_code'] = $payload['product_code'] ?? $payload['code'] ?? (string) $product->id;
         $payload['title'] = $payload['title'] ?? $payload['name'] ?? '';
-        $payload['price'] = $payload['price'] ?? $payload['sale_price'] ?? 0;
-        $payload['price_after_tax'] = $payload['price_after_tax'] ?? $payload['price'];
-        $payload['unit_price'] = $payload['price'];
+        $payload['price_after_tax'] = $product->price_after_tax ?? $product->price ?? 0;
+        $payload['unit_price'] = $product->price ?? 0;
+        $payload['price'] = $isTaxIncluded == 0 ? ($product->price ?? 0) : ($product->price_after_tax ?? 0);
         $payload['vat'] = $payload['vat'] ?? 0;
         $payload['tax_name'] = $this->taxName($payload['vat']);
         $payload['original_tax'] = $payload['vat'] < 0 ? $payload['vat'] : null;
@@ -203,7 +245,7 @@ class PosWebFilterController extends Controller
         $payload['time_prices'] = $payload['time_prices'] ?? [];
         $payload['product_time_prices'] = $payload['product_time_prices'] ?? $payload['time_prices'];
         $payload['is_restricted_time'] = $payload['is_restricted_time'] ?? 0;
-        $payload['available_frames'] = [];
+        $payload['available_frames'] = $availableFrames;
         $payload['totalQuantity'] = $payload['totalQuantity'] ?? ($payload['quantity'] ?? 0);
         $payload['minQuantity'] = $payload['minQuantity'] ?? 0;
         $payload['inventory_required'] = $payload['inventory_required'] ?? 0;

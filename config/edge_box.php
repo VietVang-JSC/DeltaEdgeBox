@@ -2,4 +2,6 @@
 
 return [
     'api_key' => env('EDGE_BOX_API_KEY'),
+    'cloud_api_url' => env('CLOUD_API_URL'),
+    'store_id' => env('STORE_ID'),
 ];
