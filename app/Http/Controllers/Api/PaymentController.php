@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inventory;
-use App\Models\InventoryTransaction;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\Store;
@@ -307,21 +306,9 @@ class PaymentController extends Controller
                 throw new \RuntimeException("Inventory insufficient for product {$item['product_id']}: {$inventory->quantity}, needed: {$quantity}");
             }
 
-            $before = $inventory->quantity;
             $inventory->quantity -= $quantity;
             $inventory->reserved_quantity = max(0, (int) $inventory->reserved_quantity - $quantity);
             $inventory->save();
-
-            InventoryTransaction::create([
-                'store_id' => $storeId,
-                'product_id' => $item['product_id'],
-                'user_id' => $userId,
-                'transaction_type' => 'sale',
-                'quantity_change' => -$quantity,
-                'quantity_before' => $before,
-                'quantity_after' => $inventory->quantity,
-                'note' => "Payment #{$payment->id}",
-            ]);
         }
     }
 

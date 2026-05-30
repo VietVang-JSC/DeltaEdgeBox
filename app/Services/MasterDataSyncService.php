@@ -38,19 +38,36 @@ class MasterDataSyncService
         try {
 
             // 1. Tự động tính toán last_sync_time bằng cách lấy updated_at lớn nhất của các bảng cục bộ
-            $times = array_filter([
-                Table::max('updated_at'),
-                Category::max('updated_at'),
-                Product::max('updated_at'),
-                Printer::max('updated_at'),
-                PaymentMethod::max('updated_at'),
-                ProductTimePrice::max('updated_at'),
-                Store::max('updated_at'),
-                User::max('updated_at'),
-                Inventory::max('updated_at'),
-                InventoryHistory::max('updated_at'),
-            ]);
-            $lastSyncTime = !empty($times) ? Carbon::parse(max($times))->toIso8601String() : null;
+            // Nếu có bất kỳ bảng master data quan trọng nào hoàn toàn rỗng, ta chạy full sync (lastSyncTime = null)
+            // để nạp đầy đủ dữ liệu ban đầu cho bảng đó.
+            $hasEmptyTable = Table::count() == 0
+                || Category::count() == 0
+                || Product::count() == 0
+                || Printer::count() == 0
+                || PaymentMethod::count() == 0
+                || ProductTimePrice::count() == 0
+                || Store::count() == 0
+                || User::count() == 0
+                || Inventory::count() == 0;
+
+            if ($hasEmptyTable) {
+                $lastSyncTime = null;
+                Log::info('Master sync: Detected empty tables, forcing full sync to populate initial data.');
+            } else {
+                $times = array_filter([
+                    Table::max('updated_at'),
+                    Category::max('updated_at'),
+                    Product::max('updated_at'),
+                    Printer::max('updated_at'),
+                    PaymentMethod::max('updated_at'),
+                    ProductTimePrice::max('updated_at'),
+                    Store::max('updated_at'),
+                    User::max('updated_at'),
+                    Inventory::max('updated_at'),
+                    InventoryHistory::max('updated_at'),
+                ]);
+                $lastSyncTime = !empty($times) ? Carbon::parse(max($times))->toIso8601String() : null;
+            }
 
             /*
             | CALL CLOUD API
@@ -349,22 +366,44 @@ class MasterDataSyncService
                 $syncErrors['users'] = $e->getMessage();
             }
 
+            // Tạo bản đồ ánh xạ từ product_id trên Cloud sang product_id thực tế ở Edge SQLite
+            // Tối ưu hóa hiệu năng: dùng 1 câu query pluck duy nhất thay vì N câu query tuần tự (N+1 query)
+            $codes = array_column($data['products'] ?? [], 'product_code');
+            $localProducts = Product::whereIn('code', $codes)
+                ->where('store_id', $this->storeId)
+                ->pluck('id', 'code'); // ['SP001' => 5, 'SP002' => 8, ...]
+
+            $productMap = [];
+            foreach ($data['products'] ?? [] as $prod) {
+                $localId = $localProducts[$prod['product_code']] ?? null;
+                if ($localId) {
+                    $productMap[$prod['id']] = $localId;
+                }
+            }
+
             // Sync INVENTORIES
             try {
                 if (isset($data['inventories'])) {
                     DB::beginTransaction();
                     foreach ($data['inventories'] as $inv) {
-                        Inventory::updateOrCreate(
-                            [
-                                'store_id' => $inv['store_id'],
-                                'product_id' => $inv['product_id'],
-                            ],
-                            [
-                                'quantity' => $inv['quantity'],
-                                'admin_id' => $inv['admin_id'] ?? null,
-                                'updated_at' => $inv['updated_at'] ?? now(),
-                            ]
-                        );
+                        $localProductId = $productMap[$inv['product_id']] ?? $inv['product_id'];
+
+                        // Kiểm tra sản phẩm có thực tế tồn tại trong SQLite cục bộ không để tránh vi phạm khóa ngoại
+                        if (Product::where('id', $localProductId)->exists()) {
+                            Inventory::updateOrCreate(
+                                [
+                                    'store_id' => $inv['store_id'],
+                                    'product_id' => $localProductId,
+                                ],
+                                [
+                                    'quantity' => $inv['quantity'],
+                                    'admin_id' => $inv['admin_id'] ?? null,
+                                    'updated_at' => $inv['updated_at'] ?? now(),
+                                ]
+                            );
+                        } else {
+                            Log::warning("Sync inventories: Product ID {$inv['product_id']} (Local ID {$localProductId}) does not exist in local DB. Skipped.");
+                        }
                     }
                     DB::commit();
                     $syncResults['inventories'] = count($data['inventories']);
@@ -380,19 +419,26 @@ class MasterDataSyncService
                 if (isset($data['inventory_histories'])) {
                     DB::beginTransaction();
                     foreach ($data['inventory_histories'] as $ih) {
-                        InventoryHistory::updateOrCreate(
-                            ['id' => $ih['id']],
-                            [
-                                'store_id' => $ih['store_id'],
-                                'product_id' => $ih['product_id'],
-                                'input_id' => $ih['input_id'],
-                                'input_code' => $ih['input_code'],
-                                'input_date' => $ih['input_date'],
-                                'quantity' => $ih['quantity'],
-                                'admin_id' => $ih['admin_id'] ?? null,
-                                'updated_at' => $ih['updated_at'] ?? now(),
-                            ]
-                        );
+                        $localProductId = $productMap[$ih['product_id']] ?? $ih['product_id'];
+
+                        // Kiểm tra sản phẩm có thực tế tồn tại trong SQLite cục bộ không để tránh vi phạm khóa ngoại
+                        if (Product::where('id', $localProductId)->exists()) {
+                            InventoryHistory::updateOrCreate(
+                                ['id' => $ih['id']],
+                                [
+                                    'store_id' => $ih['store_id'],
+                                    'product_id' => $localProductId,
+                                    'input_id' => $ih['input_id'],
+                                    'input_code' => $ih['input_code'],
+                                    'input_date' => $ih['input_date'],
+                                    'quantity' => $ih['quantity'],
+                                    'admin_id' => $ih['admin_id'] ?? null,
+                                    'updated_at' => $ih['updated_at'] ?? now(),
+                                ]
+                            );
+                        } else {
+                            Log::warning("Sync inventory_histories: Product ID {$ih['product_id']} (Local ID {$localProductId}) does not exist in local DB. Skipped.");
+                        }
                     }
                     DB::commit();
                     $syncResults['inventory_histories'] = count($data['inventory_histories']);
@@ -497,34 +543,37 @@ class MasterDataSyncService
         }
 
         // Đồng bộ các khung giờ giá của sản phẩm này
-        ProductTimePrice::where('product_id', $dbProductId)->delete();
-        foreach ($product['time_prices'] ?? [] as $tp) {
-            ProductTimePrice::create([
-                'id' => $tp['id'],
-                'product_id' => $dbProductId,
-                'store_id' => $tp['store_id'],
-                'start_time' => $tp['start_time'],
-                'end_time' => $tp['end_time'],
-                'price' => $tp['price'],
-                'price_after_tax' => $tp['price_after_tax'] ?? $tp['price'],
-                'priority' => $tp['priority'] ?? 0,
-                'days_of_week_mask' => isset($tp['days_of_week_mask']) ? $tp['days_of_week_mask'] : (function() use ($tp) {
-                    $days = $tp['days_of_week'] ?? null;
-                    if ($days === null || count($days) === 7) {
-                        return null;
-                    }
-                    $mask = 0;
-                    foreach ($days as $day) {
-                        $mask |= (1 << (int) $day);
-                    }
-                    return $mask;
-                })(),
-                'start_date' => $tp['start_date'] ?? null,
-                'end_date' => $tp['end_date'] ?? null,
-                'is_active' => $tp['is_active'] ?? 1,
-                'created_at' => $tp['created_at'] ?? now(),
-                'updated_at' => $tp['updated_at'] ?? now(),
-            ]);
-        }
+        // Bọc trong transaction cục bộ để tăng tính an toàn và đảm bảo tính nguyên tử (atomic)
+        DB::transaction(function () use ($product, $dbProductId) {
+            ProductTimePrice::where('product_id', $dbProductId)->delete();
+            foreach ($product['time_prices'] ?? [] as $tp) {
+                ProductTimePrice::create([
+                    'id' => $tp['id'],
+                    'product_id' => $dbProductId,
+                    'store_id' => $tp['store_id'],
+                    'start_time' => $tp['start_time'],
+                    'end_time' => $tp['end_time'],
+                    'price' => $tp['price'],
+                    'price_after_tax' => $tp['price_after_tax'] ?? $tp['price'],
+                    'priority' => $tp['priority'] ?? 0,
+                    'days_of_week_mask' => isset($tp['days_of_week_mask']) ? $tp['days_of_week_mask'] : (function() use ($tp) {
+                        $days = $tp['days_of_week'] ?? null;
+                        if ($days === null || count($days) === 7) {
+                            return null;
+                        }
+                        $mask = 0;
+                        foreach ($days as $day) {
+                            $mask |= (1 << (int) $day);
+                        }
+                        return $mask;
+                    })(),
+                    'start_date' => $tp['start_date'] ?? null,
+                    'end_date' => $tp['end_date'] ?? null,
+                    'is_active' => $tp['is_active'] ?? 1,
+                    'created_at' => $tp['created_at'] ?? now(),
+                    'updated_at' => $tp['updated_at'] ?? now(),
+                ]);
+            }
+        });
     }
 }
