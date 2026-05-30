@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Auth;
 
 class Inventory extends Model
 {
-    protected $table = 'inventory';
+    protected $table = 'inventories';
  
     protected $fillable = [
         'store_id',
@@ -20,6 +20,7 @@ class Inventory extends Model
         'reserved_quantity',
         'low_stock_threshold',
         'last_restocked_at',
+        'admin_id',
     ];
  
     protected $casts = [
@@ -35,7 +36,8 @@ class Inventory extends Model
  
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Product::class)
+            ->select('id', 'code', 'name', 'code as product_code', 'name as title', 'price', 'image');
     }
  
     public function transactions(): HasMany
