@@ -7,10 +7,13 @@ use App\Models\Product;
 use App\Models\Category;
 use App\Models\PaymentMethod;
 use App\Models\Printer;
+use App\Models\ProductTimePrice;
+use App\Models\Store;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-
+use Carbon\Carbon;
 
 class MasterDataSyncService
 {
@@ -39,11 +42,11 @@ class MasterDataSyncService
                 Product::max('updated_at'),
                 Printer::max('updated_at'),
                 PaymentMethod::max('updated_at'),
-                \App\Models\ProductTimePrice::max('updated_at'),
-                \App\Models\Store::max('updated_at'),
-                \App\Models\User::max('updated_at'),
+                ProductTimePrice::max('updated_at'),
+                Store::max('updated_at'),
+                User::max('updated_at'),
             ]);
-            $lastSyncTime = !empty($times) ? \Illuminate\Support\Carbon::parse(max($times))->toIso8601String() : null;
+            $lastSyncTime = !empty($times) ? Carbon::parse(max($times))->toIso8601String() : null;
 
             /*
             | CALL CLOUD API
@@ -95,9 +98,6 @@ class MasterDataSyncService
                     'message' => 'Invalid response structure'
                 ];
             }
-
-            
-
             $syncResults = [];
             $syncErrors  = [];
 
@@ -107,6 +107,10 @@ class MasterDataSyncService
             try {
                 DB::beginTransaction();
                 foreach ($data['tables'] ?? [] as $table) {
+                    $localTable = Table::find($table['id']);
+                    $cloudUpdatedAt = Carbon::parse($table['updated_at']);
+
+                    if (!$localTable || $cloudUpdatedAt->gte($localTable->updated_at)) {
                     Table::updateOrCreate(
                         ['id' => $table['id']],
                         [
@@ -120,6 +124,9 @@ class MasterDataSyncService
                             'note'      => $table['listitem'] ?? null,
                         ]
                     );
+                    } else {
+                        Log::info("Master sync skipped table ID {$table['id']} because the local version is newer than the Cloud version.");
+                    }
                 }
                 DB::commit();
                 $syncResults['tables'] = count($data['tables'] ?? []);
@@ -240,7 +247,7 @@ class MasterDataSyncService
                 if (!empty($data['store'])) {
                     DB::beginTransaction();
                     $st = $data['store'];
-                    \App\Models\Store::updateOrCreate(
+                    Store::updateOrCreate(
                         ['id' => $st['id']],
                         [
                             'service_level_id' => $st['service_level_id'] ?? null,
@@ -308,12 +315,12 @@ class MasterDataSyncService
 
                         // Xóa row conflict: nếu email này đã tồn tại ở user khác (ID khác)
                         // thì xóa row cũ trước để tránh UNIQUE constraint violation
-                        \App\Models\User::where('email', $email)
+                        User::where('email', $email)
                             ->where('id', '!=', $us['id'])
                             ->delete();
 
                         // updateOrCreate với cloud ID — an toàn hơn delete all + insert
-                        \App\Models\User::updateOrCreate(
+                        User::updateOrCreate(
                             ['id' => $us['id']],
                             [
                                 'store_id'   => $us['store_id'] ?? null,
@@ -348,6 +355,7 @@ class MasterDataSyncService
 
             return [
                 'success' => !$hasErrors || !empty($syncResults),
+                'synced' => true,
                 'message' => $hasErrors 
                     ? 'Master sync completed with some errors.' 
                     : 'Master data synced successfully.',
@@ -405,7 +413,9 @@ class MasterDataSyncService
             'updated_at'  => $product['updated_at'] ?? now(),
         ];
 
-        $existingByCode = Product::where('code', $code)->first();
+        $existingByCode = Product::where('store_id', $product['store_id'])
+                                ->where('code', $code)
+                                ->first();
         if ($existingByCode && (int) $existingByCode->id !== (int) $product['id']) {
             $existingByCode->update($payload);
 
@@ -429,9 +439,9 @@ class MasterDataSyncService
         }
 
         // Đồng bộ các khung giờ giá của sản phẩm này
-        \App\Models\ProductTimePrice::where('product_id', $dbProductId)->delete();
+        ProductTimePrice::where('product_id', $dbProductId)->delete();
         foreach ($product['time_prices'] ?? [] as $tp) {
-            \App\Models\ProductTimePrice::create([
+            ProductTimePrice::create([
                 'id' => $tp['id'],
                 'product_id' => $dbProductId,
                 'store_id' => $tp['store_id'],

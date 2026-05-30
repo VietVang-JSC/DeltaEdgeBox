@@ -28,6 +28,9 @@ class Kernel extends ConsoleKernel
 
         // Optional: Run sync worker via scheduler (alternative to daemon mode)
         $schedule->command('sync:worker --batch=50')->everyTenSeconds()->withoutOverlapping();
+
+        // Run master data sync from Cloud every minute in background
+        $schedule->command('edge:sync-master')->everyMinute()->withoutOverlapping();
     }
 
     /**

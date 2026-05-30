@@ -87,8 +87,11 @@ class SplitMergeInvoiceController extends Controller
 
         DB::beginTransaction();
         try {
-            $originalInvoice = Payment::with('details')->find($filters['original_invoice_id']);
+            $originalInvoice = Payment::with('details')
+                ->where('store_id', $storeId)
+                ->find($filters['original_invoice_id']);
             if (!$originalInvoice) {
+                DB::rollBack();
                 return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy hóa đơn gốc'], 404);
             }
 
@@ -102,6 +105,7 @@ class SplitMergeInvoiceController extends Controller
             }
 
             if (!$splitMethod) {
+                DB::rollBack();
                 return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Không xác định được phương thức tách hóa đơn'], 400);
             }
 
@@ -136,13 +140,14 @@ class SplitMergeInvoiceController extends Controller
             $this->updateTableListitemAfterSplit($originalInvoice->table_id, $itemOriginalInvoice);
         }
 
-        $paramCreateNewInvoice = $this->handleUpdateNewInvoice($filters);
+        $paramCreateNewInvoice = $this->handleUpdateNewInvoice($filters, $originalInvoice);
         $create = $this->createPaymentLocal($paramCreateNewInvoice);
         if (!$create['status']) {
             return $create;
         }
 
-        $checkTable = Table::find($filters['target_table_id']);
+        $checkTable = Table::where('store_id', $filters['store_id'])
+            ->find($filters['target_table_id']);
         if (!$checkTable) {
             return ['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy bàn đích'];
         }
@@ -168,7 +173,9 @@ class SplitMergeInvoiceController extends Controller
 
     private function splitInvoiceTargetPayment($filters, $originalInvoice)
     {
-        $checkTargetInvoice = Payment::with('details')->find($filters['target_invoice_id']);
+        $checkTargetInvoice = Payment::with('details')
+            ->where('store_id', $filters['store_id'])
+            ->find($filters['target_invoice_id']);
         if (!$checkTargetInvoice) {
             return ['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy hóa đơn cần chia'];
         }
@@ -226,6 +233,14 @@ class SplitMergeInvoiceController extends Controller
         $dataItem['surcharge'] = $filters['surcharge'] ?? null;
         $items = json_encode($dataItem);
 
+        $total_tax = 0;
+        $total_value = 0;
+        foreach ($filters['split_merge_item'] as $key => $value) {
+            $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
+            $total_value += $this->calculateTotalAfterTax($value)['total'];
+        }
+        $valuetotal = $total_value - ($filters['discount'] ?? 0) + ($filters['surcharge'] ?? 0);
+
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
         $paramCreatePayment = [
@@ -245,6 +260,8 @@ class SplitMergeInvoiceController extends Controller
             "payment_code" => $paymentCode,
             "store_id" => $filters['store_id'],
             "table_id" => $originalInvoice->table_id,
+            "valuetotal" => $valuetotal,
+            "total_tax" => $total_tax,
         ];
 
         $createPayment = $this->createPaymentLocal($paramCreatePayment);
@@ -271,19 +288,25 @@ class SplitMergeInvoiceController extends Controller
 
         DB::beginTransaction();
         try {
-            $originalInvoice = Payment::find($filters['original_invoice_id']);
+            $originalInvoice = Payment::where('store_id', $storeId)
+                ->find($filters['original_invoice_id']);
             if (!$originalInvoice) {
+                DB::rollBack();
                 return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy hóa đơn gốc'], 404);
             }
             if ($originalInvoice->status !== 0) { // Pending/Unpaid
+                DB::rollBack();
                 return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Hóa đơn đã được thanh toán hoặc đã bị xóa'], 400);
             }
 
-            $targetInvoice = Payment::find($filters['target_invoice_id']);
+            $targetInvoice = Payment::where('store_id', $storeId)
+                ->find($filters['target_invoice_id']);
             if (!$targetInvoice) {
+                DB::rollBack();
                 return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy hóa đơn tách'], 404);
             }
             if ($targetInvoice->status !== 0) { // Pending/Unpaid
+                DB::rollBack();
                 return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Hóa đơn đã được thanh toán hoặc đã bị xóa'], 400);
             }
 
@@ -320,8 +343,8 @@ class SplitMergeInvoiceController extends Controller
     private function handleDataSplitInvoice(&$original_invoice, &$split_merge_item, $store_id)
     {
         try {
-            Log::info('handleDataSplitInvoice DBG - Original keys: ' . json_encode(array_keys($original_invoice ?? [])));
-            Log::info('handleDataSplitInvoice DBG - Split keys: ' . json_encode(array_keys($split_merge_item ?? [])));
+            Log::debug('handleDataSplitInvoice DBG - Original keys: ' . json_encode(array_keys($original_invoice ?? [])));
+            Log::debug('handleDataSplitInvoice DBG - Split keys: ' . json_encode(array_keys($split_merge_item ?? [])));
             $store = Store::find($store_id);
             $is_tax_included = $store->is_tax_included ?? 0;
             foreach ($split_merge_item as $key => $value) {
@@ -397,7 +420,7 @@ class SplitMergeInvoiceController extends Controller
         Table::where('id', $table_id)->update(['listitem' => $listitem]);
     }
 
-    private function handleUpdateNewInvoice($filters)
+    private function handleUpdateNewInvoice($filters, $originalInvoice = null)
     {
         $dataItem = [];
         $dataItem['item'] = $filters['split_merge_item'];
@@ -406,6 +429,15 @@ class SplitMergeInvoiceController extends Controller
         $dataItem['surcharge'] = $filters['surcharge'] ?? null;
         $items = json_encode($dataItem);
 
+        $total_tax = 0;
+        $total_value = 0;
+        foreach ($filters['split_merge_item'] as $key => $value) {
+            $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
+            $total_value += $this->calculateTotalAfterTax($value)['total'];
+        }
+        $valuetotal = $total_value - ($filters['discount'] ?? 0) + ($filters['surcharge'] ?? 0);
+
+        $userId = $filters['user_id'] ?? ($originalInvoice ? $originalInvoice->user_id : 1);
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
         return [
@@ -421,10 +453,12 @@ class SplitMergeInvoiceController extends Controller
             "surcharge_reason" => $filters['surcharge_reason'] ?? null,
             "amount_received" => $filters['amount_received'] ?? null,
             "admin_id" => $filters['admin_id'] ?? 1,
-            "user_id" => 1,
+            "user_id" => $userId,
             "payment_code" => $paymentCode,
             "store_id" => $filters['store_id'],
             "table_id" => $filters['target_table_id'],
+            "valuetotal" => $valuetotal,
+            "total_tax" => $total_tax,
         ];
     }
 
@@ -468,6 +502,9 @@ class SplitMergeInvoiceController extends Controller
     private function updatePaymentLocal($data)
     {
         $payment = Payment::find($data['id']);
+        if (!$payment) {
+            throw new \RuntimeException('Payment not found: ' . $data['id']);
+        }
         $payment->update([
             'items' => $data['items'],
             'total' => $data['valuetotal'],
@@ -593,29 +630,29 @@ class SplitMergeInvoiceController extends Controller
     private function getPaymentItems(Payment $payment): array
     {
         $itemsJson = $payment->items;
-        Log::info("getPaymentItems DBG - Payment ID: {$payment->id}, initial itemsJson: " . json_encode($itemsJson));
+        Log::debug("getPaymentItems DBG - Payment ID: {$payment->id}, initial itemsJson: " . json_encode($itemsJson));
         
         // 1. Decode first if not empty
         $decoded = null;
         if (!empty($itemsJson)) {
             $decoded = json_decode($itemsJson, true);
-            Log::info("getPaymentItems DBG - Decoded initial itemsJson: " . json_encode($decoded));
+            Log::debug("getPaymentItems DBG - Decoded initial itemsJson: " . json_encode($decoded));
         }
         
         // 2. If empty or no 'item' key, try Table listitem fallback
         if ((empty($decoded) || empty($decoded['item'])) && !empty($payment->table_id)) {
             $table = Table::find($payment->table_id);
             if ($table && !empty($table->listitem)) {
-                Log::info("getPaymentItems DBG - Table ID: {$payment->table_id} listitem: " . json_encode($table->listitem));
+                Log::debug("getPaymentItems DBG - Table ID: {$payment->table_id} listitem: " . json_encode($table->listitem));
                 $decoded = json_decode($table->listitem, true);
             } else {
-                Log::info("getPaymentItems DBG - Table ID: {$payment->table_id} listitem is empty or table not found");
+                Log::debug("getPaymentItems DBG - Table ID: {$payment->table_id} listitem is empty or table not found");
             }
         }
         
         // 3. Fallback to PaymentDetails if still empty
         if (empty($decoded) || empty($decoded['item'])) {
-            Log::info("getPaymentItems DBG - Falling back to PaymentDetails");
+            Log::debug("getPaymentItems DBG - Falling back to PaymentDetails");
             $details = PaymentDetail::with('product')->where('payment_id', $payment->id)->get();
             $itemsArray = [];
             foreach ($details as $detail) {
@@ -645,7 +682,7 @@ class SplitMergeInvoiceController extends Controller
                 'surcharge' => $payment->surcharge,
                 'total_tax' => $payment->tax,
             ];
-            Log::info("getPaymentItems DBG - Reconstructed from details: " . json_encode($decoded));
+            Log::debug("getPaymentItems DBG - Reconstructed from details: " . json_encode($decoded));
         }
         
         return $decoded;

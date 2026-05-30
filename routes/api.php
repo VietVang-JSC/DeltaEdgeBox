@@ -14,6 +14,7 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\KitchenPrintController;
 use App\Http\Controllers\Api\PosWebFilterController;
+use App\Http\Controllers\Api\SplitMergeInvoiceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -47,6 +48,7 @@ Route::prefix('edge')
     ->middleware('edge.api.key')
     ->group(function () {
         Route::post('/master-sync', [MasterSyncController::class, 'sync']);
+        Route::get('/last-master-sync', [MasterSyncController::class, 'lastMasterSync']);
     });
 
 // Backup management endpoints
@@ -113,6 +115,20 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
 
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
     Route::post('/filter', [PosWebFilterController::class, 'filter']);
+});
+
+Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function () {
+    Route::get('/getServedStatus', [TableController::class, 'getServedStatus']);
+});
+
+Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {
+    Route::get('/get-all', [TableController::class, 'getPaymentMethods']);
+});
+
+Route::prefix('user/split-merge-invoice')->middleware('edge.api.key')->group(function () {
+    Route::get('/get-list-invoice', [SplitMergeInvoiceController::class, 'getListInvoice']);
+    Route::post('/split-invoice', [SplitMergeInvoiceController::class, 'splitInvoice']);
+    Route::post('/merge-invoice', [SplitMergeInvoiceController::class, 'mergeInvoice']);
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {

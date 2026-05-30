@@ -465,4 +465,90 @@ class TableController extends Controller
             }
         });
     }
+
+    public function getServedStatus(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'table_id' => ['required'],
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => false,
+                    'status_code' => 400,
+                    'messages' => $validator->errors(),
+                ], 400);
+            }
+
+            $table = Table::find($request->input('table_id'));
+            if (!$table || !$table->payment_id) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Không tìm thấy bàn hoặc payment_id',
+                    'status_code' => 404,
+                ], 404);
+            }
+
+            $details = PaymentDetail::where('payment_id', $table->payment_id)->get();
+
+            if ($details->isEmpty()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Không tìm thấy sản phẩm trong payment detail',
+                    'status_code' => 404,
+                ], 404);
+            }
+
+            $data = $details->map(function ($detail) {
+                return [
+                    'product_id' => (int) $detail->product_id,
+                    'served' => (int) $detail->served,
+                    'product_key' => $detail->product_key,
+                ];
+            });
+
+            return response()->json([
+                'status' => true,
+                'status_code' => 200,
+                'data' => $data,
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getServedStatus failed: ' . $th->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'api.ISError',
+                'status_code' => 500,
+            ], 500);
+        }
+    }
+
+    public function getPaymentMethods(Request $request)
+    {
+        try {
+            $storeId = $this->storeId($request);
+            $methods = \App\Models\PaymentMethod::where('store_id', $storeId)->get();
+
+            $data = $methods->map(function ($method) {
+                return [
+                    'id' => (int) $method->id,
+                    'value' => (string) $method->value,
+                    'name' => (string) $method->name,
+                ];
+            });
+
+            return response()->json([
+                'status' => true,
+                'status_code' => 200,
+                'data' => $data,
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getPaymentMethods failed: ' . $th->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'api.ISError',
+                'status_code' => 500,
+            ], 500);
+        }
+    }
 }
