@@ -355,4 +355,120 @@ class PaymentController extends Controller
             }, $items)),
         ];
     }
+
+    public function deletePaymentDetail(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'payment_id' => ['required'],
+            'product_key' => ['required'],
+            'delete_quantity' => ['required', 'integer', 'min:1'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'status_code' => 400,
+                'message' => $validator->errors()->first(),
+            ], 400);
+        }
+
+        try {
+            $paymentId = $request->input('payment_id');
+            $productKey = $request->input('product_key');
+            $deleteQuantity = (int) $request->input('delete_quantity');
+            $deletePayment = filter_var($request->input('delete_payment'), FILTER_VALIDATE_BOOLEAN);
+            $tableId = $request->input('table_id');
+            $storeId = (int) $request->input('store_id', config('app.store_id', 1));
+
+            $payment = Payment::whereKey($paymentId)->where('store_id', $storeId)->first();
+            if (!$payment) {
+                return response()->json([
+                    'status' => false,
+                    'status_code' => 404,
+                    'message' => 'Không tìm thấy thông tin hóa đơn',
+                ], 404);
+            }
+
+            $payment = DB::transaction(function () use ($payment, $productKey, $deleteQuantity, $deletePayment, $tableId, $storeId) {
+                if ($deletePayment) {
+                    // Update table status if set
+                    if (!empty($tableId)) {
+                        $this->clearTableAfterPayment($tableId, $storeId);
+                    }
+                    
+                    // Soft/Hard delete payment
+                    $payment->status = -1;
+                    $payment->save();
+                    
+                    $payment->details()->delete();
+                    $payment->delete();
+                } else {
+                    // Part-delete quantity
+                    $items = json_decode($payment->items, true) ?: [];
+                    $rawItems = $items['item'] ?? $items ?? [];
+
+                    if (isset($rawItems[$productKey])) {
+                        $currentQty = (int) ($rawItems[$productKey]['quantity'] ?? 0);
+                        if ($currentQty - $deleteQuantity > 0) {
+                            $rawItems[$productKey]['quantity'] -= $deleteQuantity;
+                            $price = (float) ($rawItems[$productKey]['price'] ?? 0);
+                            $vat = (float) ($rawItems[$productKey]['vat'] ?? 0);
+                            $rawItems[$productKey]['TotalPrice'] = ($price + ($price * $vat / 100)) * $rawItems[$productKey]['quantity'];
+                        } else {
+                            unset($rawItems[$productKey]);
+                        }
+                    }
+
+                    $newPayload = json_encode(['item' => array_values($rawItems)]);
+                    
+                    // Recalculate totals
+                    $decodedItems = $this->decodeItems($newPayload);
+                    $summary = $this->summarizeItems($decodedItems);
+
+                    $payment->items = $newPayload;
+                    $payment->total = $summary['total'];
+                    $payment->final_total = max(0, $summary['total'] - (float) $payment->discount + (float) $payment->surcharge);
+                    $payment->save();
+
+                    // Update Table item list
+                    if (!empty($tableId)) {
+                        Table::whereKey($tableId)->where('store_id', $storeId)->update([
+                            'listitem' => $newPayload,
+                        ]);
+                    }
+
+                    // Update corresponding PaymentDetail
+                    $detail = PaymentDetail::where('payment_id', $payment->id)
+                        ->where('product_key', $productKey)
+                        ->first();
+
+                    if ($detail) {
+                        if ((int) $detail->quantity === $deleteQuantity) {
+                            $detail->delete();
+                        } else if ($deleteQuantity < (int) $detail->quantity) {
+                            $detail->quantity = (int) $detail->quantity - $deleteQuantity;
+                            $detail->total = $detail->price * $detail->quantity;
+                            $detail->save();
+                        }
+                    }
+                }
+                return $payment;
+            });
+
+            return response()->json([
+                'status' => true,
+                'status_code' => 200,
+                'message' => 'Xóa chi tiết hóa đơn thành công',
+                'data' => $payment->load('details')->toArray(),
+            ]);
+
+        } catch (\Throwable $th) {
+            Log::error('Edge delete payment detail failed', ['error' => $th->getMessage()]);
+            return response()->json([
+                'status' => false,
+                'status_code' => 500,
+                'message' => 'Lỗi xử lý hệ thống cục bộ',
+            ], 500);
+        }
+    }
 }
