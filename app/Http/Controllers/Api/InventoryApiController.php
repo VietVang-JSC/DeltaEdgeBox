@@ -7,6 +7,7 @@ use App\Models\InventoryHistory;
 use App\Models\CheckInventory;
 use App\Models\CheckInventoryItems;
 use App\Models\Product;
+use App\Services\SyncService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -331,6 +332,20 @@ class InventoryApiController extends Controller
                 if ($createRecord) {
                     $createRecord->load(['check_inventory_items']);
                     Log::info('Edge Inventory: checkInventoryStore success', ['id' => $createRecord->id, 'code' => $createRecord->inventory_check_code]);
+
+                    // Queue sync to cloud
+                    try {
+                        app(SyncService::class)->queueForSync(
+                            'check_inventory',
+                            'create',
+                            $createRecord->id,
+                            $createRecord->toArray()
+                        );
+                        Log::info('Edge Inventory: Queued checkInventoryStore creation for sync', ['id' => $createRecord->id]);
+                    } catch (\Throwable $qe) {
+                        Log::warning('Edge Inventory: Failed to queue sync for checkInventoryStore', ['error' => $qe->getMessage()]);
+                    }
+
                     return $this->getMessage(true, 'Tạo mới phiếu kiểm kho thành công', 200, 'invoice', $createRecord->toArray());
                 }
 
@@ -427,6 +442,20 @@ class InventoryApiController extends Controller
                     if ($updatedInvoice) {
                         $updatedInvoice->load(['check_inventory_items']);
                         Log::info('Edge Inventory: updateInventoryCheck success', ['id' => $updatedInvoice->id]);
+
+                        // Queue sync to cloud
+                        try {
+                            app(SyncService::class)->queueForSync(
+                                'check_inventory',
+                                'update',
+                                $updatedInvoice->id,
+                                $updatedInvoice->toArray()
+                            );
+                            Log::info('Edge Inventory: Queued updateInventoryCheck for sync', ['id' => $updatedInvoice->id]);
+                        } catch (\Throwable $qe) {
+                            Log::warning('Edge Inventory: Failed to queue sync for updateInventoryCheck', ['error' => $qe->getMessage()]);
+                        }
+
                         return $this->getMessage(true, 'Cập nhật phiếu kiểm kho thành công', 200, 'invoice', $updatedInvoice->toArray());
                     }
 
@@ -468,12 +497,29 @@ class InventoryApiController extends Controller
                 ->where('store_id', $store_id)
                 ->first();
             if ($checkInventory) {
+                // Keep a copy of data before deletion
+                $checkInventoryData = $checkInventory->toArray();
+
                 DB::transaction(function () use ($checkInventory) {
                     CheckInventoryItems::where('check_inventory_id', $checkInventory->id)->delete();
                     $checkInventory->delete();
                 });
 
                 Log::info('Edge Inventory: deleteInventoryCheck success', ['id' => $check_inventory_id]);
+
+                // Queue sync to cloud
+                try {
+                    app(SyncService::class)->queueForSync(
+                        'check_inventory',
+                        'delete',
+                        (int) $check_inventory_id,
+                        $checkInventoryData
+                    );
+                    Log::info('Edge Inventory: Queued deleteInventoryCheck for sync', ['id' => $check_inventory_id]);
+                } catch (\Throwable $qe) {
+                    Log::warning('Edge Inventory: Failed to queue sync for deleteInventoryCheck', ['error' => $qe->getMessage()]);
+                }
+
                 return $this->getMessage(true, 'Xóa phiếu kiểm kho thành công', 200);
             }
             Log::error('Edge Inventory: deleteInventoryCheck failed, record not found', ['id' => $check_inventory_id, 'store_id' => $store_id]);

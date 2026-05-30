@@ -10,6 +10,8 @@ use App\Models\Printer;
 use App\Models\ProductTimePrice;
 use App\Models\Store;
 use App\Models\User;
+use App\Models\Inventory;
+use App\Models\InventoryHistory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -45,6 +47,8 @@ class MasterDataSyncService
                 ProductTimePrice::max('updated_at'),
                 Store::max('updated_at'),
                 User::max('updated_at'),
+                Inventory::max('updated_at'),
+                InventoryHistory::max('updated_at'),
             ]);
             $lastSyncTime = !empty($times) ? Carbon::parse(max($times))->toIso8601String() : null;
 
@@ -343,6 +347,60 @@ class MasterDataSyncService
                 DB::rollBack();
                 Log::error('Sync users failed: ' . $e->getMessage());
                 $syncErrors['users'] = $e->getMessage();
+            }
+
+            // Sync INVENTORIES
+            try {
+                if (isset($data['inventories'])) {
+                    DB::beginTransaction();
+                    foreach ($data['inventories'] as $inv) {
+                        Inventory::updateOrCreate(
+                            [
+                                'store_id' => $inv['store_id'],
+                                'product_id' => $inv['product_id'],
+                            ],
+                            [
+                                'quantity' => $inv['quantity'],
+                                'admin_id' => $inv['admin_id'] ?? null,
+                                'updated_at' => $inv['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['inventories'] = count($data['inventories']);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync inventories failed: ' . $e->getMessage());
+                $syncErrors['inventories'] = $e->getMessage();
+            }
+
+            // Sync INVENTORY_HISTORIES
+            try {
+                if (isset($data['inventory_histories'])) {
+                    DB::beginTransaction();
+                    foreach ($data['inventory_histories'] as $ih) {
+                        InventoryHistory::updateOrCreate(
+                            ['id' => $ih['id']],
+                            [
+                                'store_id' => $ih['store_id'],
+                                'product_id' => $ih['product_id'],
+                                'input_id' => $ih['input_id'],
+                                'input_code' => $ih['input_code'],
+                                'input_date' => $ih['input_date'],
+                                'quantity' => $ih['quantity'],
+                                'admin_id' => $ih['admin_id'] ?? null,
+                                'updated_at' => $ih['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['inventory_histories'] = count($data['inventory_histories']);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync inventory_histories failed: ' . $e->getMessage());
+                $syncErrors['inventory_histories'] = $e->getMessage();
             }
 
             // Log tổng kết sau mỗi sync

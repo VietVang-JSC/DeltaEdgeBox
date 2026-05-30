@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\KitchenPrintController;
 use App\Http\Controllers\Api\PosWebFilterController;
 use App\Http\Controllers\Api\SplitMergeInvoiceController;
+use App\Http\Controllers\Api\InventoryApiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -98,6 +99,17 @@ Route::prefix('inventory')->middleware('edge.api.key')->group(function () {
     Route::get('/history',    [InventoryController::class, 'history']);
     Route::post('/adjust',    [InventoryController::class, 'adjust']);
     Route::post('/restock',   [InventoryController::class, 'restock']);
+});
+
+// Cloud-compatible inventory API endpoints (warehouse UI)
+Route::prefix('admin/inventory')->middleware('edge.api.key')->group(function () {
+    Route::get('/get_inventory_list', [InventoryApiController::class, 'getInventoryList']);
+    Route::get('/get_inventory_detail_by_product_id', [InventoryApiController::class, 'getInventoryDetailByProductId']);
+    Route::get('/getInventoryCheckList', [InventoryApiController::class, 'getInventoryCheckList']);
+    Route::get('/getInventoryCheckDetail', [InventoryApiController::class, 'getInventoryCheckDetail']);
+    Route::post('/checkInventoryStore', [InventoryApiController::class, 'checkInventoryStore']);
+    Route::post('/updateInventoryCheck', [InventoryApiController::class, 'updateInventoryCheck']);
+    Route::delete('/deleteInventoryCheck', [InventoryApiController::class, 'deleteInventoryCheck']);
 });
 
 // Legacy POS table compatibility endpoints
