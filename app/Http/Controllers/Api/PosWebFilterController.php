@@ -12,9 +12,66 @@ use App\Models\Table;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Models\Agency;
 
 class PosWebFilterController extends Controller
 {
+    public function searchProducts(Request $request)
+    {
+        try {
+            $storeId = $this->storeId($request);
+            $store = Store::find($storeId) ?: Store::first();
+            $timezone = $store ? ($store->time_zone ?? 'Asia/Ho_Chi_Minh') : 'Asia/Ho_Chi_Minh';
+            $isTaxIncluded = $store ? (int) ($store->is_tax_included ?? 0) : 0;
+
+            $queryParam = $request->input('products.query', []);
+            $productCodeQuery = $queryParam['product_code'] ?? [];
+            $value = $productCodeQuery['value'] ?? '';
+
+            $query = Product::query()
+                ->where(function ($q) use ($storeId) {
+                    $q->whereNull('store_id')->orWhere('store_id', $storeId);
+                })
+                ->where('status', 1);
+
+            if ($value !== '') {
+                $query->where(function ($q) use ($value) {
+                    $q->where('product_code', 'like', "%{$value}%")
+                      ->orWhere('second_product_code', 'like', "%{$value}%")
+                      ->orWhere('third_product_code', 'like', "%{$value}%")
+                      ->orWhere('title', 'like', "%{$value}%")
+                      ->orWhere('code', 'like', "%{$value}%")
+                      ->orWhere('name', 'like', "%{$value}%");
+                });
+            }
+
+            $products = $query->limit(100)
+                ->get()
+                ->map(fn (Product $product) => $this->productPayload($product, $timezone, $isTaxIncluded))
+                ->values()
+                ->all();
+
+            return response()->json([
+                'status' => true,
+                'status_code' => 200,
+                'message' => 'Success',
+                'data' => [
+                    'data_product' => $products
+                ]
+            ]);
+        } catch (\Throwable $exception) {
+            Log::error('Edge product search failed', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'status_code' => 500,
+                'message' => 'edge.product_search_failed',
+            ], 500);
+        }
+    }
+
     private function defaultTimeZone(): string
     {
         return config('app.timezone', 'Asia/Ho_Chi_Minh');
@@ -33,6 +90,11 @@ class PosWebFilterController extends Controller
             $store = $this->storePayload($storeId);
             $billSetting = $this->billSettingPayload($store);
             $bankPayment = $this->bankPaymentPayload();
+
+            $dataAgencies = [];
+            if ($request->has('agencies')) {
+                $dataAgencies = $this->agencies($storeId, $request);
+            }
 
             // Check if pagination is requested
             $pagination = $request->input('products.clauses.pagination');
@@ -68,6 +130,7 @@ class PosWebFilterController extends Controller
                     'data_bill_setting' => [$billSetting],
                     'data_bank_payment' => [$bankPayment],
                     'total_records_product' => count($products),
+                    'data_agencies' => $dataAgencies,
                 ],
             ]);
         } catch (\Throwable $exception) {
@@ -246,7 +309,7 @@ class PosWebFilterController extends Controller
         $payload['product_time_prices'] = $payload['product_time_prices'] ?? $payload['time_prices'];
         $payload['is_restricted_time'] = $payload['is_restricted_time'] ?? 0;
         $payload['available_frames'] = $availableFrames;
-        $payload['totalQuantity'] = $payload['totalQuantity'] ?? ($payload['quantity'] ?? 0);
+        $payload['totalQuantity'] = $product->inventory ? $product->inventory->quantity : 0;
         $payload['minQuantity'] = $payload['minQuantity'] ?? 0;
         $payload['inventory_required'] = $payload['inventory_required'] ?? 0;
         $payload['second_product_code'] = $payload['second_product_code'] ?? null;
@@ -372,5 +435,47 @@ class PosWebFilterController extends Controller
         $userStoreId = data_get($request->input('users', []), 'query.store_id');
 
         return (int) ($request->input('store_id') ?: $userStoreId ?: config('app.store_id', 1));
+    }
+
+    private function agencies(int $storeId, Request $request): array
+    {
+        $query = Agency::query()
+            ->where(function ($q) use ($storeId) {
+                $q->whereNull('store_id')->orWhere('store_id', $storeId);
+            });
+
+        $agenciesParam = $request->input('agencies');
+        if ($agenciesParam) {
+            $whereQuery = data_get($agenciesParam, 'query');
+            if ($whereQuery) {
+                foreach ($whereQuery as $column => $cond) {
+                    if (is_array($cond)) {
+                        $operator = data_get($cond, 'operator', '=');
+                        $value = data_get($cond, 'value');
+                        $orColumn = data_get($cond, 'or');
+
+                        if (strtolower($operator) === 'like') {
+                            $value = '%' . $value . '%';
+                        }
+
+                        $query->where(function ($q) use ($column, $operator, $value, $orColumn) {
+                            $q->where($column, $operator, $value);
+                            if ($orColumn) {
+                                $q->orWhere($orColumn, $operator, $value);
+                            }
+                        });
+                    } else {
+                        $query->where($column, $cond);
+                    }
+                }
+            }
+        }
+
+        $select = data_get($agenciesParam, 'select');
+        if ($select && is_array($select)) {
+            $query->select($select);
+        }
+
+        return $query->get()->toArray();
     }
 }

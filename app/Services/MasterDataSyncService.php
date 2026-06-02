@@ -12,6 +12,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Inventory;
 use App\Models\InventoryHistory;
+use App\Models\Agency;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -48,7 +49,8 @@ class MasterDataSyncService
                 || ProductTimePrice::count() == 0
                 || Store::count() == 0
                 || User::count() == 0
-                || Inventory::count() == 0;
+                || Inventory::count() == 0
+                || Agency::count() == 0;
 
             if ($hasEmptyTable) {
                 $lastSyncTime = null;
@@ -65,6 +67,7 @@ class MasterDataSyncService
                     User::max('updated_at'),
                     Inventory::max('updated_at'),
                     InventoryHistory::max('updated_at'),
+                    Agency::max('updated_at'),
                 ]);
                 $lastSyncTime = !empty($times) ? Carbon::parse(max($times))->toIso8601String() : null;
             }
@@ -447,6 +450,44 @@ class MasterDataSyncService
                 DB::rollBack();
                 Log::error('Sync inventory_histories failed: ' . $e->getMessage());
                 $syncErrors['inventory_histories'] = $e->getMessage();
+            }
+
+            // Sync AGENCIES
+            try {
+                if (isset($data['agencies'])) {
+                    DB::beginTransaction();
+                    Log::info('Master sync: Start syncing agencies. Count from cloud: ' . count($data['agencies']));
+                    foreach ($data['agencies'] as $agency) {
+                        Agency::withTrashed()->updateOrCreate(
+                            ['id' => $agency['id']],
+                            [
+                                'store_id'       => $agency['store_id'] ?? $this->storeId,
+                                'code'           => $agency['code'],
+                                'name'           => $agency['name'],
+                                'contact_person' => $agency['contact_person'] ?? null,
+                                'contact_email'  => $agency['contact_email'] ?? null,
+                                'contact_number' => $agency['contact_number'] ?? null,
+                                'company_name'   => $agency['company_name'] ?? null,
+                                'company_tax'    => $agency['company_tax'] ?? null,
+                                'address'        => $agency['address'] ?? null,
+                                'note'           => $agency['note'] ?? null,
+                                'user_init'      => $agency['user_init'] ?? null,
+                                'user_upd'       => $agency['user_upd'] ?? null,
+                                'admin_id'       => $agency['admin_id'] ?? null,
+                                'created_at'     => $agency['created_at'] ?? now(),
+                                'updated_at'     => $agency['updated_at'] ?? now(),
+                                'deleted_at'     => $agency['deleted_at'] ?? null,
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['agencies'] = count($data['agencies']);
+                    Log::info('Sync agencies completed successfully.', ['count' => count($data['agencies'])]);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync agencies failed: ' . $e->getMessage());
+                $syncErrors['agencies'] = $e->getMessage();
             }
 
             // Log tổng kết sau mỗi sync

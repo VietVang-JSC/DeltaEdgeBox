@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\KitchenPrintController;
 use App\Http\Controllers\Api\PosWebFilterController;
 use App\Http\Controllers\Api\SplitMergeInvoiceController;
 use App\Http\Controllers\Api\InventoryApiController;
+use App\Http\Controllers\Api\InventoryInputController;
 
 /*
 |--------------------------------------------------------------------------
@@ -128,6 +129,10 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
 
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
     Route::post('/filter', [PosWebFilterController::class, 'filter']);
+});
+
+Route::prefix('admin/product')->middleware('edge.api.key')->group(function () {
+    Route::post('/search', [PosWebFilterController::class, 'searchProducts']);
 });
 
 Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function () {
