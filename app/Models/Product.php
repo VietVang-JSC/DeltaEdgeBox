@@ -9,6 +9,8 @@ class Product extends Model
 {
     use HasFactory;
 
+    protected $with = ['inventory'];
+
     protected $fillable = [
         'store_id',
         'category_id',
@@ -91,5 +93,10 @@ class Product extends Model
     public function timePrices()
     {
         return $this->hasMany(ProductTimePrice::class);
+    }
+
+    public function inventory()
+    {
+        return $this->hasOne(Inventory::class, 'product_id', 'id')->select('id', 'product_id', 'quantity');
     }
 }
