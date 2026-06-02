@@ -132,6 +132,7 @@ Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
 
 Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function () {
     Route::get('/getServedStatus', [TableController::class, 'getServedStatus']);
+    Route::post('/served', [TableController::class, 'served']);
 });
 
 Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {

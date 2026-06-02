@@ -523,6 +523,57 @@ class TableController extends Controller
         }
     }
 
+    public function served(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'table_id'    => ['required'],
+                'product_id'  => ['required'],
+                'product_key' => ['required'],
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status'      => false,
+                    'status_code' => 400,
+                    'messages'    => $validator->errors(),
+                ], 400);
+            }
+
+            $table = Table::find($request->input('table_id'));
+
+            if (!$table || !$table->payment_id) {
+                return response()->json([
+                    'status'      => false,
+                    'message'     => 'Không tìm thấy bàn hoặc payment_id',
+                    'status_code' => 404,
+                ], 404);
+            }
+
+            $served = $request->has('served') ? (bool) $request->input('served') : true;
+
+            $updated = PaymentDetail::where('payment_id', $table->payment_id)
+                ->where('product_id', $request->input('product_id'))
+                ->where('product_key', $request->input('product_key'))
+                ->update(['served' => $served ? 1 : 0]);
+
+            if (!$updated) {
+                return $this->error('Cập nhật trạng thái phục vụ thất bại', 400);
+            }
+
+            $this->processSyncAfterResponse();
+
+            return $this->success('Cập nhật trạng thái phục vụ thành công');
+        } catch (\Throwable $th) {
+            Log::error('Edge served failed: ' . $th->getMessage());
+            return response()->json([
+                'status'      => false,
+                'message'     => 'api.ISError',
+                'status_code' => 500,
+            ], 500);
+        }
+    }
+
     public function getPaymentMethods(Request $request)
     {
         try {
