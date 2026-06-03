@@ -231,7 +231,7 @@ class PosWebFilterController extends Controller
         $isTaxIncluded = $store ? (int) ($store->is_tax_included ?? 0) : 0;
 
         $query = Product::query()
-            ->with('timePrices')
+            ->with(['timePrices', 'types', 'product_types'])
             ->where(function ($query) use ($storeId) {
                 $query->whereNull('store_id')->orWhere('store_id', $storeId);
             })
@@ -327,7 +327,11 @@ class PosWebFilterController extends Controller
         $payload['combo_products'] = $payload['combo_products'] ?? [];
         $payload['optional_products'] = $payload['optional_products'] ?? [];
         $payload['number_of_options'] = $payload['number_of_options'] ?? 0;
-        $payload['types'] = $payload['types'] ?? ['product_types' => []];
+        if (isset($payload['types']) && is_array($payload['types'])) {
+            $payload['types']['product_types'] = $payload['types']['product_types'] ?? [];
+        } else {
+            $payload['types'] = ['product_types' => []];
+        }
         $payload['time_prices'] = $payload['time_prices'] ?? [];
         $payload['product_time_prices'] = $payload['product_time_prices'] ?? $payload['time_prices'];
         $payload['is_restricted_time'] = $payload['is_restricted_time'] ?? 0;

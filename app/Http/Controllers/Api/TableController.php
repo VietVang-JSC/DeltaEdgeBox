@@ -193,7 +193,7 @@ class TableController extends Controller
 
             $this->processSyncAfterResponse();
 
-            return $this->success('Cap nhat mon thanh cong', [
+            return $this->success('front/pos_order.Cập nhật món thành công', [
                 'data' => [
                     'table' => $this->tablePayload($result['table']),
                     'payment' => $this->paymentPayload($result['payment']),

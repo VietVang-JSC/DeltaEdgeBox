@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Table;
+use App\Models\Store;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -104,6 +105,7 @@ class KitchenPrintController extends Controller
     {
         $payment = $table->payment;
         $user = $payment && $payment->user ? $payment->user->toArray() : null;
+        $store = Store::find($table->store_id);
 
         return [
             'id' => $table->id,
@@ -116,6 +118,7 @@ class KitchenPrintController extends Controller
             'payment' => $payment ? $payment->toArray() : null,
             'created_at' => optional($table->created_at)->format('Y-m-d H:i:s'),
             'updated_at' => optional($table->updated_at)->format('Y-m-d H:i:s'),
+            'setting_print_kitchen' => $store ? $store->setting_print_kitchen : null,
         ];
     }
 
