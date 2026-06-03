@@ -421,6 +421,13 @@ class MasterDataSyncService
             try {
                 if (isset($data['inventory_histories'])) {
                     DB::beginTransaction();
+                    
+                    // Clean up synced local records to prevent duplicates before applying cloud updates
+                    $syncedInputCodes = array_unique(array_column($data['inventory_histories'], 'input_code'));
+                    if (!empty($syncedInputCodes)) {
+                        InventoryHistory::whereIn('input_code', $syncedInputCodes)->delete();
+                    }
+
                     foreach ($data['inventory_histories'] as $ih) {
                         $localProductId = $productMap[$ih['product_id']] ?? $ih['product_id'];
 

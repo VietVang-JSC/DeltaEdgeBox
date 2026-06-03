@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\PosWebFilterController;
 use App\Http\Controllers\Api\SplitMergeInvoiceController;
 use App\Http\Controllers\Api\InventoryApiController;
 use App\Http\Controllers\Api\InventoryInputController;
+use App\Http\Controllers\Api\InventoryOutputController;
 
 /*
 |--------------------------------------------------------------------------
@@ -111,6 +112,24 @@ Route::prefix('admin/inventory')->middleware('edge.api.key')->group(function () 
     Route::post('/checkInventoryStore', [InventoryApiController::class, 'checkInventoryStore']);
     Route::post('/updateInventoryCheck', [InventoryApiController::class, 'updateInventoryCheck']);
     Route::delete('/deleteInventoryCheck', [InventoryApiController::class, 'deleteInventoryCheck']);
+});
+
+// Warehouse check-in (input) endpoints
+Route::prefix('admin/input')->middleware('edge.api.key')->group(function () {
+    Route::get('/getListInvoiceInput', [InventoryInputController::class, 'getListInvoiceInput']);
+    Route::post('/getDetailInvoiceInput', [InventoryInputController::class, 'getDetailInvoiceInput']);
+    Route::post('/addInvoiceInput', [InventoryInputController::class, 'addInvoiceInput']);
+    Route::post('/updateInvoiceInput', [InventoryInputController::class, 'updateInvoiceInput']);
+    Route::post('/deleteInvoiceInput', [InventoryInputController::class, 'deleteInvoiceInput']);
+});
+
+// Warehouse checkout (output) endpoints
+Route::prefix('admin/output')->middleware('edge.api.key')->group(function () {
+    Route::get('/exportInvoiceList', [InventoryOutputController::class, 'exportInvoiceList']);
+    Route::get('/getDetailInvoiceOutput', [InventoryOutputController::class, 'getDetailInvoiceOutput']);
+    Route::post('/create_export_invoice', [InventoryOutputController::class, 'createExportInvoice']);
+    Route::post('/updateInvoiceOuput', [InventoryOutputController::class, 'updateInvoiceOutput']);
+    Route::delete('/deleteInvoiceOuput', [InventoryOutputController::class, 'deleteInvoiceOutput']);
 });
 
 // Legacy POS table compatibility endpoints
