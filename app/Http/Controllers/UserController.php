@@ -14,6 +14,7 @@ class UserController extends Controller
    public function loginWeb(Request $request)
     {
         // Validate 
+        \Log::info('EDGE LOGIN HIT', $request->all());
         $validator = Validator::make($request->all(), [
             'phone' => 'required',
             'password' => 'required',
@@ -45,7 +46,7 @@ class UserController extends Controller
             }
 
             // User info
-            $user = JWTAuth::user();
+            $user = JWTAuth::user()->load('store');
 
             // Success
             return response()->json([
