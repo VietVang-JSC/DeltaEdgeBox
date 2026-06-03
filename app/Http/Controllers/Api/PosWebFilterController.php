@@ -107,7 +107,7 @@ class PosWebFilterController extends Controller
                 $paginatedList = array_slice($products, $offset, $pageSize);
                 $dataProduct = [
                     'data_list' => $paginatedList,
-                    'total' => count($products),
+                    'total' => (int) ceil(count($products) / $pageSize),
                     'pageSize' => $pageSize,
                     'currentPage' => $currentPage,
                 ];
