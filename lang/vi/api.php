@@ -61,6 +61,7 @@ return [
     'product_delete' => 'Xóa sản phẩm thành công',
     'product_delete_by_category' => 'Xóa tất cả sản phẩm trong danh mục thành công!',
     "product_code_isset" => "Mã sản phẩm đã tồn tại",
+    'product_update_table' => "Cập nhật món thành công",
     //Revenue
     'revenue_get' => 'Lấy tất cả doanh thu thành công!',
     'No_date' => 'Vui lòng nhập đủ ngày bắt đầu và kết thúc!!!',

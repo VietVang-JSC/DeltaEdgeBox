@@ -13,6 +13,8 @@ use App\Models\User;
 use App\Models\Inventory;
 use App\Models\InventoryHistory;
 use App\Models\Agency;
+use App\Models\Types;
+use App\Models\ProductType;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -50,7 +52,9 @@ class MasterDataSyncService
                 || Store::count() == 0
                 || User::count() == 0
                 || Inventory::count() == 0
-                || Agency::count() == 0;
+                || Agency::count() == 0
+                || Types::count() == 0
+                || ProductType::count() == 0;
 
             if ($hasEmptyTable) {
                 $lastSyncTime = null;
@@ -68,6 +72,8 @@ class MasterDataSyncService
                     Inventory::max('updated_at'),
                     InventoryHistory::max('updated_at'),
                     Agency::max('updated_at'),
+                    Types::max('updated_at'),
+                    ProductType::max('updated_at'),
                 ]);
                 $lastSyncTime = !empty($times) ? Carbon::parse(max($times))->toIso8601String() : null;
             }
@@ -506,6 +512,58 @@ class MasterDataSyncService
                 $syncErrors['agencies'] = $e->getMessage();
             }
 
+            // Sync TYPES
+            try {
+                if (isset($data['types'])) {
+                    DB::beginTransaction();
+                    foreach ($data['types'] as $type) {
+                        Types::updateOrCreate(
+                            ['id' => $type['id']],
+                            [
+                                'store_id'          => $type['store_id'],
+                                'product_type_name' => $type['product_type_name'],
+                                'admin_id'          => $type['admin_id'],
+                                'created_at'        => $type['created_at'] ?? now(),
+                                'updated_at'        => $type['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['types'] = count($data['types']);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync types failed: ' . $e->getMessage());
+                $syncErrors['types'] = $e->getMessage();
+            }
+
+            // Sync PRODUCT_TYPES
+            try {
+                if (isset($data['product_types'])) {
+                    DB::beginTransaction();
+                    foreach ($data['product_types'] as $pt) {
+                        ProductType::updateOrCreate(
+                            ['id' => $pt['id']],
+                            [
+                                'store_id'                     => $pt['store_id'],
+                                'product_type_id'              => $pt['product_type_id'],
+                                'product_type_attribute'       => $pt['product_type_attribute'],
+                                'product_type_attribute_value' => $pt['product_type_attribute_value'],
+                                'admin_id'                     => $pt['admin_id'],
+                                'created_at'                   => $pt['created_at'] ?? now(),
+                                'updated_at'                   => $pt['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['product_types'] = count($data['product_types']);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync product_types failed: ' . $e->getMessage());
+                $syncErrors['product_types'] = $e->getMessage();
+            }
+
             // Log tổng kết sau mỗi sync
             $hasErrors = !empty($syncErrors);
 
@@ -604,6 +662,8 @@ class MasterDataSyncService
         DB::transaction(function () use ($product, $dbProductId) {
             ProductTimePrice::where('product_id', $dbProductId)->delete();
             foreach ($product['time_prices'] ?? [] as $tp) {
+                // Xoá bản ghi trùng ID nếu có (tránh lỗi UNIQUE constraint failed khi ID bị lệch sở hữu hoặc đồng bộ ngắt quãng)
+                ProductTimePrice::where('id', $tp['id'])->delete();
                 ProductTimePrice::create([
                     'id' => $tp['id'],
                     'product_id' => $dbProductId,
