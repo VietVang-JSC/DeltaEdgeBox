@@ -125,6 +125,7 @@ class PosWebFilterController extends Controller
                     'data_payment' => $payments,
                     'data_table' => $tables,
                     'data_bookings' => [],
+                    'data_attributes' => [],
                     'threshold_message' => [],
                     'data_stores' => [$store],
                     'data_bill_setting' => [$billSetting],
@@ -237,9 +238,31 @@ class PosWebFilterController extends Controller
             ->where('status', 1);
 
         if ($request) {
-            $whereRaw = $request->input('products.query.WhereRaw');
-            if ($whereRaw) {
-                $query->whereRaw($whereRaw);
+            $queryParam = $request->input('products.query', []);
+            if (is_array($queryParam)) {
+                foreach ($queryParam as $column => $value) {
+                    if ($column === 'WhereRaw') {
+                        if (!empty($value)) {
+                            $query->whereRaw($value);
+                        }
+                    } else {
+                        if (is_array($value)) {
+                            $operator = $value['operator'] ?? '=';
+                            $val = $value['value'] ?? null;
+                            if ($val !== null) {
+                                if (strtolower($operator) === 'like') {
+                                    $query->where($column, 'like', "%{$val}%");
+                                } else {
+                                    $query->where($column, $operator, $val);
+                                }
+                            }
+                        } else {
+                            if ($value !== null && $value !== '') {
+                                $query->where($column, '=', $value);
+                            }
+                        }
+                    }
+                }
             }
         }
 

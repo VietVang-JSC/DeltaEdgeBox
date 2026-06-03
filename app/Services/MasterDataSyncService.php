@@ -138,14 +138,23 @@ class MasterDataSyncService
                     Table::updateOrCreate(
                         ['id' => $table['id']],
                         [
-                            'store_id'  => $table['store_id'],
-                            'name'      => $table['tablename'], 
-                            'status'    => $table['status'],
-                            'admin_id'  => $table['admin_id'] ?? null,
-                            'updated_at'=> $table['updated_at'] ?? now(),
-                            'code'      => $table['tablename'],
-                            'capacity'  => $table['number_of_people'] ?? 0,
-                            'note'      => $table['listitem'] ?? null,
+                            'store_id'         => $table['store_id'],
+                            'tablename'        => $table['tablename'],
+                            'status'           => $table['status'],
+                            'admin_id'         => $table['admin_id'] ?? null,
+                            'user_id'          => $table['user_id'] ?? null,
+                            'payment_id'       => $table['payment_id'] ?? null,
+                            'listitem'         => $table['listitem'] ?? null,
+                            'userordered'      => $table['userordered'] ?? null,
+                            'number_of_people' => $table['number_of_people'] ?? 0,
+                            'can_order'        => $table['can_order'] ?? 1,
+                            'is_order_enabled' => $table['is_order_enabled'] ?? 1,
+                            'qr_token'         => $table['qr_token'] ?? null,
+                            'qr_code'          => $table['qr_code'] ?? null,
+                            'lock_time'        => $table['lock_time'] ?? null,
+                            'pin'              => $table['pin'] ?? null,
+                            'booking_code'     => $table['booking_code'] ?? null,
+                            'updated_at'       => $table['updated_at'] ?? now(),
                         ]
                     );
                     } else {

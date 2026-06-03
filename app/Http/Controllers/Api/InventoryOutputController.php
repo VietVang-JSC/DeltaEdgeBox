@@ -66,7 +66,18 @@ class InventoryOutputController extends Controller
                 }
                 
                 $oldQty = $inventory->quantity;
-                $inventory->quantity -= $qty;
+                $newQty = $oldQty - $qty;
+
+                // Kiểm tra xuất âm
+                if ($newQty < 0) {
+                    $product = Product::find($productId);
+                    $typeCommodity = $product ? (int)($product->type_commodity ?? 0) : 0;
+                    if ($outputType !== 'export' || ($outputType === 'export' && $typeCommodity === 0)) {
+                        throw new \RuntimeException("Sản phẩm có ID {$productId} không đủ số lượng tồn kho để xuất.");
+                    }
+                }
+
+                $inventory->quantity = $newQty;
                 $inventory->save();
 
                 // 2. Ghi nhận lịch sử giao dịch cục bộ với giá trị âm để biểu diễn xuất kho
