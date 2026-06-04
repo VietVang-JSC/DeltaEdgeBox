@@ -21,7 +21,7 @@ class BackupController extends Controller
         try {
             $storeId = env('STORE_ID');
             $type = $request->input('type', 'intraday'); // 'daily' or 'intraday'
-            $maxBackups = (int) $request->input('max', 7);
+            $maxBackups = (int) $request->input('max', 30);
 
             if (!$storeId) {
                 return response()->json([
