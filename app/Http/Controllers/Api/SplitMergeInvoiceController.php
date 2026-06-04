@@ -409,6 +409,8 @@ class SplitMergeInvoiceController extends Controller
             'total_tax' => $total_tax,
             'store_id' => $original_invoice->store_id,
             'admin_id' => $original_invoice->admin_id,
+            'is_senior_discount' => $original_invoice->is_senior_discount ?? false,
+            'senior_discount_amount' => $original_invoice->senior_discount_amount ?? 0,
         ];
     }
 
@@ -459,6 +461,8 @@ class SplitMergeInvoiceController extends Controller
             "table_id" => $filters['target_table_id'],
             "valuetotal" => $valuetotal,
             "total_tax" => $total_tax,
+            "is_senior_discount" => $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false),
+            "senior_discount_amount" => $filters['senior_discount_amount'] ?? ($originalInvoice ? ($originalInvoice->senior_discount_amount ?? 0) : 0),
         ];
     }
 
@@ -480,6 +484,8 @@ class SplitMergeInvoiceController extends Controller
             'status' => $data['status'],
             'user_id' => $data['user_id'] ?? 1,
             'admin_id' => $data['admin_id'] ?? 1,
+            'is_senior_discount' => $data['is_senior_discount'] ?? false,
+            'senior_discount_amount' => $data['senior_discount_amount'] ?? 0,
         ]);
 
         $productList = json_decode($payment->items, true);
@@ -510,6 +516,8 @@ class SplitMergeInvoiceController extends Controller
             'total' => $data['valuetotal'],
             'tax' => $data['total_tax'],
             'final_total' => $data['valuetotal'],
+            'is_senior_discount' => $data['is_senior_discount'] ?? $payment->is_senior_discount,
+            'senior_discount_amount' => $data['senior_discount_amount'] ?? $payment->senior_discount_amount,
         ]);
 
         $productList = json_decode($data['items'], true);
@@ -571,6 +579,8 @@ class SplitMergeInvoiceController extends Controller
             'total_tax' => $total_tax,
             'store_id' => $targetInvoice['store_id'],
             'admin_id' => $targetInvoice['admin_id'],
+            'is_senior_discount' => $targetInvoice['is_senior_discount'] ?? false,
+            'senior_discount_amount' => $targetInvoice['senior_discount_amount'] ?? 0,
         ];
     }
 
@@ -615,6 +625,8 @@ class SplitMergeInvoiceController extends Controller
             'total_tax' => $total_tax,
             'store_id' => $target_invoice->store_id,
             'admin_id' => $target_invoice->admin_id,
+            'is_senior_discount' => $target_invoice->is_senior_discount ?? false,
+            'senior_discount_amount' => $target_invoice->senior_discount_amount ?? 0,
         ];
     }
 
