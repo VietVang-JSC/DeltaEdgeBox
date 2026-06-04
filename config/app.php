@@ -17,6 +17,10 @@ return [
     */
 
     'name' => env('APP_NAME', 'Laravel'),
+    'deployment_mode' => env('DEPLOYMENT_MODE', 'offline-first'),
+    'store_id' => env('STORE_ID'),
+    'cloud_api_url' => env('CLOUD_API_URL'),
+    'api_key' => env('API_KEY'),
 
     /*
     |--------------------------------------------------------------------------
@@ -56,6 +60,11 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+
+    'deployment_mode' => env('DEPLOYMENT_MODE', 'offline-first'),
+    'store_id' => env('STORE_ID'),
+    'cloud_api_url' => env('CLOUD_API_URL'),
+    'api_key' => env('API_KEY'),
 
     'asset_url' => env('ASSET_URL'),
 
@@ -144,6 +153,19 @@ return [
         // 'store' => 'redis',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Edge Box Configuration
+    |--------------------------------------------------------------------------
+    */
+
+    'store_id' => env('STORE_ID'),
+
+    'deployment_mode' => env('DEPLOYMENT_MODE', 'offline-first'),
+
+    'cloud_api_url' => env('CLOUD_API_URL'),
+
+    'api_key' => env('API_KEY'),
     /*
     |--------------------------------------------------------------------------
     | Autoloaded Service Providers

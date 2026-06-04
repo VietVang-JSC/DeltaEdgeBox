@@ -11,7 +11,7 @@ class BackupDatabase extends Command
 {
     protected $signature = 'backup:database
                             {--type=daily : Backup type: daily or intraday}
-                            {--max=7 : Maximum number of daily backups to retain}';
+                            {--max=30 : Maximum number of daily backups to retain}';
 
     protected $description = 'Backup SQLite database to Backblaze B2 with dual retention policy';
 

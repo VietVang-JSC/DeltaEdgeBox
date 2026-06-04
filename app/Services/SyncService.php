@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SyncQueue;
 use App\Models\SyncMetadata;
+use App\Models\SyncConflict;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +18,7 @@ class SyncService
     public function __construct()
     {
         $this->cloudApiUrl = config('app.cloud_api_url', env('CLOUD_API_URL'));
-        $this->apiKey = config('app.api_key', env('API_KEY'));
+        $this->apiKey = config('app.api_key', env('STORE_API_KEY'));
         $this->storeId = config('app.store_id', env('STORE_ID'));
     }
 
@@ -43,11 +44,7 @@ class SyncService
             'max_retries' => 10,
         ]);
 
-        // Update metadata
-        SyncMetadata::updateOrCreate(
-            ['store_id' => $this->storeId],
-            ['pending_records_count' => DB::raw('pending_records_count + 1')]
-        );
+        $this->incrementPendingCount();
     }
 
     /**
@@ -63,9 +60,20 @@ class SyncService
         }
 
         // Get pending items, ordered by priority and age
-        $items = SyncQueue::where('status', 'pending')
+        $items = SyncQueue::where(function ($query) {
+                $query->where('status', 'pending')
+                    ->orWhere(function ($retryQuery) {
+                        $retryQuery->where('status', 'retrying')
+                            ->where(function ($dueQuery) {
+                                $dueQuery->whereNull('next_retry_at')
+                                    ->orWhere('next_retry_at', '<=', now());
+                            });
+                    });
+            })
+            ->orderByRaw($this->syncDependencyOrderSql())
             ->orderBy('priority', 'desc')
             ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc')
             ->limit($batchSize)
             ->get();
 
@@ -75,12 +83,19 @@ class SyncService
 
         Log::info("Processing {$items->count()} sync items");
 
-        $results = ['success' => 0, 'failed' => 0, 'errors' => []];
+        $results = ['success' => 0, 'failed' => 0, 'deferred' => 0, 'skipped' => false, 'errors' => []];
 
         foreach ($items as $item) {
             try {
-                $this->processSyncItem($item);
-                $results['success']++;
+                $processed = $this->processSyncItem($item);
+
+                if ($processed === true) {
+                    $results['success']++;
+                } elseif ($processed === false) {
+                    $results['failed']++;
+                } else {
+                    $results['deferred']++;
+                }
             } catch (\Exception $e) {
                 $results['failed']++;
                 $results['errors'][] = [
@@ -96,16 +111,30 @@ class SyncService
     /**
      * Process single sync item with retry logic
      */
-    protected function processSyncItem(SyncQueue $item): void
+    protected function processSyncItem(SyncQueue $item): ?bool
     {
         $startTime = microtime(true);
 
         try {
+            if ($this->shouldDeferForMissingDependency($item)) {
+                $this->deferDependencyBlockedItem($item);
+
+                return null;
+            }
+
             // Mark as syncing
             $item->update(['status' => 'syncing']);
 
+            if ($item->table_name === 'inputs') {
+                return $this->syncInputToCloud($item);
+            }
+
+            if ($item->table_name === 'outputs') {
+                return $this->syncOutputToCloud($item);
+            }
+
             // Build API endpoint
-            $endpoint = "/api/cloud/sync/{$item->table_name}";
+            $endpoint = "/api/cloud/sync";
             $url = rtrim($this->cloudApiUrl, '/') . $endpoint;
 
             // Send to cloud
@@ -113,31 +142,63 @@ class SyncService
                 'Authorization' => "Bearer {$this->apiKey}",
                 'Content-Type' => 'application/json',
                 'X-Store-ID' => $this->storeId,
+                'X-Store-API-Key' => $this->apiKey,
             ])->timeout(30)->post($url, [
-                'operation' => $item->operation,
-                'record_id' => $item->record_id,
-                'data' => json_decode($item->payload, true),
-                'timestamp' => now()->toISOString(),
+                'operations' => [[
+                    'type' => $item->operation,
+                    'table' => $item->table_name,
+                    'local_id' => $item->record_id,
+                    'data' => json_decode($item->payload, true),
+                    'timestamp' => now()->toISOString(),
+                ]],
             ]);
 
             $duration = (microtime(true) - $startTime) * 1000;
 
             if ($response->successful()) {
+                $responseBody = $response->json() ?? [];
+
+                if ($this->hasSyncConflicts($responseBody)) {
+                    $this->storeConflicts($item, $responseBody);
+
+                    $item->update([
+                        'status' => 'failed',
+                        'last_error' => 'Sync conflict returned by cloud',
+                        'response_code' => $response->status(),
+                    ]);
+
+                    $this->logSync($item, 'failed', 'Sync conflict returned by cloud', $duration);
+
+                    Log::warning("Sync conflict: {$item->table_name} #{$item->record_id}", [
+                        'sync_queue_id' => $item->id,
+                        'table' => $item->table_name,
+                        'record_id' => $item->record_id,
+                    ]);
+
+                    return false;
+                }
+
+                if (array_key_exists('success', $responseBody) && $responseBody['success'] === false) {
+                    throw new \Exception('Cloud sync rejected item: ' . $response->body());
+                }
+
                 // Success: mark as synced
                 $item->update([
                     'status' => 'synced',
                     'synced_at' => now(),
                     'response_code' => $response->status(),
+                    'last_error' => null,
+                    'next_retry_at' => null,
                 ]);
 
                 // Log success
                 $this->logSync($item, 'success', null, $duration);
 
-                // Update metadata
-                SyncMetadata::where('store_id', $this->storeId)
-                    ->decrement('pending_records_count');
+                $this->decrementPendingCount();
 
                 Log::debug("Synced: {$item->table_name} #{$item->record_id}");
+
+                return true;
 
             } else {
                 // HTTP error: retry with backoff
@@ -147,6 +208,112 @@ class SyncService
         } catch (\Exception $e) {
             // Network/timeout error: retry with backoff
             $this->handleSyncFailure($item, $e->getMessage());
+
+            return false;
+        }
+    }
+
+    protected function syncDependencyOrderSql(): string
+    {
+        return "CASE table_name
+            WHEN 'products' THEN 10
+            WHEN 'customers' THEN 20
+            WHEN 'table' THEN 30
+            WHEN 'tables' THEN 30
+            WHEN 'orders' THEN 40
+            WHEN 'payments' THEN 50
+            WHEN 'order_items' THEN 60
+            WHEN 'payment_details' THEN 70
+            ELSE 100
+        END ASC";
+    }
+
+    protected function shouldDeferForMissingDependency(SyncQueue $item): bool
+    {
+        if (!in_array($item->table_name, ['payment_details', 'table', 'tables'], true)) {
+            return false;
+        }
+
+        $payload = json_decode($item->payload, true) ?: [];
+        $paymentId = $payload['payment_id'] ?? null;
+
+        if (!$paymentId) {
+            return false;
+        }
+
+        return SyncQueue::where('store_id', $item->store_id)
+            ->where('table_name', 'payments')
+            ->where('record_id', $paymentId)
+            ->whereIn('status', ['pending', 'retrying', 'syncing', 'failed'])
+            ->exists();
+    }
+
+    protected function deferDependencyBlockedItem(SyncQueue $item): void
+    {
+        $payload = json_decode($item->payload, true) ?: [];
+        $paymentId = $payload['payment_id'] ?? null;
+        $nextRetryAt = now()->addSeconds(30);
+
+        $item->update([
+            'status' => 'retrying',
+            'last_error' => "Waiting for parent payment sync payment_id={$paymentId}",
+            'next_retry_at' => $nextRetryAt,
+        ]);
+
+        Log::info('Sync item deferred until parent payment is synced', [
+            'sync_queue_id' => $item->id,
+            'table' => $item->table_name,
+            'record_id' => $item->record_id,
+            'payment_id' => $paymentId,
+            'next_retry_at' => $nextRetryAt,
+        ]);
+    }
+
+    /**
+     * Check whether cloud response contains conflict results.
+     */
+    protected function hasSyncConflicts(array $responseBody): bool
+    {
+        if (!empty($responseBody['conflicts'])) {
+            return true;
+        }
+
+        foreach ($responseBody['results'] ?? [] as $result) {
+            if (($result['status'] ?? null) === 'conflict') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Store cloud conflicts locally for review instead of retrying forever.
+     */
+    protected function storeConflicts(SyncQueue $item, array $responseBody): void
+    {
+        $conflicts = $responseBody['conflicts'] ?? [];
+
+        if (empty($conflicts)) {
+            $conflicts = array_values(array_filter($responseBody['results'] ?? [], function ($result) {
+                return ($result['status'] ?? null) === 'conflict';
+            }));
+        }
+
+        foreach ($conflicts as $conflict) {
+            SyncConflict::create([
+                'store_id' => $this->storeId,
+                'sync_queue_id' => $item->id,
+                'cloud_conflict_id' => $conflict['conflict_id'] ?? $conflict['id'] ?? null,
+                'table_name' => $item->table_name,
+                'record_id' => $item->record_id,
+                'operation_type' => $item->operation,
+                'local_data' => json_decode($item->payload, true) ?: [],
+                'cloud_data' => $conflict['cloud_data'] ?? [],
+                'resolution_strategy' => $conflict['resolution_strategy'] ?? 'manual',
+                'resolution_status' => 'unresolved',
+                'error_message' => $conflict['message'] ?? 'Sync conflict returned by cloud',
+            ]);
         }
     }
 
@@ -200,6 +367,34 @@ class SyncService
         }
     }
 
+    protected function incrementPendingCount(): void
+    {
+        SyncMetadata::firstOrCreate(
+            ['store_id' => $this->storeId],
+            [
+                'sync_status' => 'idle',
+                'pending_records_count' => 0,
+            ]
+        );
+
+        SyncMetadata::where('store_id', $this->storeId)->increment('pending_records_count');
+    }
+
+    protected function decrementPendingCount(): void
+    {
+        $metadata = SyncMetadata::firstOrCreate(
+            ['store_id' => $this->storeId],
+            [
+                'sync_status' => 'idle',
+                'pending_records_count' => 0,
+            ]
+        );
+
+        if ($metadata->pending_records_count > 0) {
+            $metadata->decrement('pending_records_count');
+        }
+    }
+
     /**
      * Log sync attempt
      */
@@ -245,13 +440,20 @@ class SyncService
     }
 
     /**
-     * Check internet connectivity
+     * Check cloud sync endpoint availability.
      */
     public function isOnline(): bool
     {
         try {
-            $response = Http::timeout(5)->get($this->cloudApiUrl . '/api/health');
-            return $response->successful();
+            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/cloud/sync-status";
+            $statusResponse = Http::withHeaders([
+                'Authorization' => "Bearer {$this->apiKey}",
+                'X-Store-API-Key' => $this->apiKey,
+                'X-Store-ID' => $this->storeId,
+            ])->connectTimeout(1)->timeout(2)->get($statusUrl);
+            // max 1 second to connect and 2 seconds total for the request
+
+            return $statusResponse->successful();
         } catch (\Exception $e) {
             return false;
         }
@@ -263,14 +465,222 @@ class SyncService
     public function getSyncStatus(): array
     {
         $metadata = SyncMetadata::where('store_id', $this->storeId)->first();
+        $cloudStatus = null;
+        try{  
+                $response = Http::withHeaders([
+                'Authorization' => "Bearer {$this->apiKey}",
+                'X-Store-ID'    => $this->storeId,
+            ])->timeout(5)->get(rtrim($this->cloudApiUrl, '/') . '/api/cloud/sync-status');
 
+            if ($response->successful()) {
+                $cloudStatus = $response->json();
+            }
+        } catch (\Exception) {}
         return [
             'store_id' => $this->storeId,
             'is_online' => $this->isOnline(),
             'sync_status' => $metadata?->sync_status ?? 'idle',
             'pending_count' => $metadata?->pending_records_count ?? 0,
+            'unresolved_conflicts_count' => SyncConflict::where('store_id', $this->storeId)
+                ->where('resolution_status', 'unresolved')
+                ->count(),
             'last_sync_at' => $metadata?->last_sync_timestamp,
             'last_error' => $metadata?->last_error,
+            'cloud_status' => $cloudStatus,
         ];
+    }
+
+    // Bulk upload for large datasets (e.g. initial sync or re-sync)
+    public function processBulkUpload(\Illuminate\Support\Collection $items): array
+    {
+        $ids = $items->pluck('id')->toArray();
+        SyncQueue::whereIn('id', $ids)->update(['status' => 'syncing']);
+
+        $response = Http::withHeaders([
+            'Authorization' => "Bearer {$this->apiKey}",
+            'Content-Type' => 'application/json',
+            'X-Store-ID' => $this->storeId,
+        ])->timeout(30)->post(rtrim($this->cloudApiUrl, '/') . '/api/EdgeBox/bulk-upload', [
+            'store_id' => $this->storeId,
+            'records'  => $items->map(fn($item) => [
+                'queue_id'   => $item->id,
+                'table_name' => $item->table_name,
+                'operation'  => $item->operation,
+                'record_id'  => $item->record_id,
+                'data'       => json_decode($item->payload, true),
+                'timestamp'  => now()->toISOString(),
+            ])->toArray(),
+        ]);
+
+        if ($response->successful()) {
+            SyncQueue::whereIn('id', $ids)->update([
+                'status'    => 'synced',
+                'synced_at' => now(),
+            ]);
+            SyncMetadata::where('store_id', $this->storeId)
+                ->decrement('pending_records_count', count($ids));
+            return ['success' => count($ids), 'failed' => 0];
+        }
+
+        // On failure, reset status to pending for retry
+        SyncQueue::whereIn('id', $ids)->update(['status' => 'pending']);
+        return ['success' => 0, 'failed' => count($ids)];
+    }
+
+    /**
+     * Custom sync handler for offline check-in transaction.
+     */
+    protected function syncInputToCloud(SyncQueue $item): bool
+    {
+        $startTime = microtime(true);
+
+        try {
+            $url = rtrim($this->cloudApiUrl, '/') . '/api/admin/input/addInvoiceInput';
+            $payload = json_decode($item->payload, true);
+            $inputCode = $payload['input_code'] ?? '';
+
+            Log::info("Syncing offline check-in transaction to Cloud BE. Code: {$inputCode}");
+
+            $response = Http::withHeaders([
+                'Authorization' => "Bearer {$this->apiKey}",
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'X-Store-ID' => $this->storeId,
+            ])->timeout(30)->post($url, $payload);
+
+            $duration = (microtime(true) - $startTime) * 1000;
+
+            if ($response->successful()) {
+                $responseBody = $response->json() ?? [];
+
+                if (isset($responseBody['status']) && $responseBody['status'] === true) {
+                    $invoice = $responseBody['invoice'] ?? [];
+                    $cloudInvoiceId = $invoice['id'] ?? 0;
+                    $cloudInvoiceCode = $invoice['input_code'] ?? '';
+
+                    // Cập nhật record local history với real ID và real code từ Cloud
+                    if ($cloudInvoiceId > 0 && !empty($inputCode)) {
+                        DB::table('inventory_histories')
+                            ->where('input_code', $inputCode)
+                            ->where('store_id', $item->store_id)
+                            ->update([
+                                'input_id' => $cloudInvoiceId,
+                                'input_code' => $cloudInvoiceCode
+                            ]);
+                        Log::info("Updated local histories from Code: {$inputCode} to Cloud Code: {$cloudInvoiceCode}, ID: {$cloudInvoiceId}");
+                    }
+
+                    $item->update([
+                        'status' => 'synced',
+                        'synced_at' => now(),
+                        'response_code' => $response->status(),
+                        'last_error' => null,
+                        'next_retry_at' => null,
+                    ]);
+
+                    $this->logSync($item, 'success', null, $duration);
+                    $this->decrementPendingCount();
+
+                    Log::info("Synced Offline Check-in successfully. Cloud Invoice Code: {$cloudInvoiceCode}");
+
+                    return true;
+                } else {
+                    throw new \Exception('Cloud rejected offline check-in sync: ' . ($responseBody['message'] ?? $response->body()));
+                }
+            } else {
+                throw new \Exception("HTTP {$response->status()}: {$response->body()}");
+            }
+        } catch (\Exception $e) {
+            $duration = (microtime(true) - $startTime) * 1000;
+            $item->update([
+                'status' => 'failed',
+                'last_error' => $e->getMessage(),
+                'response_code' => 500,
+            ]);
+
+            $this->logSync($item, 'failed', $e->getMessage(), $duration);
+            Log::error("Failed to sync offline check-in: " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Custom sync handler for offline checkout transaction.
+     * Directly posts the payload to Cloud BE Native createExportInvoice API.
+     */
+    protected function syncOutputToCloud(SyncQueue $item): bool
+    {
+        $startTime = microtime(true);
+
+        try {
+            $url = rtrim($this->cloudApiUrl, '/') . '/api/admin/output/create_export_invoice';
+            $payload = json_decode($item->payload, true);
+            $outputCode = $payload['output_code'] ?? '';
+
+            Log::channel('edge')->info("Syncing offline checkout transaction to Cloud BE. Code: {$outputCode}");
+
+            $response = Http::withHeaders([
+                'Authorization' => "Bearer {$this->apiKey}",
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'X-Store-ID' => $this->storeId,
+            ])->timeout(30)->post($url, $payload);
+
+            $duration = (microtime(true) - $startTime) * 1000;
+
+            if ($response->successful()) {
+                $responseBody = $response->json() ?? [];
+
+                if (isset($responseBody['status']) && $responseBody['status'] === true) {
+                    $invoice = $responseBody['invoice'] ?? [];
+                    $cloudInvoiceId = $invoice['id'] ?? 0;
+                    $cloudInvoiceCode = $invoice['output_code'] ?? '';
+
+                    // Cập nhật record local history với real ID và real code từ Cloud
+                    if ($cloudInvoiceId > 0 && !empty($outputCode)) {
+                        DB::table('inventory_histories')
+                            ->where('input_code', $outputCode)
+                            ->where('store_id', $item->store_id)
+                            ->update([
+                                'input_id' => $cloudInvoiceId,
+                                'input_code' => $cloudInvoiceCode
+                            ]);
+                        Log::channel('edge')->info("Updated local histories from Code: {$outputCode} to Cloud Code: {$cloudInvoiceCode}, ID: {$cloudInvoiceId}");
+                    }
+
+                    $item->update([
+                        'status' => 'synced',
+                        'synced_at' => now(),
+                        'response_code' => $response->status(),
+                        'last_error' => null,
+                        'next_retry_at' => null,
+                    ]);
+
+                    $this->logSync($item, 'success', null, $duration);
+                    $this->decrementPendingCount();
+
+                    Log::channel('edge')->info("Synced Offline Checkout successfully. Cloud Invoice Code: {$cloudInvoiceCode}");
+
+                    return true;
+                } else {
+                    throw new \Exception('Cloud rejected offline checkout sync: ' . ($responseBody['message'] ?? $response->body()));
+                }
+            } else {
+                throw new \Exception("HTTP {$response->status()}: {$response->body()}");
+            }
+        } catch (\Exception $e) {
+            $duration = (microtime(true) - $startTime) * 1000;
+            $item->update([
+                'status' => 'failed',
+                'last_error' => $e->getMessage(),
+                'response_code' => 500,
+            ]);
+
+            $this->logSync($item, 'failed', $e->getMessage(), $duration);
+            Log::channel('edge')->error("Failed to sync offline checkout: " . $e->getMessage());
+
+            return false;
+        }
     }
 }

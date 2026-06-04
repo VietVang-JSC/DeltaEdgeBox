@@ -22,12 +22,15 @@ class Kernel extends ConsoleKernel
         $schedule->command('backup:database --type=intraday')
                  ->cron('0 */4 * * *'); // 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
 
-        // Database backup - Daily (at 23:59, keep last 7 days)
-        $schedule->command('backup:database --type=daily --max=7')
+        // Database backup - Daily (at 23:59, keep last 30 files)
+        $schedule->command('backup:database --type=daily --max=30')
                  ->dailyAt('23:59');
 
         // Optional: Run sync worker via scheduler (alternative to daemon mode)
-        // $schedule->command('sync:worker --batch=50')->everyTenSeconds()->withoutOverlapping();
+        $schedule->command('sync:worker --batch=50')->everyTenSeconds()->withoutOverlapping();
+
+        // Run master data sync from Cloud every minute in background
+        $schedule->command('edge:sync-master')->everyMinute()->withoutOverlapping();
     }
 
     /**

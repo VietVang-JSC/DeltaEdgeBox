@@ -9,6 +9,8 @@ class Product extends Model
 {
     use HasFactory;
 
+    protected $with = ['inventory'];
+
     protected $fillable = [
         'store_id',
         'category_id',
@@ -23,6 +25,27 @@ class Product extends Model
         'status',
         'is_combo',
         'admin_id',
+        'is_restricted_time',
+        
+        // Cloud fields
+        'vat',
+        'price_after_tax',
+        'min_quantity',
+        'product_group_id',
+        'type_final_product',
+        'type_commodity',
+        'is_extra',
+        'check',
+        'second_product_code',
+        'third_product_code',
+        'type_id',
+        'inventory_required',
+        'number_of_options',
+        'is_ingredient',
+        'print_id',
+        'sort_rank',
+        'is_show',
+        'title_vi',
     ];
 
     protected $casts = [
@@ -35,6 +58,21 @@ class Product extends Model
         'status' => 'boolean',
         'is_combo' => 'boolean',
         'admin_id' => 'integer',
+        'is_restricted_time' => 'boolean',
+
+        // Cloud casts
+        'vat' => 'integer',
+        'price_after_tax' => 'double',
+        'min_quantity' => 'integer',
+        'product_group_id' => 'integer',
+        'is_extra' => 'boolean',
+        'type_id' => 'integer',
+        'inventory_required' => 'boolean',
+        'number_of_options' => 'integer',
+        'is_ingredient' => 'boolean',
+        'print_id' => 'integer',
+        'sort_rank' => 'integer',
+        'is_show' => 'boolean',
     ];
 
     public function store()
@@ -50,5 +88,25 @@ class Product extends Model
     public function paymentDetails()
     {
         return $this->hasMany(PaymentDetail::class);
+    }
+
+    public function timePrices()
+    {
+        return $this->hasMany(ProductTimePrice::class);
+    }
+
+    public function inventory()
+    {
+        return $this->hasOne(Inventory::class, 'product_id', 'id')->select('id', 'product_id', 'quantity');
+    }
+
+    public function types()
+    {
+        return $this->belongsTo(Types::class, 'type_id', 'id')->select('id', 'product_type_name')->with('productTypes');
+    }
+
+    public function product_types()
+    {
+        return $this->hasMany(ProductType::class, 'product_type_id', 'type_id')->select('id', 'product_type_id', 'product_type_attribute', 'product_type_attribute_value');
     }
 }

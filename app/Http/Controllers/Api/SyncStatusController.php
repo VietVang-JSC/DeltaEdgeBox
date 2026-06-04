@@ -60,6 +60,98 @@ class SyncStatusController extends Controller
     }
 
     /**
+     * Get sync queue details by status for the FE diagnostics modal.
+     */
+    public function queue(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $type = $request->input('type', 'auto');
+        $limit = min(max((int) $request->input('limit', 25), 1), 100);
+        $allowedTypes = ['auto', 'pending', 'retrying', 'failed', 'conflicts', 'logs'];
+
+        if (!in_array($type, $allowedTypes, true)) {
+            $type = 'auto';
+        }
+
+        $counts = [
+            'pending' => DB::table('sync_queues')->where('status', 'pending')->count(),
+            'retrying' => DB::table('sync_queues')->where('status', 'retrying')->count(),
+            'failed' => DB::table('sync_queues')->where('status', 'failed')->count(),
+            'conflicts' => DB::table('sync_conflicts')->where('resolution_status', 'unresolved')->count(),
+        ];
+
+        if ($type === 'auto') {
+            if ($counts['failed'] > 0) {
+                $type = 'failed';
+            } elseif ($counts['conflicts'] > 0) {
+                $type = 'conflicts';
+            } elseif ($counts['pending'] > 0) {
+                $type = 'pending';
+            } elseif ($counts['retrying'] > 0) {
+                $type = 'retrying';
+            } else {
+                $type = 'logs';
+            }
+        }
+
+        if ($type === 'conflicts') {
+            $items = DB::table('sync_conflicts')
+                ->where('resolution_status', 'unresolved')
+                ->orderByDesc('created_at')
+                ->limit($limit)
+                ->get([
+                    'id',
+                    'table_name',
+                    'record_id',
+                    'resolution_strategy',
+                    'resolution_status',
+                    'created_at',
+                ]);
+        } elseif ($type === 'logs') {
+            $items = DB::table('sync_logs')
+                ->orderByDesc('synced_at')
+                ->limit($limit)
+                ->get([
+                    'id',
+                    'table_name',
+                    'operation',
+                    'record_id',
+                    'status',
+                    'error_message',
+                    'duration_ms',
+                    'synced_at',
+                    'created_at',
+                ]);
+        } else {
+            $items = DB::table('sync_queues')
+                ->where('status', $type)
+                ->orderByDesc('created_at')
+                ->limit($limit)
+                ->get([
+                    'id',
+                    'table_name',
+                    'operation',
+                    'record_id',
+                    'status',
+                    'priority',
+                    'retry_count',
+                    'max_retries',
+                    'last_error',
+                    'next_retry_at',
+                    'synced_at',
+                    'response_code',
+                    'created_at',
+                    'updated_at',
+                ]);
+        }
+
+        return response()->json([
+            'type' => $type,
+            'counts' => $counts,
+            'items' => $items,
+        ]);
+    }
+
+    /**
      * Trigger manual sync
      */
     public function trigger(): \Illuminate\Http\JsonResponse
