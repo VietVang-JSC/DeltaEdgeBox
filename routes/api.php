@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\PrinterController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentPrintController;
+use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\MasterSyncController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\InventoryController;
@@ -81,6 +82,12 @@ Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
     Route::post('/update_payment', [PaymentController::class, 'updatePayment']);
 });
+// View payment details for POS web
+Route::prefix('edge')->middleware('edge.api.key')->group(function () {
+    Route::post('/list-order-new', [PosWebFilterController::class, 'apiEdgeFilterByCondition']);
+    
+});
+
 
 Route::prefix('payment')->middleware('edge.api.key')->group(function () {
     Route::get('/print-for-web', [PaymentPrintController::class, 'printForWeb']);

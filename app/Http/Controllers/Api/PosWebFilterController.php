@@ -373,4 +373,118 @@ class PosWebFilterController extends Controller
 
         return (int) ($request->input('store_id') ?: $userStoreId ?: config('app.store_id', 1));
     }
+
+    public function apiEdgeFilterByCondition(Request $request)
+    {
+         //dd($request->all(), $request->getContent());
+        try {
+
+            $params = $request->all();
+
+            $response = [];
+
+            /**
+             * USERS
+             */
+            if (!empty($params['users'])) {
+
+                $userQuery = User::with('store');
+
+                if (!empty($params['users']['query']['id'])) {
+                    $userQuery->where('id', $params['users']['query']['id']);
+                }
+
+                $response['data_users'] = $userQuery->get()->toArray();
+            }
+
+            /**
+             * CUSTOMERS
+             */
+            if (array_key_exists('customers', $params)) {
+
+                $response['customer_list'] = Customer::query()
+                    ->orderBy('id')
+                    ->get()
+                    ->toArray();
+            }
+
+            /**
+             * PAYMENTS
+             */
+            if (!empty($params['payments'])) {
+
+                $paymentQuery = Payment::query();
+
+                $query = $params['payments']['query'] ?? [];
+
+                foreach ($query as $column => $value) {
+
+                    if ($value === null || $value === '') {
+                        continue;
+                    }
+
+                    if (is_array($value)) {
+                        $paymentQuery->whereIn($column, $value);
+                    } else {
+                        $paymentQuery->where($column, $value);
+                    }
+                }
+
+                /**
+                 * Relationship
+                 */
+                $relationships = $params['payments']['relationship'] ?? [];
+
+                if (!empty($relationships)) {
+                    $paymentQuery->with($relationships);
+                }
+
+                /**
+                 * Order By
+                 */
+                if (!empty($params['payments']['clauses']['orderby'])) {
+
+                    $orderBy = $params['payments']['clauses']['orderby'];
+
+                    $paymentQuery->orderBy(
+                        $orderBy['column'] ?? 'updated_at',
+                        $orderBy['value'] ?? 'DESC'
+                    );
+                }
+
+                /**
+                 * Pagination
+                 */
+                $pageSize = $params['payments']['clauses']['pagination']['pageSize'] ?? 15;
+                $currentPage = $params['payments']['clauses']['pagination']['currentPage'] ?? 1;
+
+                $payments = $paymentQuery->paginate(
+                    $pageSize,
+                    ['*'],
+                    'page',
+                    $currentPage
+                );
+
+                $response['data_payment'] = [
+                    'data_list'   => $payments->items(),
+                    'total'       => $payments->total(),
+                    'currentPage' => $payments->currentPage(),
+                    'pageSize'    => $payments->perPage(),
+                ];
+            }
+
+            return response()->json([
+                'status' => true,
+                'data'   => $response
+            ]);
+        } catch (\Throwable $e) {
+
+            Log::error($e);
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
