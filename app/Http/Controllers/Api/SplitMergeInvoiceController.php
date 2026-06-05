@@ -239,7 +239,23 @@ class SplitMergeInvoiceController extends Controller
             $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
             $total_value += $this->calculateTotalAfterTax($value)['total'];
         }
-        $valuetotal = $total_value - ($filters['discount'] ?? 0) + ($filters['surcharge'] ?? 0);
+
+        $discountAmount = (float) ($filters['discount'] ?? 0);
+        $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
+        $store = Store::find($filters['store_id']);
+        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
+        $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false);
+        $seniorAmount = (float) ($filters['senior_discount_amount'] ?? ($originalInvoice->senior_discount_amount ?? 0));
+        $isTaxInc = $store->is_tax_included ?? 0;
+        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+
+        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
+        if ($isSenior && $seniorAmount > 0) {
+            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
+        }
+        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+
+        $valuetotal = $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount;
 
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
@@ -247,10 +263,10 @@ class SplitMergeInvoiceController extends Controller
             "reason" => $filters['reason'] ?? null,
             "customer_id" => $filters['customer_id'] ?? null,
             "items" => $items,
-            "discount" => $filters['discount'] ?? 0,
+            "discount" => $discountAmount,
             "type_discount" => $filters['type_discount'] ?? 'amount',
             "discount_percent" => $filters['discount_percent'] ?? null,
-            "surcharge" => $filters['surcharge'] ?? null,
+            "surcharge" => $surchargeAmount,
             "payment_method" => $filters['payment_method'] ?? 'cash',
             "status" => 1, // Paid
             "surcharge_reason" => $filters['surcharge_reason'] ?? null,
@@ -262,6 +278,10 @@ class SplitMergeInvoiceController extends Controller
             "table_id" => $originalInvoice->table_id,
             "valuetotal" => $valuetotal,
             "total_tax" => $total_tax,
+            "is_senior_discount" => $isSenior,
+            "senior_discount_amount" => $seniorAmount,
+            "service_charge" => $serviceChargePercent,
+            "service_charge_amount" => $serviceChargeAmount,
         ];
 
         $createPayment = $this->createPaymentLocal($paramCreatePayment);
@@ -401,16 +421,34 @@ class SplitMergeInvoiceController extends Controller
             $total_value += $this->calculateTotalAfterTax($value)['total'];
         }
         $itemOriginalInvoice['total_tax'] = $total_tax;
+
+        $discountAmount = (float) ($original_invoice->discount ?? 0);
+        $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
+        $serviceChargePercent = (float) ($original_invoice->service_charge ?? 0);
+        $storeOrig = Store::find($original_invoice->store_id);
+        $isTaxInc = $storeOrig->is_tax_included ?? 0;
+        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
+        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+
+        $seniorAmount = (float) ($original_invoice->senior_discount_amount ?? 0);
+        if ($original_invoice->is_senior_discount && $seniorAmount > 0) {
+            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
+            $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+        }
+
         return [
             'id' => $original_invoice->id,
             'status' => $original_invoice->status,
-            'valuetotal' => $total_value - $original_invoice->discount + $original_invoice->surcharge,
+            'valuetotal' => $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount,
             'items' => json_encode($itemOriginalInvoice),
             'total_tax' => $total_tax,
             'store_id' => $original_invoice->store_id,
             'admin_id' => $original_invoice->admin_id,
             'is_senior_discount' => $original_invoice->is_senior_discount ?? false,
             'senior_discount_amount' => $original_invoice->senior_discount_amount ?? 0,
+            'service_charge' => $serviceChargePercent,
+            'service_charge_amount' => $serviceChargeAmount,
         ];
     }
 
@@ -437,7 +475,24 @@ class SplitMergeInvoiceController extends Controller
             $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
             $total_value += $this->calculateTotalAfterTax($value)['total'];
         }
-        $valuetotal = $total_value - ($filters['discount'] ?? 0) + ($filters['surcharge'] ?? 0);
+
+        $discountAmount = (float) ($filters['discount'] ?? 0);
+        $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
+        $store = Store::find($filters['store_id']);
+        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
+        $typeDiscount = $filters['type_discount'] ?? 'amount';
+        $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false);
+        $seniorAmount = (float) ($filters['senior_discount_amount'] ?? ($originalInvoice ? ($originalInvoice->senior_discount_amount ?? 0) : 0));
+        $isTaxInc = $store->is_tax_included ?? 0;
+        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+
+        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
+        if ($isSenior && $seniorAmount > 0) {
+            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
+        }
+        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+
+        $valuetotal = $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount;
 
         $userId = $filters['user_id'] ?? ($originalInvoice ? $originalInvoice->user_id : 1);
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
@@ -446,10 +501,10 @@ class SplitMergeInvoiceController extends Controller
             "reason" => $filters['reason'] ?? null,
             "customer_id" => $filters['customer_id'] ?? null,
             "items" => $items,
-            "discount" => $filters['discount'] ?? 0,
-            "type_discount" => $filters['type_discount'] ?? 'amount',
+            "discount" => $discountAmount,
+            "type_discount" => $typeDiscount,
             "discount_percent" => $filters['discount_percent'] ?? null,
-            "surcharge" => $filters['surcharge'] ?? null,
+            "surcharge" => $surchargeAmount,
             "payment_method" => $filters['payment_method'] ?? 'cash',
             "status" => 0, // Pending/Unpaid
             "surcharge_reason" => $filters['surcharge_reason'] ?? null,
@@ -461,8 +516,10 @@ class SplitMergeInvoiceController extends Controller
             "table_id" => $filters['target_table_id'],
             "valuetotal" => $valuetotal,
             "total_tax" => $total_tax,
-            "is_senior_discount" => $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false),
-            "senior_discount_amount" => $filters['senior_discount_amount'] ?? ($originalInvoice ? ($originalInvoice->senior_discount_amount ?? 0) : 0),
+            "is_senior_discount" => $isSenior,
+            "senior_discount_amount" => $seniorAmount,
+            "service_charge" => $serviceChargePercent,
+            "service_charge_amount" => $serviceChargeAmount,
         ];
     }
 
@@ -486,6 +543,8 @@ class SplitMergeInvoiceController extends Controller
             'admin_id' => $data['admin_id'] ?? 1,
             'is_senior_discount' => $data['is_senior_discount'] ?? false,
             'senior_discount_amount' => $data['senior_discount_amount'] ?? 0,
+            'service_charge' => $data['service_charge'] ?? 0,
+            'service_charge_amount' => $data['service_charge_amount'] ?? 0,
         ]);
 
         $productList = json_decode($payment->items, true);
@@ -518,6 +577,8 @@ class SplitMergeInvoiceController extends Controller
             'final_total' => $data['valuetotal'],
             'is_senior_discount' => $data['is_senior_discount'] ?? $payment->is_senior_discount,
             'senior_discount_amount' => $data['senior_discount_amount'] ?? $payment->senior_discount_amount,
+            'service_charge' => $data['service_charge'] ?? $payment->service_charge,
+            'service_charge_amount' => $data['service_charge_amount'] ?? $payment->service_charge_amount,
         ]);
 
         $productList = json_decode($data['items'], true);
@@ -569,18 +630,34 @@ class SplitMergeInvoiceController extends Controller
             $total_value += $this->calculateTotalAfterTax($value)['total'];
         }
 
+        $discountAmount = (float) ($targetInvoice['discount'] ?? 0);
+        $surchargeAmount = (float) ($targetInvoice['surcharge'] ?? 0);
+        $serviceChargePercent = (float) ($targetInvoice['service_charge'] ?? 0);
+        $seniorAmount = (float) ($targetInvoice['senior_discount_amount'] ?? 0);
+        $storeTarget = Store::find($targetInvoice['store_id']);
+        $isTaxInc = $storeTarget->is_tax_included ?? 0;
+        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+
+        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
+        if (!empty($targetInvoice['is_senior_discount']) && $seniorAmount > 0) {
+            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
+        }
+        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+
         $itemsOftargetInvoice['total_tax'] = $total_tax;
         $itemsOftargetInvoice['item'] = $item;
         return [
             'id' => $targetInvoice['id'],
             'status' => $targetInvoice['status'],
-            'valuetotal' => $total_value - $targetInvoice['discount'] + $targetInvoice['surcharge'],
+            'valuetotal' => $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount,
             'items' => json_encode($itemsOftargetInvoice),
             'total_tax' => $total_tax,
             'store_id' => $targetInvoice['store_id'],
             'admin_id' => $targetInvoice['admin_id'],
             'is_senior_discount' => $targetInvoice['is_senior_discount'] ?? false,
             'senior_discount_amount' => $targetInvoice['senior_discount_amount'] ?? 0,
+            'service_charge' => $serviceChargePercent,
+            'service_charge_amount' => $serviceChargeAmount,
         ];
     }
 
