@@ -249,15 +249,21 @@ class SplitMergeInvoiceController extends Controller
         $isTaxInc = $store->is_tax_included ?? 0;
         $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
-        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
         $isSeniorActive = $isSenior && $seniorAmount > 0;
-        if ($isSeniorActive) {
-            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
+        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+        $afterSenior = $scBaseTotal - $seniorDeduction;
+
+        // Recalculate discount on afterSenior for percent (RA 9994)
+        $typeDiscount = $filters['type_discount'] ?? 'amount';
+        if ($isSeniorActive && $typeDiscount === 'percent') {
+            $discPct = (float) ($filters['discount_percent'] ?? 0);
+            $discountAmount = round($afterSenior * $discPct / 100);
         }
+
+        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
-        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
-        $valuetotal = $total_value - $discountAmount - $seniorDeduction + $surchargeAmount + $serviceChargeAmount;
+        $valuetotal = max(0, $afterSenior - $discountAmount + $surchargeAmount + $serviceChargeAmount);
 
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
@@ -491,15 +497,20 @@ class SplitMergeInvoiceController extends Controller
         $isTaxInc = $store->is_tax_included ?? 0;
         $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
-        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
         $isSeniorActive = $isSenior && $seniorAmount > 0;
-        if ($isSeniorActive) {
-            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
+
+        // Recalculate discount on afterSenior for percent discount (RA 9994)
+        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+        $afterSenior = $scBaseTotal - $seniorDeduction;
+        if ($isSeniorActive && $typeDiscount === 'percent') {
+            $discPct = (float) ($filters['discount_percent'] ?? 0);
+            $discountAmount = round($afterSenior * $discPct / 100);
         }
+
+        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
-        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
-        $valuetotal = $total_value - $discountAmount - $seniorDeduction + $surchargeAmount + $serviceChargeAmount;
+        $valuetotal = max(0, $afterSenior - $discountAmount + $surchargeAmount + $serviceChargeAmount);
 
         $userId = $filters['user_id'] ?? ($originalInvoice ? $originalInvoice->user_id : 1);
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
