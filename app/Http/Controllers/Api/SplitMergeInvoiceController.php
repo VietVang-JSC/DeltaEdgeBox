@@ -250,12 +250,14 @@ class SplitMergeInvoiceController extends Controller
         $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
         $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
-        if ($isSenior && $seniorAmount > 0) {
+        $isSeniorActive = $isSenior && $seniorAmount > 0;
+        if ($isSeniorActive) {
             $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
         }
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
-        $valuetotal = $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount;
+        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+        $valuetotal = $total_value - $discountAmount - $seniorDeduction + $surchargeAmount + $serviceChargeAmount;
 
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
@@ -432,15 +434,18 @@ class SplitMergeInvoiceController extends Controller
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
         $seniorAmount = (float) ($original_invoice->senior_discount_amount ?? 0);
-        if ($original_invoice->is_senior_discount && $seniorAmount > 0) {
+        $isSeniorActive = $original_invoice->is_senior_discount && $seniorAmount > 0;
+        if ($isSeniorActive) {
             $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
             $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
         }
 
+        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+
         return [
             'id' => $original_invoice->id,
             'status' => $original_invoice->status,
-            'valuetotal' => $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount,
+            'valuetotal' => $total_value - $discountAmount - $seniorDeduction + $surchargeAmount + $serviceChargeAmount,
             'items' => json_encode($itemOriginalInvoice),
             'total_tax' => $total_tax,
             'store_id' => $original_invoice->store_id,
@@ -487,12 +492,14 @@ class SplitMergeInvoiceController extends Controller
         $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
         $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
-        if ($isSenior && $seniorAmount > 0) {
+        $isSeniorActive = $isSenior && $seniorAmount > 0;
+        if ($isSeniorActive) {
             $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
         }
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
-        $valuetotal = $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount;
+        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+        $valuetotal = $total_value - $discountAmount - $seniorDeduction + $surchargeAmount + $serviceChargeAmount;
 
         $userId = $filters['user_id'] ?? ($originalInvoice ? $originalInvoice->user_id : 1);
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
@@ -639,17 +646,20 @@ class SplitMergeInvoiceController extends Controller
         $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
         $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
-        if (!empty($targetInvoice['is_senior_discount']) && $seniorAmount > 0) {
+        $isSeniorActive = !empty($targetInvoice['is_senior_discount']) && $seniorAmount > 0;
+        if ($isSeniorActive) {
             $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
         }
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+
+        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
 
         $itemsOftargetInvoice['total_tax'] = $total_tax;
         $itemsOftargetInvoice['item'] = $item;
         return [
             'id' => $targetInvoice['id'],
             'status' => $targetInvoice['status'],
-            'valuetotal' => $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount,
+            'valuetotal' => $total_value - $discountAmount - $seniorDeduction + $surchargeAmount + $serviceChargeAmount,
             'items' => json_encode($itemsOftargetInvoice),
             'total_tax' => $total_tax,
             'store_id' => $targetInvoice['store_id'],
