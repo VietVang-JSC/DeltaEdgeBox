@@ -422,14 +422,14 @@ class SplitMergeInvoiceController extends Controller
 
         $discountAmount = (float) ($original_invoice->discount ?? 0);
         $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
-        $baseForServiceCharge = $total_value - $discountAmount;
         $serviceChargePercent = (float) ($original_invoice->service_charge ?? 0);
-        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+        $baseForServiceCharge = $total_value - $discountAmount;
+        $serviceChargeAmount = round(max(0, $baseForServiceCharge) * $serviceChargePercent / 100);
 
         $seniorAmount = (float) ($original_invoice->senior_discount_amount ?? 0);
         if ($original_invoice->is_senior_discount && $seniorAmount > 0) {
             $baseForServiceCharge = $total_value - $seniorAmount - $discountAmount;
-            $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+            $serviceChargeAmount = round(max(0, $baseForServiceCharge) * $serviceChargePercent / 100);
         }
 
         return [
