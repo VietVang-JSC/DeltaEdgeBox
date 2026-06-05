@@ -246,10 +246,12 @@ class SplitMergeInvoiceController extends Controller
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
         $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false);
         $seniorAmount = (float) ($filters['senior_discount_amount'] ?? ($originalInvoice->senior_discount_amount ?? 0));
+        $isTaxInc = $store->is_tax_included ?? 0;
+        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
-        $baseForServiceCharge = $total_value - $discountAmount;
+        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
         if ($isSenior && $seniorAmount > 0) {
-            $baseForServiceCharge = $total_value - $seniorAmount - $discountAmount;
+            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
         }
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
@@ -423,13 +425,16 @@ class SplitMergeInvoiceController extends Controller
         $discountAmount = (float) ($original_invoice->discount ?? 0);
         $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
         $serviceChargePercent = (float) ($original_invoice->service_charge ?? 0);
-        $baseForServiceCharge = $total_value - $discountAmount;
-        $serviceChargeAmount = round(max(0, $baseForServiceCharge) * $serviceChargePercent / 100);
+        $storeOrig = Store::find($original_invoice->store_id);
+        $isTaxInc = $storeOrig->is_tax_included ?? 0;
+        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
+        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
         $seniorAmount = (float) ($original_invoice->senior_discount_amount ?? 0);
         if ($original_invoice->is_senior_discount && $seniorAmount > 0) {
-            $baseForServiceCharge = $total_value - $seniorAmount - $discountAmount;
-            $serviceChargeAmount = round(max(0, $baseForServiceCharge) * $serviceChargePercent / 100);
+            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
+            $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
         }
 
         return [
@@ -478,10 +483,12 @@ class SplitMergeInvoiceController extends Controller
         $typeDiscount = $filters['type_discount'] ?? 'amount';
         $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false);
         $seniorAmount = (float) ($filters['senior_discount_amount'] ?? ($originalInvoice ? ($originalInvoice->senior_discount_amount ?? 0) : 0));
+        $isTaxInc = $store->is_tax_included ?? 0;
+        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
-        $baseForServiceCharge = $total_value - $discountAmount;
+        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
         if ($isSenior && $seniorAmount > 0) {
-            $baseForServiceCharge = $total_value - $seniorAmount - $discountAmount;
+            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
         }
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
@@ -627,10 +634,13 @@ class SplitMergeInvoiceController extends Controller
         $surchargeAmount = (float) ($targetInvoice['surcharge'] ?? 0);
         $serviceChargePercent = (float) ($targetInvoice['service_charge'] ?? 0);
         $seniorAmount = (float) ($targetInvoice['senior_discount_amount'] ?? 0);
+        $storeTarget = Store::find($targetInvoice['store_id']);
+        $isTaxInc = $storeTarget->is_tax_included ?? 0;
+        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
-        $baseForServiceCharge = $total_value - $discountAmount;
+        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
         if (!empty($targetInvoice['is_senior_discount']) && $seniorAmount > 0) {
-            $baseForServiceCharge = $total_value - $seniorAmount - $discountAmount;
+            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
         }
         $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
