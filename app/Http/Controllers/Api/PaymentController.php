@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Inventory;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
+use App\Models\Product;
 use App\Models\Store;
 use App\Models\Table;
 use App\Services\SyncService;
@@ -21,6 +22,8 @@ class PaymentController extends Controller
 
     public function createPayment(Request $request)
     {
+        app()->setLocale($request->input('isCheckLanguage', 'vi'));
+
         $validator = Validator::make($request->all(), [
             'items' => ['required'],
         ]);
@@ -101,7 +104,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
-                'message' => 'api.payment_create',
+                'message' => __('api.payment_create'),
                 'data' => [
                     'payment' => $payment->toArray(),
                 ],
@@ -114,13 +117,15 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => 500,
-                'message' => 'api.ISError',
+                'message' => __('api.ISError'),
             ], 500);
         }
     }
 
     public function updatePayment(Request $request)
     {
+        app()->setLocale($request->input('isCheckLanguage', 'vi'));
+
         $validator = Validator::make($request->all(), [
             'id' => ['required'],
             'items' => ['required'],
@@ -216,7 +221,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
-                'message' => 'api.payment_update',
+                'message' => __('api.payment_update'),
                 'data' => [
                     'payment' => $payment->toArray(),
                 ],
@@ -235,7 +240,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => 500,
-                'message' => 'api.ISError',
+                'message' => __('api.ISError'),
             ], 500);
         }
     }
@@ -288,6 +293,12 @@ class PaymentController extends Controller
     private function deductInventoryForPayment(Payment $payment, array $items, int $storeId, int $userId): void
     {
         foreach ($items as $item) {
+            // Check if product requires inventory tracking
+            $product = Product::find($item['product_id']);
+            if ($product && (int)($product->inventory_required ?? 0) === 0) {
+                continue;
+            }
+
             $inventory = Inventory::where('store_id', $storeId)
                 ->where('product_id', $item['product_id'])
                 ->lockForUpdate()
@@ -330,6 +341,7 @@ class PaymentController extends Controller
                 'payment_id' => null,
                 'number_of_people' => 0,
                 'can_order' => 1,
+                'is_order_enabled' => 1,
                 'pin' => null,
             ]);
     }

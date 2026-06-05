@@ -125,6 +125,14 @@ class SyncService
             // Mark as syncing
             $item->update(['status' => 'syncing']);
 
+            if ($item->table_name === 'inputs') {
+                return $this->syncInputToCloud($item);
+            }
+
+            if ($item->table_name === 'outputs') {
+                return $this->syncOutputToCloud($item);
+            }
+
             // Build API endpoint
             $endpoint = "/api/cloud/sync";
             $url = rtrim($this->cloudApiUrl, '/') . $endpoint;
@@ -517,5 +525,162 @@ class SyncService
         // On failure, reset status to pending for retry
         SyncQueue::whereIn('id', $ids)->update(['status' => 'pending']);
         return ['success' => 0, 'failed' => count($ids)];
+    }
+
+    /**
+     * Custom sync handler for offline check-in transaction.
+     */
+    protected function syncInputToCloud(SyncQueue $item): bool
+    {
+        $startTime = microtime(true);
+
+        try {
+            $url = rtrim($this->cloudApiUrl, '/') . '/api/admin/input/addInvoiceInput';
+            $payload = json_decode($item->payload, true);
+            $inputCode = $payload['input_code'] ?? '';
+
+            Log::info("Syncing offline check-in transaction to Cloud BE. Code: {$inputCode}");
+
+            $response = Http::withHeaders([
+                'Authorization' => "Bearer {$this->apiKey}",
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'X-Store-ID' => $this->storeId,
+            ])->timeout(30)->post($url, $payload);
+
+            $duration = (microtime(true) - $startTime) * 1000;
+
+            if ($response->successful()) {
+                $responseBody = $response->json() ?? [];
+
+                if (isset($responseBody['status']) && $responseBody['status'] === true) {
+                    $invoice = $responseBody['invoice'] ?? [];
+                    $cloudInvoiceId = $invoice['id'] ?? 0;
+                    $cloudInvoiceCode = $invoice['input_code'] ?? '';
+
+                    // Cập nhật record local history với real ID và real code từ Cloud
+                    if ($cloudInvoiceId > 0 && !empty($inputCode)) {
+                        DB::table('inventory_histories')
+                            ->where('input_code', $inputCode)
+                            ->where('store_id', $item->store_id)
+                            ->update([
+                                'input_id' => $cloudInvoiceId,
+                                'input_code' => $cloudInvoiceCode
+                            ]);
+                        Log::info("Updated local histories from Code: {$inputCode} to Cloud Code: {$cloudInvoiceCode}, ID: {$cloudInvoiceId}");
+                    }
+
+                    $item->update([
+                        'status' => 'synced',
+                        'synced_at' => now(),
+                        'response_code' => $response->status(),
+                        'last_error' => null,
+                        'next_retry_at' => null,
+                    ]);
+
+                    $this->logSync($item, 'success', null, $duration);
+                    $this->decrementPendingCount();
+
+                    Log::info("Synced Offline Check-in successfully. Cloud Invoice Code: {$cloudInvoiceCode}");
+
+                    return true;
+                } else {
+                    throw new \Exception('Cloud rejected offline check-in sync: ' . ($responseBody['message'] ?? $response->body()));
+                }
+            } else {
+                throw new \Exception("HTTP {$response->status()}: {$response->body()}");
+            }
+        } catch (\Exception $e) {
+            $duration = (microtime(true) - $startTime) * 1000;
+            $item->update([
+                'status' => 'failed',
+                'last_error' => $e->getMessage(),
+                'response_code' => 500,
+            ]);
+
+            $this->logSync($item, 'failed', $e->getMessage(), $duration);
+            Log::error("Failed to sync offline check-in: " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Custom sync handler for offline checkout transaction.
+     * Directly posts the payload to Cloud BE Native createExportInvoice API.
+     */
+    protected function syncOutputToCloud(SyncQueue $item): bool
+    {
+        $startTime = microtime(true);
+
+        try {
+            $url = rtrim($this->cloudApiUrl, '/') . '/api/admin/output/create_export_invoice';
+            $payload = json_decode($item->payload, true);
+            $outputCode = $payload['output_code'] ?? '';
+
+            Log::channel('edge')->info("Syncing offline checkout transaction to Cloud BE. Code: {$outputCode}");
+
+            $response = Http::withHeaders([
+                'Authorization' => "Bearer {$this->apiKey}",
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'X-Store-ID' => $this->storeId,
+            ])->timeout(30)->post($url, $payload);
+
+            $duration = (microtime(true) - $startTime) * 1000;
+
+            if ($response->successful()) {
+                $responseBody = $response->json() ?? [];
+
+                if (isset($responseBody['status']) && $responseBody['status'] === true) {
+                    $invoice = $responseBody['invoice'] ?? [];
+                    $cloudInvoiceId = $invoice['id'] ?? 0;
+                    $cloudInvoiceCode = $invoice['output_code'] ?? '';
+
+                    // Cập nhật record local history với real ID và real code từ Cloud
+                    if ($cloudInvoiceId > 0 && !empty($outputCode)) {
+                        DB::table('inventory_histories')
+                            ->where('input_code', $outputCode)
+                            ->where('store_id', $item->store_id)
+                            ->update([
+                                'input_id' => $cloudInvoiceId,
+                                'input_code' => $cloudInvoiceCode
+                            ]);
+                        Log::channel('edge')->info("Updated local histories from Code: {$outputCode} to Cloud Code: {$cloudInvoiceCode}, ID: {$cloudInvoiceId}");
+                    }
+
+                    $item->update([
+                        'status' => 'synced',
+                        'synced_at' => now(),
+                        'response_code' => $response->status(),
+                        'last_error' => null,
+                        'next_retry_at' => null,
+                    ]);
+
+                    $this->logSync($item, 'success', null, $duration);
+                    $this->decrementPendingCount();
+
+                    Log::channel('edge')->info("Synced Offline Checkout successfully. Cloud Invoice Code: {$cloudInvoiceCode}");
+
+                    return true;
+                } else {
+                    throw new \Exception('Cloud rejected offline checkout sync: ' . ($responseBody['message'] ?? $response->body()));
+                }
+            } else {
+                throw new \Exception("HTTP {$response->status()}: {$response->body()}");
+            }
+        } catch (\Exception $e) {
+            $duration = (microtime(true) - $startTime) * 1000;
+            $item->update([
+                'status' => 'failed',
+                'last_error' => $e->getMessage(),
+                'response_code' => 500,
+            ]);
+
+            $this->logSync($item, 'failed', $e->getMessage(), $duration);
+            Log::channel('edge')->error("Failed to sync offline checkout: " . $e->getMessage());
+
+            return false;
+        }
     }
 }

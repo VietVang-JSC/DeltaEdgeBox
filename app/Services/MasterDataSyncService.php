@@ -12,6 +12,9 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Inventory;
 use App\Models\InventoryHistory;
+use App\Models\Agency;
+use App\Models\Types;
+use App\Models\ProductType;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -48,7 +51,10 @@ class MasterDataSyncService
                 || ProductTimePrice::count() == 0
                 || Store::count() == 0
                 || User::count() == 0
-                || Inventory::count() == 0;
+                || Inventory::count() == 0
+                || Agency::count() == 0
+                || Types::count() == 0
+                || ProductType::count() == 0;
 
             if ($hasEmptyTable) {
                 $lastSyncTime = null;
@@ -65,6 +71,9 @@ class MasterDataSyncService
                     User::max('updated_at'),
                     Inventory::max('updated_at'),
                     InventoryHistory::max('updated_at'),
+                    Agency::max('updated_at'),
+                    Types::max('updated_at'),
+                    ProductType::max('updated_at'),
                 ]);
                 $lastSyncTime = !empty($times) ? Carbon::parse(max($times))->toIso8601String() : null;
             }
@@ -135,14 +144,23 @@ class MasterDataSyncService
                     Table::updateOrCreate(
                         ['id' => $table['id']],
                         [
-                            'store_id'  => $table['store_id'],
-                            'name'      => $table['tablename'], 
-                            'status'    => $table['status'],
-                            'admin_id'  => $table['admin_id'] ?? null,
-                            'updated_at'=> $table['updated_at'] ?? now(),
-                            'code'      => $table['tablename'],
-                            'capacity'  => $table['number_of_people'] ?? 0,
-                            'note'      => $table['listitem'] ?? null,
+                            'store_id'         => $table['store_id'],
+                            'tablename'        => $table['tablename'],
+                            'status'           => $table['status'],
+                            'admin_id'         => $table['admin_id'] ?? null,
+                            'user_id'          => $table['user_id'] ?? null,
+                            'payment_id'       => $table['payment_id'] ?? null,
+                            'listitem'         => $table['listitem'] ?? null,
+                            'userordered'      => $table['userordered'] ?? null,
+                            'number_of_people' => $table['number_of_people'] ?? 0,
+                            'can_order'        => $table['can_order'] ?? 1,
+                            'is_order_enabled' => $table['is_order_enabled'] ?? 1,
+                            'qr_token'         => $table['qr_token'] ?? null,
+                            'qr_code'          => $table['qr_code'] ?? null,
+                            'lock_time'        => $table['lock_time'] ?? null,
+                            'pin'              => $table['pin'] ?? null,
+                            'booking_code'     => $table['booking_code'] ?? null,
+                            'updated_at'       => $table['updated_at'] ?? now(),
                         ]
                     );
                     } else {
@@ -418,6 +436,13 @@ class MasterDataSyncService
             try {
                 if (isset($data['inventory_histories'])) {
                     DB::beginTransaction();
+                    
+                    // Clean up synced local records to prevent duplicates before applying cloud updates
+                    $syncedInputCodes = array_unique(array_column($data['inventory_histories'], 'input_code'));
+                    if (!empty($syncedInputCodes)) {
+                        InventoryHistory::whereIn('input_code', $syncedInputCodes)->delete();
+                    }
+
                     foreach ($data['inventory_histories'] as $ih) {
                         $localProductId = $productMap[$ih['product_id']] ?? $ih['product_id'];
 
@@ -447,6 +472,96 @@ class MasterDataSyncService
                 DB::rollBack();
                 Log::error('Sync inventory_histories failed: ' . $e->getMessage());
                 $syncErrors['inventory_histories'] = $e->getMessage();
+            }
+
+            // Sync AGENCIES
+            try {
+                if (isset($data['agencies'])) {
+                    DB::beginTransaction();
+                    Log::info('Master sync: Start syncing agencies. Count from cloud: ' . count($data['agencies']));
+                    foreach ($data['agencies'] as $agency) {
+                        Agency::withTrashed()->updateOrCreate(
+                            ['id' => $agency['id']],
+                            [
+                                'store_id'       => $agency['store_id'] ?? $this->storeId,
+                                'code'           => $agency['code'],
+                                'name'           => $agency['name'],
+                                'contact_person' => $agency['contact_person'] ?? null,
+                                'contact_email'  => $agency['contact_email'] ?? null,
+                                'contact_number' => $agency['contact_number'] ?? null,
+                                'company_name'   => $agency['company_name'] ?? null,
+                                'company_tax'    => $agency['company_tax'] ?? null,
+                                'address'        => $agency['address'] ?? null,
+                                'note'           => $agency['note'] ?? null,
+                                'user_init'      => $agency['user_init'] ?? null,
+                                'user_upd'       => $agency['user_upd'] ?? null,
+                                'admin_id'       => $agency['admin_id'] ?? null,
+                                'created_at'     => $agency['created_at'] ?? now(),
+                                'updated_at'     => $agency['updated_at'] ?? now(),
+                                'deleted_at'     => $agency['deleted_at'] ?? null,
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['agencies'] = count($data['agencies']);
+                    Log::info('Sync agencies completed successfully.', ['count' => count($data['agencies'])]);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync agencies failed: ' . $e->getMessage());
+                $syncErrors['agencies'] = $e->getMessage();
+            }
+
+            // Sync TYPES
+            try {
+                if (isset($data['types'])) {
+                    DB::beginTransaction();
+                    foreach ($data['types'] as $type) {
+                        Types::updateOrCreate(
+                            ['id' => $type['id']],
+                            [
+                                'store_id'          => $type['store_id'],
+                                'product_type_name' => $type['product_type_name'],
+                                'admin_id'          => $type['admin_id'],
+                                'created_at'        => $type['created_at'] ?? now(),
+                                'updated_at'        => $type['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['types'] = count($data['types']);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync types failed: ' . $e->getMessage());
+                $syncErrors['types'] = $e->getMessage();
+            }
+
+            // Sync PRODUCT_TYPES
+            try {
+                if (isset($data['product_types'])) {
+                    DB::beginTransaction();
+                    foreach ($data['product_types'] as $pt) {
+                        ProductType::updateOrCreate(
+                            ['id' => $pt['id']],
+                            [
+                                'store_id'                     => $pt['store_id'],
+                                'product_type_id'              => $pt['product_type_id'],
+                                'product_type_attribute'       => $pt['product_type_attribute'],
+                                'product_type_attribute_value' => $pt['product_type_attribute_value'],
+                                'admin_id'                     => $pt['admin_id'],
+                                'created_at'                   => $pt['created_at'] ?? now(),
+                                'updated_at'                   => $pt['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['product_types'] = count($data['product_types']);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync product_types failed: ' . $e->getMessage());
+                $syncErrors['product_types'] = $e->getMessage();
             }
 
             // Log tổng kết sau mỗi sync
@@ -547,6 +662,8 @@ class MasterDataSyncService
         DB::transaction(function () use ($product, $dbProductId) {
             ProductTimePrice::where('product_id', $dbProductId)->delete();
             foreach ($product['time_prices'] ?? [] as $tp) {
+                // Xoá bản ghi trùng ID nếu có (tránh lỗi UNIQUE constraint failed khi ID bị lệch sở hữu hoặc đồng bộ ngắt quãng)
+                ProductTimePrice::where('id', $tp['id'])->delete();
                 ProductTimePrice::create([
                     'id' => $tp['id'],
                     'product_id' => $dbProductId,

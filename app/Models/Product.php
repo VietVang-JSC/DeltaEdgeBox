@@ -9,6 +9,8 @@ class Product extends Model
 {
     use HasFactory;
 
+    protected $with = ['inventory'];
+
     protected $fillable = [
         'store_id',
         'category_id',
@@ -91,5 +93,20 @@ class Product extends Model
     public function timePrices()
     {
         return $this->hasMany(ProductTimePrice::class);
+    }
+
+    public function inventory()
+    {
+        return $this->hasOne(Inventory::class, 'product_id', 'id')->select('id', 'product_id', 'quantity');
+    }
+
+    public function types()
+    {
+        return $this->belongsTo(Types::class, 'type_id', 'id')->select('id', 'product_type_name')->with('productTypes');
+    }
+
+    public function product_types()
+    {
+        return $this->hasMany(ProductType::class, 'product_type_id', 'type_id')->select('id', 'product_type_id', 'product_type_attribute', 'product_type_attribute_value');
     }
 }
