@@ -44,6 +44,12 @@ Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/queue', [SyncStatusController::class, 'queue']);
     Route::get('/logs', [SyncStatusController::class, 'logs']);
     Route::post('/trigger', [SyncStatusController::class, 'trigger']);
+
+    // Edge Sync Actions (Retry/Dismiss/Resolve) – throttle 30 req/min
+    Route::post('/retry-item', [SyncStatusController::class, 'retryQueueItem'])->middleware('throttle:60,1');
+    Route::post('/prioritize-item', [SyncStatusController::class, 'prioritizeQueueItem'])->middleware('throttle:60,1');
+    Route::post('/dismiss-item', [SyncStatusController::class, 'dismissFailedItem'])->middleware('throttle:60,1');
+    Route::post('/resolve-conflict', [SyncStatusController::class, 'resolveConflict'])->middleware('throttle:60,1');
 });
 
 
