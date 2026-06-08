@@ -44,6 +44,12 @@ Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/queue', [SyncStatusController::class, 'queue']);
     Route::get('/logs', [SyncStatusController::class, 'logs']);
     Route::post('/trigger', [SyncStatusController::class, 'trigger']);
+
+    // Edge Sync Actions (Retry/Dismiss/Resolve) – throttle 30 req/min
+    Route::post('/retry-item', [SyncStatusController::class, 'retryQueueItem'])->middleware('throttle:60,1');
+    Route::post('/prioritize-item', [SyncStatusController::class, 'prioritizeQueueItem'])->middleware('throttle:60,1');
+    Route::post('/dismiss-item', [SyncStatusController::class, 'dismissFailedItem'])->middleware('throttle:60,1');
+    Route::post('/resolve-conflict', [SyncStatusController::class, 'resolveConflict'])->middleware('throttle:60,1');
 });
 
 
@@ -83,6 +89,7 @@ Route::prefix('printers')->group(function () {
 Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
     Route::post('/update_payment', [PaymentController::class, 'updatePayment']);
+    Route::post('/get_sale_today', [PaymentController::class, 'getSaleToday']);
 });
 // View payment details for POS web
 Route::prefix('edge')->middleware('edge.api.key')->group(function () {
@@ -108,6 +115,13 @@ Route::prefix('inventory')->middleware('edge.api.key')->group(function () {
     Route::get('/history',    [InventoryController::class, 'history']);
     Route::post('/adjust',    [InventoryController::class, 'adjust']);
     Route::post('/restock',   [InventoryController::class, 'restock']);
+});
+
+// Cloud-compatible revenue API endpoints
+Route::prefix('admin/revenue')->middleware('edge.api.key')->group(function () {
+    Route::post('/get_revenue', [PaymentController::class, 'getRevenueToDayByAdminId']);
+    Route::post('/get_revenue_by_date', [PaymentController::class, 'getRevenueByDate']);
+    Route::post('/get_revenue_by_date_to_date', [PaymentController::class, 'getRevenueByDateToDate']);
 });
 
 // Cloud-compatible inventory API endpoints (warehouse UI)

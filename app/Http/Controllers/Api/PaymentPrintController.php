@@ -49,6 +49,14 @@ class PaymentPrintController extends Controller
         $payload['amount_received'] = $payload['final_total'] ?? 0;
         $payload['sub_total_before_discount'] = $payload['sub_total_before_discount'] ?? ($payload['total'] ?? 0);
         $payload['total_incl_vat_before_discount'] = $payload['total_incl_vat_before_discount'] ?? ($payload['total'] ?? 0);
+        $payload['is_senior_discount'] = $payload['is_senior_discount'] ?? false;
+        $payload['senior_discount_amount'] = $payload['senior_discount_amount'] ?? 0;
+        $payload['service_charge'] = $payload['service_charge'] ?? 0;
+        $payload['service_charge_amount'] = $payload['service_charge_amount'] ?? 0;
+        $payload['surcharge'] = $payload['surcharge'] ?? 0;
+        $payload['surcharge_percent'] = $payload['surcharge_percent'] ?? 0;
+        $payload['type_discount'] = $payload['type_discount'] ?? 'amount';
+        $payload['discount_percent'] = $payload['discount_percent'] ?? 0;
         $payload['table'] = $table ? $table->toArray() : null;
         $payload['user'] = $payment->user ? $payment->user->toArray() : null;
         $payload['store'] = $payment->store ? $payment->store->toArray() : null;

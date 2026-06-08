@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Inventory;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
+use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\Table;
@@ -63,6 +64,17 @@ class PaymentController extends Controller
                     'status' => $status,
                     'user_id' => $userId,
                     'admin_id' => $request->input('admin_id', $userId),
+                    'surcharge' => (float) $request->input('surcharge', 0),
+                    'surcharge_reason' => $request->input('surcharge_reason'),
+                    'surcharge_percent' => (int) $request->input('surcharge_percent', 0),
+                    'service_charge' => (int) $request->input('service_charge', 0),
+                    'service_charge_amount' => (float) $request->input('service_charge_amount', 0),
+                    'type_discount' => $request->input('type_discount', 'amount'),
+                    'discount_percent' => (int) $request->input('discount_percent', 0),
+                    'is_senior_discount' => $request->input('is_senior_discount', false),
+                    'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
+                    'sub_total_before_discount' => (float) $request->input('sub_total_before_discount', 0),
+                    'total_incl_vat_before_discount' => (float) $request->input('total_incl_vat_before_discount', 0),
                     'created_at' => $paymentTime,
                     'updated_at' => $paymentTime,
                 ]);
@@ -164,14 +176,15 @@ class PaymentController extends Controller
                     'customer_id' => $request->input('customer_id', $payment->customer_id),
                     'items' => $this->normalizeItemsPayload($request->input('items')),
                     'paid_date' => $status === self::STATUS_PAYMENT_ACTIVE ? $paymentTime : $payment->paid_date,
-                    'total' => $request->input('valuetotal', $summary['total']),
+                    'total' => round((float) $request->input('valuetotal', $summary['total'])),
                     'discount' => (float) $request->input('discount', 0),
                     'surcharge' => (float) $request->input('surcharge', 0),
                     'surcharge_reason' => $request->input('surcharge_reason'),
                     'surcharge_percent' => (int) $request->input('surcharge_percent', 0),
                     'service_charge' => (int) $request->input('service_charge', 0),
+                    'service_charge_amount' => (float) $request->input('service_charge_amount', 0),
                     'tax' => (float) $request->input('total_tax', 0),
-                    'final_total' => $request->input('amount_received', $request->input('valuetotal', $summary['total'])),
+                    'final_total' => round((float) $request->input('amount_received', $request->input('valuetotal', $summary['total']))),
                     'payment_method' => $request->input('payment_method', $payment->payment_method ?: 'cash'),
                     'note' => $request->input('reason'),
                     'status' => $status,
@@ -179,6 +192,10 @@ class PaymentController extends Controller
                     'admin_id' => $request->input('admin_id', $payment->admin_id ?: $userId),
                     'type_discount' => $request->input('type_discount', 'amount'),
                     'discount_percent' => (int) $request->input('discount_percent', 0),
+                    'is_senior_discount' => $request->input('is_senior_discount', false),
+                    'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
+                    'sub_total_before_discount' => (float) $request->input('sub_total_before_discount', 0),
+                    'total_incl_vat_before_discount' => (float) $request->input('total_incl_vat_before_discount', 0),
                     'updated_at' => $paymentTime,
                 ]);
                 $payment->save();
@@ -470,4 +487,369 @@ class PaymentController extends Controller
             ], 500);
         }
     }
+
+    public function getSaleToday(Request $request)
+    {
+        $language = $request->input('language', 'vi');
+        app()->setLocale($language);
+
+        Log::info('Edge getSaleToday: API request received', [
+            'store_id_request' => $request->input('store_id'),
+            'language' => $language,
+            'time' => now()->toDateTimeString()
+        ]);
+
+        try {
+            $storeId = (int) $request->input('store_id');
+            if (!$storeId) {
+                $storeId = (int) data_get($request->input('users', []), 'query.store_id');
+            }
+            if (!$storeId) {
+                $storeId = (int) config('app.store_id');
+            }
+            if (!$storeId) {
+                $storeId = (int) config('edge_box.store_id');
+            }
+            if (!$storeId) {
+                $store = Store::first();
+                $storeId = $store ? $store->id : 1;
+            }
+
+            Log::info('Edge getSaleToday: resolved store_id', ['store_id' => $storeId]);
+
+            $today = now()->toDateString();
+            
+            // Lấy các payment trong ngày để tính discount
+            $paymentInfo = Payment::whereDate('created_at', $today)
+                ->where('status', '!=', -1)
+                ->where('store_id', $storeId)
+                ->get();
+                
+            Log::info('Edge getSaleToday: fetched active payments for today', [
+                'date' => $today,
+                'count' => $paymentInfo->count()
+            ]);
+
+            $totalDiscount = 0;
+            foreach ($paymentInfo as $payment) {
+                if ($payment->discount > 0) {
+                    $totalDiscount += $payment->discount;
+                } else {
+                    $tmp = json_decode($payment->items);
+                    if (is_object($tmp) && property_exists($tmp, 'discountPayment')) {
+                        $discount = str_replace(",", "", $tmp->discountPayment);
+                        $totalDiscount += (int)$discount;
+                    }
+                }
+            }
+
+            Log::info('Edge getSaleToday: calculated total discount', ['total_discount' => $totalDiscount]);
+
+            // Lấy danh sách payment methods
+            $methods = PaymentMethod::where('store_id', $storeId)->get();
+            $methodValues = $methods->pluck('value')->all();
+            
+            Log::info('Edge getSaleToday: fetched payment methods', [
+                'methods_count' => $methods->count(),
+                'method_values' => $methodValues
+            ]);
+
+            $selectExpressions = [
+                DB::raw('COALESCE(SUM(total), 0) as total_amount'),
+                DB::raw('COALESCE(SUM(CASE WHEN status = 1 THEN total ELSE 0 END), 0) as paid_amount'),
+                DB::raw('COALESCE(SUM(CASE WHEN status = 0 THEN total ELSE 0 END), 0) as unpaid_amount'),
+                DB::raw('COALESCE(SUM(CASE WHEN status = -1 THEN total ELSE 0 END), 0) as deleted_amount'),
+                DB::raw('COALESCE(count(*), 0) as payment_count'),
+                DB::raw('COALESCE(SUM(CASE WHEN status = -1 THEN 1 ELSE 0 END), 0) as payment_deleted_count'),
+                DB::raw('COALESCE(SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END), 0) as payment_pending_count'),
+                DB::raw('COALESCE(SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END), 0) as payment_paided_count'),
+            ];
+
+            foreach ($methodValues as $val) {
+                $valInt = (int)$val;
+                $selectExpressions[] = DB::raw("COALESCE(SUM(CASE WHEN payment_method = $valInt AND status = 1 THEN total ELSE 0 END), 0) as payment_method_$valInt");
+            }
+
+            // Đảm bảo có default các phương thức 1, 2, 4 nếu FE map tĩnh
+            $defaultMethods = [1, 2, 4];
+            foreach ($defaultMethods as $valInt) {
+                if (!in_array($valInt, $methodValues)) {
+                    $selectExpressions[] = DB::raw("COALESCE(SUM(CASE WHEN payment_method = $valInt AND status = 1 THEN total ELSE 0 END), 0) as payment_method_$valInt");
+                }
+            }
+
+            $saleQuery = Payment::select($selectExpressions)
+                ->whereDate('created_at', $today)
+                ->where('store_id', $storeId)
+                ->first();
+
+            $saleData = $saleQuery ? $saleQuery->toArray() : [];
+
+            // Tính số lượng sản phẩm bán trong ngày
+            $productsSoldToday = PaymentDetail::join('payments', 'payment_details.payment_id', '=', 'payments.id')
+                ->where('payments.status', '=', 1)
+                ->whereDate('payment_details.created_at', $today)
+                ->where('payments.store_id', $storeId)
+                ->sum('payment_details.quantity');
+            
+            $totalUnpaidProducts = PaymentDetail::join('payments', 'payment_details.payment_id', '=', 'payments.id')
+                ->where('payments.status', '=', 0)
+                ->whereDate('payment_details.created_at', $today)
+                ->where('payments.store_id', $storeId)
+                ->sum('payment_details.quantity');
+
+            $productsCancelledToday = PaymentDetail::join('payments', 'payment_details.payment_id', '=', 'payments.id')
+                ->where('payments.status', '=', -1)
+                ->whereDate('payment_details.created_at', $today)
+                ->where('payments.store_id', $storeId)
+                ->sum('payment_details.quantity');
+
+            Log::info('Edge getSaleToday: calculated product metrics', [
+                'products_sold' => $productsSoldToday,
+                'products_unpaid' => $totalUnpaidProducts,
+                'products_cancelled' => $productsCancelledToday
+            ]);
+
+            // Map payment method names
+            $payment_method_customer = [];
+            foreach ($methods as $method) {
+                $val = (int)$method->value;
+                $payment_method_customer[] = [
+                    'id' => (string)$method->id,
+                    'name' => $method->name,
+                    'total_amount' => $saleData["payment_method_$val"] ?? 0,
+                ];
+            }
+
+            // Gộp dữ liệu
+            $saleData['totalDicount'] = $totalDiscount;
+            $saleData['productsSoldToday'] = (string)$productsSoldToday;
+            $saleData['productsCancelledToday'] = $productsCancelledToday;
+            $saleData['totalUnpaidProducts'] = $totalUnpaidProducts;
+            $saleData['payment_method_customer'] = $payment_method_customer;
+
+            Log::info('Edge getSaleToday: API call completed successfully', [
+                'total_amount' => $saleData['total_amount'] ?? 0,
+                'paid_amount' => $saleData['paid_amount'] ?? 0
+            ]);
+
+            return response()->json([
+                'status' => true,
+                'status_code' => 200,
+                'message' => __('api.revenue_get'),
+                'sale' => $saleData,
+            ], 200);
+
+        } catch (\Throwable $th) {
+            Log::error('Edge getSaleToday failed with exception', [
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString()
+            ]);
+            return response()->json([
+                'status' => false,
+                'status_code' => 500,
+                'message' => __('api.ISError'),
+            ], 500);
+        }
+    }
+
+    public function getRevenueToDayByAdminId(Request $request)
+    {
+        $language = $request->input('isCheckLanguage', 'vi');
+        app()->setLocale($language);
+
+        Log::info('Edge getRevenueToDayByAdminId: API request received', [
+            'store_id_request' => $request->input('store_id'),
+            'language' => $language,
+            'time' => now()->toDateTimeString()
+        ]);
+
+        try {
+            $storeId = (int) $request->input('store_id');
+            if (!$storeId) {
+                $storeId = (int) config('app.store_id');
+            }
+            if (!$storeId) {
+                $storeId = (int) config('edge_box.store_id');
+            }
+            if (!$storeId) {
+                $store = Store::first();
+                $storeId = $store ? $store->id : 1;
+            }
+
+            Log::info('Edge getRevenueToDayByAdminId: resolved store_id', ['store_id' => $storeId]);
+
+            $today = now()->toDateString();
+            
+            // Tính tổng total của các payment có status = 1 (đã thanh toán) trong ngày hôm nay
+            $totalRevenue = Payment::where('store_id', $storeId)
+                ->where('status', 1)
+                ->whereDate('created_at', $today)
+                ->sum('total');
+
+            Log::info('Edge getRevenueToDayByAdminId completed successfully', [
+                'date' => $today,
+                'total_revenue' => $totalRevenue
+            ]);
+
+            return response()->json([
+                'status' => true,
+                'status_code' => 200,
+                'message' => __('api.revenue_get'),
+                'revenue' => (float)$totalRevenue,
+            ], 200);
+
+        } catch (\Throwable $th) {
+            Log::error('Edge getRevenueToDayByAdminId failed with exception', [
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString()
+            ]);
+            return response()->json([
+                'status' => false,
+                'status_code' => 500,
+                'message' => __('api.ISError'),
+            ], 500);
+        }
+    }
+
+    public function getRevenueByDate(Request $request)
+    {
+        $language = $request->input('isCheckLanguage', 'vi');
+        app()->setLocale($language);
+
+        $date = $request->input('date');
+
+        Log::info('Edge getRevenueByDate: API request received', [
+            'date' => $date,
+            'store_id_request' => $request->input('store_id'),
+            'language' => $language,
+            'time' => now()->toDateTimeString()
+        ]);
+
+        if (empty($date)) {
+            return response()->json([
+                'status' => false,
+                'status_code' => 400,
+                'message' => 'Date is required',
+            ], 400);
+        }
+
+        try {
+            $storeId = (int) $request->input('store_id');
+            if (!$storeId) {
+                $storeId = (int) config('app.store_id');
+            }
+            if (!$storeId) {
+                $storeId = (int) config('edge_box.store_id');
+            }
+            if (!$storeId) {
+                $store = Store::first();
+                $storeId = $store ? $store->id : 1;
+            }
+
+            Log::info('Edge getRevenueByDate: resolved store_id', ['store_id' => $storeId]);
+
+            // Tính tổng total của các payment có status = 1 (đã thanh toán) trong ngày được chọn
+            $totalRevenue = Payment::where('store_id', $storeId)
+                ->where('status', 1)
+                ->whereDate('created_at', $date)
+                ->sum('total');
+
+            Log::info('Edge getRevenueByDate completed successfully', [
+                'date' => $date,
+                'total_revenue' => $totalRevenue
+            ]);
+
+            return response()->json([
+                'status' => true,
+                'status_code' => 200,
+                'message' => __('api.revenue_get'),
+                'revenue' => (float)$totalRevenue,
+            ], 200);
+
+        } catch (\Throwable $th) {
+            Log::error('Edge getRevenueByDate failed with exception', [
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString()
+            ]);
+            return response()->json([
+                'status' => false,
+                'status_code' => 500,
+                'message' => __('api.ISError'),
+            ], 500);
+        }
+    }
+
+    public function getRevenueByDateToDate(Request $request)
+    {
+        $language = $request->input('isCheckLanguage', 'vi');
+        app()->setLocale($language);
+
+        $dateStart = $request->input('date_start');
+        $dateEnd = $request->input('date_end');
+
+        Log::info('Edge getRevenueByDateToDate: API request received', [
+            'date_start' => $dateStart,
+            'date_end' => $dateEnd,
+            'store_id_request' => $request->input('store_id'),
+            'language' => $language,
+            'time' => now()->toDateTimeString()
+        ]);
+
+        if (empty($dateStart) || empty($dateEnd)) {
+            return response()->json([
+                'status' => false,
+                'status_code' => 400,
+                'message' => 'date_start and date_end are required',
+            ], 400);
+        }
+
+        try {
+            $storeId = (int) $request->input('store_id');
+            if (!$storeId) {
+                $storeId = (int) config('app.store_id');
+            }
+            if (!$storeId) {
+                $storeId = (int) config('edge_box.store_id');
+            }
+            if (!$storeId) {
+                $store = Store::first();
+                $storeId = $store ? $store->id : 1;
+            }
+
+            Log::info('Edge getRevenueByDateToDate: resolved store_id', ['store_id' => $storeId]);
+
+            // Tính tổng total của các payment có status = 1 (đã thanh toán) trong khoảng ngày được chọn
+            $totalRevenue = Payment::where('store_id', $storeId)
+                ->where('status', 1)
+                ->whereDate('created_at', '>=', $dateStart)
+                ->whereDate('created_at', '<=', $dateEnd)
+                ->sum('total');
+
+            Log::info('Edge getRevenueByDateToDate completed successfully', [
+                'date_start' => $dateStart,
+                'date_end' => $dateEnd,
+                'total_revenue' => $totalRevenue
+            ]);
+
+            return response()->json([
+                'status' => true,
+                'status_code' => 200,
+                'message' => __('api.revenue_get'),
+                'revenue' => (float)$totalRevenue,
+            ], 200);
+
+        } catch (\Throwable $th) {
+            Log::error('Edge getRevenueByDateToDate failed with exception', [
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString()
+            ]);
+            return response()->json([
+                'status' => false,
+                'status_code' => 500,
+                'message' => __('api.ISError'),
+            ], 500);
+        }
+    }
 }
+
