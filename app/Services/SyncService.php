@@ -213,7 +213,7 @@ class SyncService
         }
     }
 
-    protected function syncDependencyOrderSql(): string
+    public function syncDependencyOrderSql(): string
     {
         return "CASE table_name
             WHEN 'products' THEN 10
@@ -465,6 +465,10 @@ class SyncService
     public function getSyncStatus(): array
     {
         $metadata = SyncMetadata::where('store_id', $this->storeId)->first();
+        $queueCounts = SyncQueue::where('store_id', $this->storeId)
+            ->select('status', DB::raw('count(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status');
         $cloudStatus = null;
         try{  
                 $response = Http::withHeaders([
@@ -480,7 +484,9 @@ class SyncService
             'store_id' => $this->storeId,
             'is_online' => $this->isOnline(),
             'sync_status' => $metadata?->sync_status ?? 'idle',
-            'pending_count' => $metadata?->pending_records_count ?? 0,
+            'pending_count' => (int) ($queueCounts['pending'] ?? 0),
+            'retrying_count' => (int) ($queueCounts['retrying'] ?? 0),
+            'failed_count' => (int) ($queueCounts['failed'] ?? 0),
             'unresolved_conflicts_count' => SyncConflict::where('store_id', $this->storeId)
                 ->where('resolution_status', 'unresolved')
                 ->count(),
