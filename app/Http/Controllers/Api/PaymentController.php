@@ -193,6 +193,8 @@ class PaymentController extends Controller
                     'discount_percent' => (int) $request->input('discount_percent', 0),
                     'is_senior_discount' => $request->input('is_senior_discount', false),
                     'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
+                    'sub_total_before_discount' => (float) $request->input('sub_total_before_discount', 0),
+                    'total_incl_vat_before_discount' => (float) $request->input('total_incl_vat_before_discount', 0),
                     'updated_at' => $paymentTime,
                 ]);
                 $payment->save();
