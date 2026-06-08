@@ -55,7 +55,7 @@ class Product extends Model
         'sale_price' => 'double',
         'quantity' => 'integer',
         'unit' => 'integer',
-        'status' => 'boolean',
+        'status' => 'integer',
         'is_combo' => 'boolean',
         'admin_id' => 'integer',
         'is_restricted_time' => 'boolean',
