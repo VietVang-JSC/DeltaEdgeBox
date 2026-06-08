@@ -436,17 +436,21 @@ class SplitMergeInvoiceController extends Controller
         $storeOrig = Store::find($original_invoice->store_id);
         $isTaxInc = $storeOrig->is_tax_included ?? 0;
         $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
-        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
-        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
         $seniorAmount = (float) ($original_invoice->senior_discount_amount ?? 0);
         $isSeniorActive = $original_invoice->is_senior_discount && $seniorAmount > 0;
-        if ($isSeniorActive) {
-            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
-            $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+        $afterSenior = $scBaseTotal - $seniorDeduction;
+
+        // Recalculate discount on afterSenior for percent (RA 9994)
+        $typeDiscount = $original_invoice->type_discount ?? 'amount';
+        if ($isSeniorActive && $typeDiscount === 'percent') {
+            $discPct = (float) ($original_invoice->discount_percent ?? 0);
+            $discountAmount = round($afterSenior * $discPct / 100);
         }
 
-        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
+        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
         return [
             'id' => $original_invoice->id,
@@ -656,14 +660,19 @@ class SplitMergeInvoiceController extends Controller
         $isTaxInc = $storeTarget->is_tax_included ?? 0;
         $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
 
-        $baseForServiceCharge = max(0, $scBaseTotal - $discountAmount);
         $isSeniorActive = !empty($targetInvoice['is_senior_discount']) && $seniorAmount > 0;
-        if ($isSeniorActive) {
-            $baseForServiceCharge = max(0, $scBaseTotal - $seniorAmount - $discountAmount);
-        }
-        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
-
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+        $afterSenior = $scBaseTotal - $seniorDeduction;
+
+        // Recalculate discount on afterSenior for percent (RA 9994)
+        $typeDiscount = $targetInvoice['type_discount'] ?? 'amount';
+        if ($isSeniorActive && $typeDiscount === 'percent') {
+            $discPct = (float) ($targetInvoice['discount_percent'] ?? 0);
+            $discountAmount = round($afterSenior * $discPct / 100);
+        }
+
+        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
+        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
 
         $itemsOftargetInvoice['total_tax'] = $total_tax;
         $itemsOftargetInvoice['item'] = $item;
