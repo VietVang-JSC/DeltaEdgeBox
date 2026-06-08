@@ -547,6 +547,7 @@ class SplitMergeInvoiceController extends Controller
 
     private function createPaymentLocal($data)
     {
+        $amountReceived = isset($data['amount_received']) ? round((float) $data['amount_received']) : null;
         $payment = Payment::create([
             'payment_code' => $data['payment_code'],
             'store_id' => $data['store_id'],
@@ -554,10 +555,10 @@ class SplitMergeInvoiceController extends Controller
             'customer_id' => $data['customer_id'],
             'items' => $data['items'],
             'paid_date' => now(),
-            'total' => $data['amount_received'] ?? $data['valuetotal'] ?? 0,
+            'total' => $amountReceived ?? round((float) ($data['valuetotal'] ?? 0)),
             'discount' => (float) ($data['discount'] ?? 0),
             'tax' => (float) ($data['total_tax'] ?? 0),
-            'final_total' => $data['amount_received'] ?? $data['valuetotal'] ?? 0,
+            'final_total' => $amountReceived ?? round((float) ($data['valuetotal'] ?? 0)),
             'payment_method' => $data['payment_method'] ?? 'cash',
             'note' => $data['reason'] ?? null,
             'status' => $data['status'],
