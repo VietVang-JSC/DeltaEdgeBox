@@ -89,7 +89,7 @@ class MasterDataSyncService
                 'Accept'        => 'application/json',
                 'X-Store-ID'    => $this->storeId,
             ])
-            ->timeout(15)
+            ->timeout(60)
             ->post(
                 rtrim($this->cloudApiUrl, '/') . '/api/edge-cloud/master-sync',
                 [
