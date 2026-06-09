@@ -41,7 +41,7 @@ class PaymentPrintController extends Controller
             return response()->json(['status' => false, 'message' => 'payment_id is required'], 400);
         }
 
-        $payment = Payment::with(['details', 'store', 'user'])->find($paymentId);
+        $payment = Payment::with(['table', 'user', 'store', 'details.product'])->find($paymentId);
         if (!$payment) {
             return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
         }
@@ -50,21 +50,13 @@ class PaymentPrintController extends Controller
         $language = $request->input('language', 'vi');
         app()->setLocale($language);
 
-        $paymentData = $payment->toArray();
+        // Use paymentPayload() for 100% consistent format with cloud API
+        $paymentData = $this->paymentPayload($payment);
         $paymentData['created_at'] = date('d-m-Y H:i:s', strtotime($payment->created_at));
         $paymentData['updated_at'] = date('d-m-Y H:i:s', strtotime($payment->updated_at));
-        $paymentData['payment_details'] = $payment->details->map(function ($d) {
-            $payload = $d->toArray();
-            $product = $d->product;
-            $payload['products'] = $product ? [
-                'id' => $product->id,
-                'title' => $product->name,
-                'name' => $product->name,
-                'code' => $product->code,
-                'vat' => $product->vat ?? 0,
-            ] : ['id' => $d->product_id, 'title' => '', 'name' => '', 'code' => '', 'vat' => 0];
-            return $payload;
-        })->toArray();
+
+        // Generate QR image if needed (use blank for now)
+        $qrImagePath = '';
 
         $paperSize = $request->input('paper_size', '80');
         $tpl = 'invoice.template_invoice_' . $language . '_' . $paperSize;
@@ -78,7 +70,7 @@ class PaymentPrintController extends Controller
                 'bill_setting' => [],
                 'data_bank_payment' => [],
                 'is_tax_included' => $store ? ($store->is_tax_included ?? false) : false,
-                'qrImagePath' => '',
+                'qrImagePath' => $qrImagePath,
             ])->render();
         } catch (\Throwable $th) {
             Log::error('Edge print template render failed', ['error' => $th->getMessage()]);
