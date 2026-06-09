@@ -176,6 +176,13 @@ class TableController extends Controller
                 $listitem = $this->normalizeListItem($request->input('listitem'));
                 $items = $this->decodeItems($listitem);
                 $summary = $this->summarizeItems($items, $request);
+
+                Log::debug('Edge updateOrder items', [
+                    'table_id' => $table->id,
+                    'items_count' => count($items),
+                    'first_item' => $items[0] ?? null,
+                ]);
+
                 $payment = $this->upsertPendingPayment($request, $table, $items, $summary);
 
                 $table->fill([
@@ -205,7 +212,11 @@ class TableController extends Controller
                 ],
             ]);
         } catch (\Throwable $th) {
-            Log::error('Edge table update order failed', ['error' => $th->getMessage()]);
+            Log::error('Edge table update order failed', [
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString(),
+                'request_id' => $request->input('id'),
+            ]);
 
             return $this->error('api.ISError', 500);
         }
