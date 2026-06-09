@@ -579,6 +579,7 @@ class MasterDataSyncService
                         Payment::updateOrCreate(
                             ['id' => $paymentId],
                             [
+                                'paid_date'                    => $pmt['paid_date'] ?? $pmt['created_at'] ?? now(),
                                 'store_id'                     => $pmt['store_id'],
                                 'table_id'                     => $pmt['table_id'] ?? null,
                                 'customer_id'                  => $pmt['customer_id'] ?? 0,
