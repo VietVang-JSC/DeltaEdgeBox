@@ -701,6 +701,56 @@ class PaymentController extends Controller
         ]);
     }
 
+    public function getPaymentByRequest(Request $request)
+    {
+        $id = $request->input('id', $request->input('payment_id'));
+        if (!$id) {
+            return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Payment ID required'], 400);
+        }
+        return $this->getPayment($id);
+    }
+
+    public function getPaymentByTable(Request $request)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $tableId = $request->input('table_id', $request->input('id'));
+            if (!$tableId) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Table ID required'], 400);
+            }
+            $table = \App\Models\Table::with('payment.details')->where('store_id', $storeId)->where('id', $tableId)->first();
+            if (!$table || !$table->payment) {
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'No payment found for table'], 404);
+            }
+            return response()->json([
+                'status' => true,
+                'data_table' => [$table->toArray()],
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getPaymentByTable failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
+    public function getAllPaymentForUserNew(Request $request)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $payments = Payment::with('details')
+                ->where('store_id', $storeId)
+                ->where('status', 0)
+                ->orderBy('created_at', 'desc')
+                ->get();
+            return response()->json([
+                'status' => true,
+                'data_table' => $payments->toArray(),
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getAllPaymentForUserNew failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
     public function getRevenueToDayByAdminId(Request $request)
     {
         $language = $request->input('isCheckLanguage', 'vi');

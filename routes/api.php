@@ -102,6 +102,9 @@ Route::prefix('edge')->middleware('edge.api.key')->group(function () {
 
 Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/is_printed', [PaymentController::class, 'checkIsPrinted']);
+    Route::post('/get_payment', [PaymentController::class, 'getPaymentByRequest']);
+    Route::post('/get_payment_by_table', [PaymentController::class, 'getPaymentByTable']);
+    Route::post('/get_all_payment_for_user_new', [PaymentController::class, 'getAllPaymentForUserNew']);
 });
 
 Route::prefix('payment')->middleware('edge.api.key')->group(function () {
@@ -205,6 +208,9 @@ Route::prefix('admin/product')->middleware('edge.api.key')->group(function () {
     Route::post('/search', [PosWebFilterController::class, 'searchProducts']);
 });
 Route::post('/user/product/search_products', [PosWebFilterController::class, 'searchProducts'])->middleware('edge.api.key');
+Route::post('/user/product/get_product_list', [PosWebFilterController::class, 'getProductList'])->middleware('edge.api.key');
+Route::post('/user/category/get_category', [PosWebFilterController::class, 'getCategory'])->middleware('edge.api.key');
+Route::post('/user/customer/get_all_customer', [PosWebFilterController::class, 'getAllCustomer'])->middleware('edge.api.key');
 
 Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function () {
     Route::get('/getServedStatus', [TableController::class, 'getServedStatus']);

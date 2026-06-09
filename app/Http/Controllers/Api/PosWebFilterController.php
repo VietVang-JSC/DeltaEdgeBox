@@ -619,4 +619,34 @@ class PosWebFilterController extends Controller
             ], 500);
         }
     }
+
+    public function getProductList(Request $request)
+    {
+        $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id ?? 1;
+        $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory')
+            ->where('store_id', $storeId)->where('status', 1)->where('is_show', 1)->orderBy('sort_rank')->get();
+        return response()->json([
+            'status' => true,
+            'data' => $products->map(function ($p) {
+                $data = $p->toArray();
+                $data['product_code'] = $p->code;
+                $data['price_after_tax'] = $p->price_after_tax ?? $p->price;
+                return $data;
+            }),
+        ]);
+    }
+
+    public function getCategory(Request $request)
+    {
+        $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id ?? 1;
+        $categories = \App\Models\Category::where('store_id', $storeId)->where('status', 1)->orderBy('sort_order')->get();
+        return response()->json(['status' => true, 'data' => $categories]);
+    }
+
+    public function getAllCustomer(Request $request)
+    {
+        $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id ?? 1;
+        $customers = \App\Models\Customer::where('store_id', $storeId)->orderBy('name')->get();
+        return response()->json(['status' => true, 'data' => $customers]);
+    }
 }
