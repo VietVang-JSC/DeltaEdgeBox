@@ -157,7 +157,7 @@ Route::prefix('admin/output')->middleware('edge.api.key')->group(function () {
 // Legacy POS table compatibility endpoints
 Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
     Route::get('/list', [TableController::class, 'index']);
-    Route::get('/get_table/{id?}', [TableController::class, 'show']);
+    Route::match(['GET', 'POST'], '/get_table/{id?}', [TableController::class, 'show']);
     Route::post('/check_in_table', [TableController::class, 'checkIn']);
     Route::post('/check_out_table_new', [TableController::class, 'checkOut']);
     Route::post('/update_order_table', [TableController::class, 'updateOrder']);
