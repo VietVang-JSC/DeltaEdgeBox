@@ -15,6 +15,8 @@ use App\Models\InventoryHistory;
 use App\Models\Agency;
 use App\Models\Types;
 use App\Models\ProductType;
+use App\Models\Payment;
+use App\Models\PaymentDetail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -93,6 +95,7 @@ class MasterDataSyncService
                 [
                     'store_id' => $this->storeId,
                     'last_sync_time' => $lastSyncTime,
+                    'sync_days' => 90,
                 ]
             );
 
@@ -562,6 +565,82 @@ class MasterDataSyncService
                 DB::rollBack();
                 Log::error('Sync product_types failed: ' . $e->getMessage());
                 $syncErrors['product_types'] = $e->getMessage();
+            }
+
+            // Sync PAYMENTS
+            try {
+                if (isset($data['payments'])) {
+                    DB::beginTransaction();
+                    $syncedCount = 0;
+                    foreach ($data['payments'] as $pmt) {
+                        $paymentId = $pmt['id'];
+                        $paymentDetails = $pmt['payment_details'] ?? ($pmt['paymentDetails'] ?? []);
+
+                        Payment::updateOrCreate(
+                            ['id' => $paymentId],
+                            [
+                                'store_id'                     => $pmt['store_id'],
+                                'table_id'                     => $pmt['table_id'] ?? null,
+                                'customer_id'                  => $pmt['customer_id'] ?? 0,
+                                'user_id'                      => $pmt['user_id'] ?? 0,
+                                'admin_id'                     => $pmt['admin_id'] ?? 0,
+                                'payment_code'                 => $pmt['payment_code'] ?? ('PMT-' . $paymentId),
+                                'reason'                       => $pmt['reason'] ?? '',
+                                'items'                        => $pmt['items'] ?? '',
+                                'total'                        => $pmt['valuetotal'] ?? $pmt['total'] ?? 0,
+                                'final_total'                  => $pmt['valuetotal'] ?? $pmt['final_total'] ?? 0,
+                                'discount'                     => $pmt['discount'] ?? 0,
+                                'surcharge'                    => $pmt['surcharge'] ?? 0,
+                                'surcharge_reason'             => $pmt['surcharge_reason'] ?? $pmt['reasonSurcharge'] ?? '',
+                                'surcharge_percent'            => $pmt['surcharge_percent'] ?? 0,
+                                'service_charge'               => $pmt['service_charge'] ?? 0,
+                                'service_charge_amount'        => $pmt['service_charge_amount'] ?? 0,
+                                'tax'                          => $pmt['total_tax'] ?? $pmt['tax'] ?? 0,
+                                'payment_method'               => $pmt['payment_method'] ?? '',
+                                'status'                       => $pmt['status'] ?? 1,
+                                'type_discount'                => $pmt['type_discount'] ?? 'amount',
+                                'discount_percent'             => $pmt['discount_percent'] ?? 0,
+                                'is_senior_discount'           => $pmt['is_senior_discount'] ?? 0,
+                                'senior_discount_amount'       => $pmt['senior_discount_amount'] ?? 0,
+                                'parent_id'                    => $pmt['parent_id'] ?? null,
+                                'sub_total_before_discount'    => $pmt['sub_total_before_discount'] ?? $pmt['sub_total'] ?? 0,
+                                'total_incl_vat_before_discount' => $pmt['total_incl_vat_before_discount'] ?? 0,
+                                'created_at'                   => $pmt['created_at'] ?? now(),
+                                'updated_at'                   => $pmt['updated_at'] ?? now(),
+                            ]
+                        );
+
+                        // Sync payment details
+                        if (!empty($paymentDetails)) {
+                            PaymentDetail::where('payment_id', $paymentId)->delete();
+                            foreach ($paymentDetails as $pd) {
+                                PaymentDetail::create([
+                                    'payment_id'                     => $paymentId,
+                                    'product_id'                     => $pd['product_id'] ?? 0,
+                                    'product_key'                    => $pd['product_key'] ?? $pd['product_code'] ?? '',
+                                    'quantity'                       => $pd['quantity'] ?? 1,
+                                    'price'                          => $pd['price'] ?? 0,
+                                    'total'                          => $pd['total'] ?? ($pd['price'] ?? 0) * ($pd['quantity'] ?? 1),
+                                    'note'                           => $pd['note'] ?? '',
+                                    'detail_discount'                => $pd['detail_discount'] ?? 0,
+                                    'tax_amount'                     => $pd['tax_amount'] ?? 0,
+                                    'detail_discount_excluding_tax'  => $pd['detail_discount_excluding_tax'] ?? 0,
+                                    'unit_price_excluding_tax'       => $pd['unit_price_excluding_tax'] ?? 0,
+                                    'discounted_price_excluding_tax' => $pd['discounted_price_excluding_tax'] ?? 0,
+                                    'store_id'                       => $pmt['store_id'],
+                                    'admin_id'                       => $pmt['admin_id'] ?? 0,
+                                ]);
+                            }
+                        }
+                        $syncedCount++;
+                    }
+                    DB::commit();
+                    $syncResults['payments'] = $syncedCount;
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync payments failed: ' . $e->getMessage());
+                $syncErrors['payments'] = $e->getMessage();
             }
 
             // Log tổng kết sau mỗi sync
