@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
+use App\Models\Store;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PaymentPrintController extends Controller
 {
@@ -39,14 +41,53 @@ class PaymentPrintController extends Controller
             return response()->json(['status' => false, 'message' => 'payment_id is required'], 400);
         }
 
-        $payment = Payment::with('details')->find($paymentId);
+        $payment = Payment::with(['details', 'store', 'user'])->find($paymentId);
         if (!$payment) {
             return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
         }
 
+        $store = $payment->store;
+        $language = $request->input('language', 'vi');
+        app()->setLocale($language);
+
+        $paymentData = $payment->toArray();
+        $paymentData['created_at'] = date('d-m-Y H:i:s', strtotime($payment->created_at));
+        $paymentData['updated_at'] = date('d-m-Y H:i:s', strtotime($payment->updated_at));
+        $paymentData['payment_details'] = $payment->details->map(function ($d) {
+            $payload = $d->toArray();
+            $product = $d->product;
+            $payload['products'] = $product ? [
+                'id' => $product->id,
+                'title' => $product->name,
+                'name' => $product->name,
+                'code' => $product->code,
+                'vat' => $product->vat ?? 0,
+            ] : ['id' => $d->product_id, 'title' => '', 'name' => '', 'code' => '', 'vat' => 0];
+            return $payload;
+        })->toArray();
+
+        $paperSize = $request->input('paper_size', '80');
+        $tpl = 'invoice.template_invoice_' . $language . '_' . $paperSize;
+        if (!view()->exists($tpl)) {
+            $tpl = 'invoice.template_invoice_vi_80';
+        }
+
+        try {
+            $html = view($tpl, [
+                'payment' => $paymentData,
+                'bill_setting' => [],
+                'data_bank_payment' => [],
+                'is_tax_included' => $store ? ($store->is_tax_included ?? false) : false,
+                'qrImagePath' => '',
+            ])->render();
+        } catch (\Throwable $th) {
+            Log::error('Edge print template render failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => 'Print render failed'], 500);
+        }
+
         return response()->json([
             'status' => true,
-            'data' => view('invoice.print', ['payment' => $payment])->render(),
+            'data' => $html,
         ]);
     }
 
