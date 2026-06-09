@@ -42,7 +42,12 @@ class TableController extends Controller
             return $this->error('api.table_empty', 404);
         }
 
-        return $this->success('api.table_get', ['data_table' => [$this->tablePayload($table)]]);
+        return response()->json([
+            'status' => true,
+            'status_code' => 200,
+            'message' => __('api.table_get'),
+            'data' => ['data_table' => [$this->tablePayload($table)]],
+        ]);
     }
 
     public function checkIn(Request $request)
