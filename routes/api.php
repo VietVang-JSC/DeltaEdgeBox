@@ -90,6 +90,7 @@ Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
     Route::post('/update_payment', [PaymentController::class, 'updatePayment']);
     Route::post('/get_sale_today', [PaymentController::class, 'getSaleToday']);
+    Route::post('/list_open', [PaymentController::class, 'listOpen']);
 });
 // View payment details for POS web
 Route::prefix('edge')->middleware('edge.api.key')->group(function () {

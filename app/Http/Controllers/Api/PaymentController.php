@@ -653,6 +653,26 @@ class PaymentController extends Controller
         }
     }
 
+    public function listOpen(Request $request)
+    {
+        app()->setLocale($request->input('isCheckLanguage', 'vi'));
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $payments = Payment::with('details')
+                ->where('store_id', $storeId)
+                ->where('status', 0)
+                ->orderBy('created_at', 'desc')
+                ->get();
+            return response()->json([
+                'status' => true,
+                'data' => $payments,
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge listOpen failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
     public function getRevenueToDayByAdminId(Request $request)
     {
         $language = $request->input('isCheckLanguage', 'vi');
