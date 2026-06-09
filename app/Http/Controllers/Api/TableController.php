@@ -310,6 +310,17 @@ class TableController extends Controller
             'note' => $request->input('reason'),
             'status' => (int) $request->input('status', self::PAYMENT_PENDING),
             'user_id' => $this->userId($request),
+            'type_discount' => $request->input('type_discount', 'amount'),
+            'discount_percent' => (int) $request->input('discount_percent', 0),
+            'surcharge' => (float) $request->input('surcharge', 0),
+            'surcharge_percent' => (int) $request->input('surcharge_percent', 0),
+            'surcharge_reason' => $request->input('surcharge_reason'),
+            'service_charge' => (int) $request->input('service_charge', 0),
+            'service_charge_amount' => (float) $request->input('service_charge_amount', 0),
+            'is_senior_discount' => $request->input('is_senior_discount', false),
+            'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
+            'sub_total_before_discount' => (float) $request->input('sub_total_before_discount', 0),
+            'total_incl_vat_before_discount' => (float) $request->input('total_incl_vat_before_discount', 0),
         ];
 
         if ($payment) {
