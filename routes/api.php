@@ -204,6 +204,7 @@ Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
 Route::prefix('admin/product')->middleware('edge.api.key')->group(function () {
     Route::post('/search', [PosWebFilterController::class, 'searchProducts']);
 });
+Route::post('/user/product/search_products', [PosWebFilterController::class, 'searchProducts'])->middleware('edge.api.key');
 
 Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function () {
     Route::get('/getServedStatus', [TableController::class, 'getServedStatus']);
