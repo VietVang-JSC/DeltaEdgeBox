@@ -103,15 +103,11 @@ class PaymentController extends Controller
                 return $payment->load('details');
             });
 
-            app()->terminating(function () {
-                try {
-                    app(SyncService::class)->processQueue(10);
-                } catch (\Throwable $th) {
-                    Log::warning('Edge payment post-response sync failed', [
-                        'error' => $th->getMessage(),
-                    ]);
-                }
-            });
+            try {
+                app(SyncService::class)->processQueue(10);
+            } catch (\Throwable $th) {
+                Log::warning('Edge payment sync failed', ['error' => $th->getMessage()]);
+            }
 
             return response()->json([
                 'status' => true,
@@ -225,15 +221,11 @@ class PaymentController extends Controller
                 return $payment->load('details');
             });
 
-            app()->terminating(function () {
-                try {
-                    app(SyncService::class)->processQueue(10);
-                } catch (\Throwable $th) {
-                    Log::warning('Edge payment update post-response sync failed', [
-                        'error' => $th->getMessage(),
-                    ]);
-                }
-            });
+            try {
+                app(SyncService::class)->processQueue(10);
+            } catch (\Throwable $th) {
+                Log::warning('Edge payment update sync failed', ['error' => $th->getMessage()]);
+            }
 
             return response()->json([
                 'status' => true,
