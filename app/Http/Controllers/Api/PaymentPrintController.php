@@ -34,7 +34,20 @@ class PaymentPrintController extends Controller
 
     public function printForWeb(Request $request)
     {
-        return $this->printPayment($request);
+        $paymentId = $request->input('payment_id');
+        if (!$paymentId) {
+            return response()->json(['status' => false, 'message' => 'payment_id is required'], 400);
+        }
+
+        $payment = Payment::with('details')->find($paymentId);
+        if (!$payment) {
+            return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+        }
+
+        return response()->json([
+            'status' => true,
+            'data' => view('invoice.print', ['payment' => $payment])->render(),
+        ]);
     }
 
     private function paymentPayload(Payment $payment): array
