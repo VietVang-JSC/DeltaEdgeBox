@@ -126,7 +126,7 @@ class TableController extends Controller
                     return null;
                 }
 
-                $paymentId = $request->input('payment_id', $table->payment_id);
+                $paymentId = $request->input('payment_id') ?: $table->payment_id;
                 if ($paymentId) {
                     Payment::whereKey($paymentId)->update([
                         'status' => self::PAYMENT_CANCELLED,
