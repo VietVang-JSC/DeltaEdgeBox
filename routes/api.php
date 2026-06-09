@@ -190,7 +190,7 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
     Route::post('/check-payment-printed', [KitchenPrintController::class, 'checkPrintedStatus']);
     Route::get('/kitchen/print-all', [KitchenPrintController::class, 'printAll']);
     Route::get('/kitchen/print-next-web', [KitchenPrintController::class, 'printNextWeb']);
-    Route::get('/kitchen/print-on-browser', [KitchenPrintController::class, 'printOnBrowser']);
+    Route::match(['GET', 'POST'], '/kitchen/print-on-browser', [KitchenPrintController::class, 'printOnBrowser']);
 });
 
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {

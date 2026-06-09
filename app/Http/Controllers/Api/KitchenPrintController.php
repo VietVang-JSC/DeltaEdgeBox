@@ -87,7 +87,7 @@ class KitchenPrintController extends Controller
 
     private function findTable(Request $request): ?Table
     {
-        $tableId = $request->input('table_id', $request->input('id'));
+        $tableId = $request->input('table_id', $request->input('id')) ?: $request->input('table.id');
         if (!$tableId) {
             return null;
         }
