@@ -680,6 +680,27 @@ class PaymentController extends Controller
         }
     }
 
+    public function checkIsPrinted(Request $request)
+    {
+        $paymentId = $request->input('payment_id');
+        if (!$paymentId) {
+            return response()->json(['status' => false, 'status_code' => 400, 'message' => 'payment_id required'], 400);
+        }
+
+        $payment = Payment::find($paymentId);
+        if (!$payment) {
+            return response()->json(['status' => false, 'status_code' => 404, 'data' => ['is_printed' => false]], 404);
+        }
+
+        return response()->json([
+            'status' => true,
+            'status_code' => 200,
+            'data' => [
+                'is_printed' => (bool) $payment->is_printed,
+            ],
+        ]);
+    }
+
     public function getRevenueToDayByAdminId(Request $request)
     {
         $language = $request->input('isCheckLanguage', 'vi');

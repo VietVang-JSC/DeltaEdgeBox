@@ -100,6 +100,10 @@ Route::prefix('edge')->middleware('edge.api.key')->group(function () {
 });
 
 
+Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
+    Route::post('/is_printed', [PaymentController::class, 'checkIsPrinted']);
+});
+
 Route::prefix('payment')->middleware('edge.api.key')->group(function () {
     Route::get('/print-for-web', [PaymentPrintController::class, 'printForWeb']);
 });
