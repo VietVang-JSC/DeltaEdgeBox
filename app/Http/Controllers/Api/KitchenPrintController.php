@@ -48,9 +48,13 @@ class KitchenPrintController extends Controller
         try {
             $products = $this->listPrintableItems($table, true);
             if (empty($products)) {
-                $products = $this->listItems($table);
-            }
-            if (empty($products)) {
+                Log::warning('KitchenPrint: no printable items', [
+                    'table_id' => $table->id,
+                    'has_payment' => $table->payment ? 'yes' : 'no',
+                    'payment_id' => $table->payment_id,
+                    'detail_count' => $table->payment ? $table->payment->details()->count() : 0,
+                    'listitem_exists' => $table->listitem ? 'yes' : 'no',
+                ]);
                 return response()->json(['status' => false, 'message' => 'No items to print', 'error_code' => 'no_items'], 404);
             }
 
