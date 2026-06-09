@@ -48,6 +48,9 @@ class KitchenPrintController extends Controller
         try {
             $products = $this->listPrintableItems($table, true);
             if (empty($products)) {
+                $products = $this->listItems($table);
+            }
+            if (empty($products)) {
                 return response()->json(['status' => false, 'message' => 'No items to print', 'error_code' => 'no_items'], 404);
             }
 
