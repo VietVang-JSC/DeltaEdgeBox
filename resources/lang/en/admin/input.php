@@ -1,0 +1,131 @@
+<?php
+
+return [
+    'title' => [
+        'Phiếu nhập hàng' => 'Goods Receipt Note',
+        'Tồn kho' => 'Inventory',
+        'Quản lý nhập' => 'Input Management',
+        'Quản lý xuất' => 'Output Management',
+        'Nhập hàng' => 'Create Goods Receipt',
+        'Danh sách phiếu nhập' => 'Goods Receipt Document List',
+        'Thông tin đại lý' => 'Agent details',
+        'Thông tin người đại diện' => 'Representative details',
+        'Người tạo phiếu' => 'Invoice Creator',
+        'Người Lập phiếu' => 'Invoice Creator',
+        'Người Giao Hàng' => 'Delivery Person',
+        'Ký và ghi rõ họ tên' => 'Sign and Print Full Name',
+    ],
+
+    'text' => [
+        'Tìm kiếm sản phẩm' => 'Product Search',
+        'Mã phiếu tự động' => 'Automatic ID',
+        'Tìm kiếm đại lý' => 'Agent Search',
+        'Trạng thái' => 'Status',
+        'Tổng tiền hàng' => 'Total Amount',
+        'Giảm giá' => 'Discount',
+        'Tổng tiền thanh toán' => 'Total Payable',
+        'Phương thức thanh toán' => 'Payment method:',
+        'Còn lại' => 'Remaining',
+        'Thao tác' => 'Action',
+        'Nhập tên đại lý' => 'Enter Agent Name',
+        'Nhập tên công ty' => 'Enter Company Name',
+        'Nhập mã số thuế công ty' => 'Enter Company Tax ID',
+        'Nhập địa chỉ đại lý' => 'Enter Agent Address',
+        'Nhập tên người đại diện' => 'Enter Representative Name',
+        'Nhập email người đại diện' => 'Nhập email người đại diện',
+        'Nhập số điện thoại người đại diện' => "Enter Representative's Email address",
+        'Tạo mới đại lý' => 'Add New Agent',
+        'Tiền mặt' => 'Cash',
+        'Chuyển khoản' => 'Bank Transfer',
+        'Thẻ ngân hàng' => 'Bank Card',
+        'Yêu cầu nhập nhà cung cấp' => "No supplier entered. Proceed with completing the goods receipt note?",
+        'Hoàn thành' => 'Complete',
+        'Hủy bỏ' => 'Cancel',
+        'Lỗi' => 'Error',
+        'Xem chi tiết' => 'View details',
+        'Chỉnh sửa' => 'Edit',
+        'Xóa' => 'Delete',
+        'Tìm kiếm hóa đơn' => 'Invoice search',
+        'Yêu cầu xóa phiếu nhập hàng' => 'Do you want to delete this goods receipt Note?',
+        'Đồng ý' => 'Accept',
+        'Số thứ tự' => 'Serial Number',
+        'Tìm kiếm phiếu nhập' => 'Search for receipt',  
+        'Tạo phiếu xuất' => 'Create delivery note',  
+        'In phiếu' => 'Print receipt', 
+    ],
+
+    'params' => [
+        'invoice' => [    
+            'input_code' => 'Goods receipt ID',
+            'total_quantity' => 'Total Quantity',
+            'total_price' => 'Total Price',
+            'input_date' => 'Date',
+            'status' => 'Status',
+            'title' => 'Product Name',
+            'quantity' => 'Quantity',
+            'price' => 'Price',
+            'note' => 'Note',
+            'Tên cửa hàng' => 'Store Name',
+        ],
+        'agency' => [
+            'Mã đại lý' => 'Agent ID',
+            'Tên đại lý' => 'Agent Name',
+            'Tên người đại diện' => 'Representative Name',
+            'Email người đại diện' => "Representative's Email address",
+            'SĐT người đại diện' => "Representative's Phone Number",
+            'Tên công ty' => 'Company Name',
+            'Mã số thuế' => 'Company Tax ID',
+            'Địa chỉ' => 'Address',
+            'Ghi chú' => 'Note'
+        ]
+    ],
+
+    'status' => [
+        'draft' => 'Draft',
+        'temporary' => 'Temporary',
+        'success' => 'Complete',
+    ],
+
+    'button' => [
+        'Thêm mới' => 'New',
+        'Cập nhật' => 'Update',
+        'Đóng' => 'Close',
+        'Lưu tạm' => 'Save Temporary',
+        'Hoàn thành' => 'Complete',
+        'Quay lại' => 'Go back',
+        'In' => 'Print',
+    ],
+
+   'errors' => [
+        'required' => 'Cannot be blank',
+        'max 20 char' => 'Cannot exceed 20 characters',
+        'max 255 char' => 'Cannot exceed 255 characters',
+        'exists' => 'Data already exists',
+        'fail' => 'Unable to initialize',
+        'Không tìm thấy sản phẩm' => 'Product not found. Please try again',
+        'Vui lòng lựa chọn sản phẩm nhập hàng' => 'Please select the products for goods receipt',
+        'Vui lòng nhập đầy đủ số lượng của các sản phẩm' => 'Please enter the full quantity for each product',
+        'Không thể tạo mới phiếu nhập hàng' => 'Unable to create a new goods receipt. Please check again',
+        'Không thể khởi tạo phiếu nhập hàng' => 'Unable to initialize goods receipt',
+        'Không thể khởi tạo chi tiết phiếu nhập hàng' => 'Unable to initialize details of goods receipt',
+        'Không thể tạo mới đại lý' => 'Unable to create a new agency. Please check again!',
+        'Không thể cập nhật phiếu nhập hàng' => 'Unable to update goods receipt',
+        'Không tìm thấy phiếu nhập hàng' => 'Goods receipt not found',
+        'Permission Denied' => "Permission Denied",
+        'Không thể khởi tạo tồn kho' => "Unable to initialize inventory. Please check again!",
+        'Yêu cầu thiếu các thông số cần thiết' => "Unable to execute. Please check again!",
+        'Không đủ sản phẩm trong kho' => "Not enough products in stock",
+        'Không thể tạo phiếu xuất' => "Unable to create delivery note",
+    ],
+
+    'success' => [
+        'Tạo mới đại lý thành công' => 'Successfully created new agency',
+        'Tạo mới phiếu nhập hàng thành công' => 'Successfully created new goods receipt',
+        'Cập nhật phiếu nhập hàng thành công' => 'Successfully updated goods receipt',
+        'Xóa phiếu nhập hàng thành công' => 'Successfully deleted goods receipt'
+    ],
+
+    "message" => [
+        "Vui lòng nhập ít nhất 1 ký tự" => "Please enter at least 1 character",
+    ]
+];
