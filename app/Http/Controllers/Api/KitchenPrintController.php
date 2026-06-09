@@ -7,6 +7,7 @@ use App\Models\Table;
 use App\Models\Store;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class KitchenPrintController extends Controller
 {
@@ -41,17 +42,44 @@ class KitchenPrintController extends Controller
     {
         $table = $this->findTable($request);
         if (!$table) {
-            return $this->error('Table not found', 404);
+            return response()->json(['status' => false, 'message' => 'Table not found'], 404);
         }
 
-        return DB::transaction(function () use ($table) {
+        try {
             $products = $this->listPrintableItems($table, true);
             if (empty($products)) {
-                return $this->error('No items to print', 404);
+                return response()->json(['status' => false, 'message' => 'No items to print', 'error_code' => 'no_items'], 404);
             }
 
-            return $this->success($this->tablePrintPayload($table, $products));
-        });
+            $payload = $this->tablePrintPayload($table, $products);
+            $store = Store::find($table->store_id);
+            $paperSize = $request->input('paper_size', '80');
+            $language = $request->input('language', 'vi');
+            app()->setLocale($language);
+
+            // Render kitchen template HTML
+            $tplName = 'kitchen.cook_template_print_' . $paperSize;
+            if (!view()->exists($tplName)) {
+                $tplName = 'kitchen.cook_template_print_80';
+            }
+            $html = view($tplName, [
+                'data' => $payload,
+                'payment' => $payload['payment'] ?? [],
+                'bill_setting' => [],
+            ])->render();
+
+            return response()->json([
+                'status' => true,
+                'data' => [
+                    'browser' => [
+                        'view' => ['default' => $html],
+                    ],
+                ],
+            ]);
+        } catch (\Throwable $th) {
+            Log::error('Edge kitchen print on browser failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => 'Print render failed'], 500);
+        }
     }
 
     public function checkPrintedStatus(Request $request)
