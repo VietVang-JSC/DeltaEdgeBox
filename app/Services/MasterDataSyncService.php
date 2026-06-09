@@ -573,7 +573,11 @@ class MasterDataSyncService
             foreach ($data['payments'] ?? [] as $pmt) {
                 $details = $pmt['payment_details'] ?? ($pmt['paymentDetails'] ?? []);
                 foreach ($details as $pd) {
-                    if (!empty($pd['product_code'])) { $paymentProductCodes[] = $pd['product_code']; }
+                    $code = $pd['product_code'] ?? '';
+                    if (empty($code) && !empty($pd['product_key'])) {
+                        $code = explode('.', $pd['product_key'])[0] ?? '';
+                    }
+                    if (!empty($code)) { $paymentProductCodes[] = $code; }
                 }
             }
             $paymentLocalProducts = !empty($paymentProductCodes)
@@ -629,10 +633,14 @@ class MasterDataSyncService
                         if (!empty($paymentDetails)) {
                             PaymentDetail::where('payment_id', $paymentId)->delete();
                             foreach ($paymentDetails as $pd) {
-                                $localProductId = $paymentLocalProducts[$pd['product_code'] ?? ''] ?? null;
+                                $pdCode = $pd['product_code'] ?? '';
+                                if (empty($pdCode) && !empty($pd['product_key'])) {
+                                    $pdCode = explode('.', $pd['product_key'])[0] ?? '';
+                                }
+                                $localProductId = $paymentLocalProducts[$pdCode] ?? null;
                                 PaymentDetail::create([
                                     'payment_id'                     => $paymentId,
-                                    'product_id'                     => $localProductId ?? ($pd['product_id'] ?? 0),
+                                    'product_id'                     => $localProductId ?: 0,
                                     'product_key'                    => $pd['product_key'] ?? $pd['product_code'] ?? '',
                                     'quantity'                       => $pd['quantity'] ?? 1,
                                     'price'                          => $pd['price'] ?? 0,
