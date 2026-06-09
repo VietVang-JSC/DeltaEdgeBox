@@ -135,16 +135,22 @@ class KitchenPrintController extends Controller
         $payment = $table->payment;
         $user = $payment && $payment->user ? $payment->user->toArray() : null;
         $store = Store::find($table->store_id);
+        $productsList = $products ?? $this->listItems($table);
 
         return [
             'id' => $table->id,
             'table_id' => $table->id,
             'tablename' => $table->tablename ?? $table->name ?? null,
             'number_of_people' => $table->number_of_people ?? 0,
-            'products' => $products ?? $this->listItems($table),
+            'products' => $productsList,
             'user' => $user,
             'payment_code' => $payment->payment_code ?? null,
-            'payment' => $payment ? $payment->toArray() : null,
+            'payment' => $payment ? array_merge($payment->toArray(), [
+                'tablename' => $table->tablename ?? $table->name ?? null,
+                'products' => $productsList,
+                'created_at' => optional($table->created_at)->format('Y-m-d H:i:s'),
+                'updated_at' => optional($table->updated_at)->format('Y-m-d H:i:s'),
+            ]) : null,
             'created_at' => optional($table->created_at)->format('Y-m-d H:i:s'),
             'updated_at' => optional($table->updated_at)->format('Y-m-d H:i:s'),
             'setting_print_kitchen' => $store ? $store->setting_print_kitchen : null,
