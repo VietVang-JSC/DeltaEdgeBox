@@ -149,6 +149,7 @@ class MasterDataSyncService
                         [
                             'store_id'         => $table['store_id'],
                             'name'             => $table['tablename'] ?? ('Table-' . $table['id']),
+                            'code'             => $table['code'] ?? ('TBL-' . $table['id']),
                             'tablename'        => $table['tablename'],
                             'status'           => $table['status'],
                             'admin_id'         => $table['admin_id'] ?? null,
@@ -290,6 +291,8 @@ class MasterDataSyncService
                 if (!empty($data['store'])) {
                     DB::beginTransaction();
                     $st = $data['store'];
+                    // Cleanup: remove any store with wrong ID that blocks the unique code
+                    Store::where('id', '!=', $st['id'])->where('code', 'STORE-' . $st['id'])->delete();
                     Store::updateOrCreate(
                         ['id' => $st['id']],
                         [
