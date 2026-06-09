@@ -186,6 +186,15 @@ class KitchenPrintController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
+        Log::debug('KitchenPrint listPrintableItems', [
+            'table_id' => $table->id,
+            'payment_id' => $table->payment_id,
+            'has_payment' => $table->payment ? 'yes' : 'no',
+            'all_details_count' => $table->payment ? $table->payment->details()->withoutGlobalScope('Illuminate\Database\Eloquent\SoftDeletingScope')->count() : 0,
+            'active_details_count' => $table->payment ? $table->payment->details()->count() : 0,
+            'where_count' => $details->count(),
+        ]);
+
         $items = [];
         foreach ($details as $detail) {
             $printCount = (int) $detail->quantity - (int) $detail->printed_quantity;
@@ -219,6 +228,8 @@ class KitchenPrintController extends Controller
         if ($markPrinted && !empty($items)) {
             $this->syncPrintedStateToTableListItem($table);
         }
+
+        Log::debug('KitchenPrint listPrintableItems result', ['items_count' => count($items)]);
 
         return $items;
     }
