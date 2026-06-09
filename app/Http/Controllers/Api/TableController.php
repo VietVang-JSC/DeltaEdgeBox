@@ -36,7 +36,7 @@ class TableController extends Controller
 
     public function show(Request $request, $id = null)
     {
-        $tableId = $id ?: $request->input('id');
+        $tableId = $id ?: $request->input('id') ?: $request->input('table_id');
         $table = $this->findTable($tableId, $request);
         if (!$table) {
             return $this->error('api.table_empty', 404);
