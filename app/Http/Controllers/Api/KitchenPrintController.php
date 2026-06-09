@@ -42,13 +42,13 @@ class KitchenPrintController extends Controller
     {
         $table = $this->findTable($request);
         if (!$table) {
-            return response()->json(['status' => false, 'message' => 'Table not found'], 404);
+            return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Table not found'], 404);
         }
 
         try {
             $products = $this->listPrintableItems($table, true);
             if (empty($products)) {
-                return response()->json(['status' => false, 'message' => 'No items to print', 'error_code' => 'no_items'], 404);
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'No items to print', 'error_code' => 'no_items'], 404);
             }
 
             $payload = $this->tablePrintPayload($table, $products);
