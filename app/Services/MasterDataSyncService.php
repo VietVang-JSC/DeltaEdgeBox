@@ -291,8 +291,8 @@ class MasterDataSyncService
                 if (!empty($data['store'])) {
                     DB::beginTransaction();
                     $st = $data['store'];
-                    // Cleanup: remove any store with wrong ID that blocks the unique code
-                    Store::where('id', '!=', $st['id'])->where('code', 'STORE-' . $st['id'])->delete();
+                    // Free up the code for the correct store (avoid FK cascade by update not delete)
+                    Store::where('code', 'STORE-' . $st['id'])->where('id', '!=', $st['id'])->update(['code' => 'STALE-' . $st['id'] . '-' . time()]);
                     Store::updateOrCreate(
                         ['id' => $st['id']],
                         [

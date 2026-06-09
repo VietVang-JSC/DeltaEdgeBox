@@ -15,6 +15,7 @@ class Table extends Model
         'id',
         'store_id',
         'name',
+        'code',
         'tablename',
         'listitem',
         'image',
