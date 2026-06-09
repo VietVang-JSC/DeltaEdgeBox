@@ -148,6 +148,7 @@ class MasterDataSyncService
                         ['id' => $table['id']],
                         [
                             'store_id'         => $table['store_id'],
+                            'name'             => $table['tablename'] ?? ('Table-' . $table['id']),
                             'tablename'        => $table['tablename'],
                             'status'           => $table['status'],
                             'admin_id'         => $table['admin_id'] ?? null,
@@ -327,6 +328,7 @@ class MasterDataSyncService
                             'edge_enabled_at' => $st['edge_enabled_at'] ?? null,
                             'edge_config_version' => $st['edge_config_version'] ?? 1,
                             'status' => $st['status'] ?? true,
+                            'code' => $st['code'] ?? ('STORE-' . $st['id']),
                             'created_at' => $st['created_at'] ?? now(),
                             'updated_at' => $st['updated_at'] ?? now(),
                         ]
