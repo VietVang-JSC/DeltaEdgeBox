@@ -568,6 +568,20 @@ class MasterDataSyncService
             }
 
             // Sync PAYMENTS
+            // Build product ID map (cloud ID → local ID) for payment_details FK
+            $paymentProductCodes = [];
+            foreach ($data['payments'] ?? [] as $pmt) {
+                $details = $pmt['payment_details'] ?? ($pmt['paymentDetails'] ?? []);
+                foreach ($details as $pd) {
+                    if (!empty($pd['product_code'])) { $paymentProductCodes[] = $pd['product_code']; }
+                }
+            }
+            $paymentLocalProducts = !empty($paymentProductCodes)
+                ? Product::whereIn('code', array_unique($paymentProductCodes))
+                    ->where('store_id', $this->storeId)
+                    ->pluck('id', 'code')
+                    ->toArray()
+                : [];
             try {
                 if (isset($data['payments'])) {
                     DB::beginTransaction();
@@ -615,9 +629,10 @@ class MasterDataSyncService
                         if (!empty($paymentDetails)) {
                             PaymentDetail::where('payment_id', $paymentId)->delete();
                             foreach ($paymentDetails as $pd) {
+                                $localProductId = $paymentLocalProducts[$pd['product_code'] ?? ''] ?? null;
                                 PaymentDetail::create([
                                     'payment_id'                     => $paymentId,
-                                    'product_id'                     => $pd['product_id'] ?? 0,
+                                    'product_id'                     => $localProductId ?? ($pd['product_id'] ?? 0),
                                     'product_key'                    => $pd['product_key'] ?? $pd['product_code'] ?? '',
                                     'quantity'                       => $pd['quantity'] ?? 1,
                                     'price'                          => $pd['price'] ?? 0,
