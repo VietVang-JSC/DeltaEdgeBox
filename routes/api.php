@@ -90,8 +90,8 @@ Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
     Route::post('/update_payment', [PaymentController::class, 'updatePayment']);
     Route::post('/get_sale_today', [PaymentController::class, 'getSaleToday']);
-    Route::post('/list_open', [PaymentController::class, 'listOpen']);
 });
+Route::post('/user/payment/list_open', [PaymentController::class, 'listOpen']);
 // View payment details for POS web
 Route::prefix('edge')->middleware('edge.api.key')->group(function () {
     Route::post('/list-order-new', [PosWebFilterController::class, 'apiEdgeFilterByCondition']);
@@ -155,9 +155,9 @@ Route::prefix('admin/output')->middleware('edge.api.key')->group(function () {
 });
 
 // Legacy POS table compatibility endpoints
+Route::get('/user/table/list', [TableController::class, 'index']);
+Route::match(['GET', 'POST'], '/user/table/get_table/{id?}', [TableController::class, 'show']);
 Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
-    Route::get('/list', [TableController::class, 'index']);
-    Route::match(['GET', 'POST'], '/get_table/{id?}', [TableController::class, 'show']);
     Route::post('/check_in_table', [TableController::class, 'checkIn']);
     Route::post('/check_out_table_new', [TableController::class, 'checkOut']);
     Route::post('/update_order_table', [TableController::class, 'updateOrder']);
