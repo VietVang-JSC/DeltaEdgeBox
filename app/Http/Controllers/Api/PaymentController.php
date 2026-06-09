@@ -665,6 +665,21 @@ class PaymentController extends Controller
         }
     }
 
+    public function getPayment($id)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $payment = Payment::with('details')->where('store_id', $storeId)->where('id', $id)->first();
+            if (!$payment) {
+                return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+            }
+            return response()->json(['status' => true, 'data' => $payment], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getPayment failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
     public function getRevenueToDayByAdminId(Request $request)
     {
         $language = $request->input('isCheckLanguage', 'vi');
