@@ -154,6 +154,20 @@ Route::prefix('admin/output')->middleware('edge.api.key')->group(function () {
     Route::delete('/deleteInvoiceOuput', [InventoryOutputController::class, 'deleteInvoiceOutput']);
 });
 
+// Legacy POS master data endpoints (public read-only)
+Route::get('/user/product/list', function (\Illuminate\Http\Request $req) {
+    $sid = config('edge_box.store_id');
+    return \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory')
+        ->where('store_id', $sid)->where('status', 1)->where('is_show', 1)->orderBy('sort_rank')->get();
+});
+Route::get('/user/category/list', function (\Illuminate\Http\Request $req) {
+    $sid = config('edge_box.store_id');
+    return \App\Models\Category::where('store_id', $sid)->where('status', 1)->orderBy('sort_order')->get();
+});
+Route::get('/user/customer/list', function (\Illuminate\Http\Request $req) {
+    $sid = config('edge_box.store_id');
+    return \App\Models\Customer::where('store_id', $sid)->orderBy('name')->get();
+});
 // Legacy POS table compatibility endpoints
 Route::get('/user/table/list', [TableController::class, 'index']);
 Route::match(['GET', 'POST'], '/user/table/get_table/{id?}', [TableController::class, 'show']);
