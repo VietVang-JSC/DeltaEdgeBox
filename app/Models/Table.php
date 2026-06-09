@@ -12,7 +12,9 @@ class Table extends Model
     protected $table = 'table';
 
     protected $fillable = [
+        'id',
         'store_id',
+        'name',
         'tablename',
         'listitem',
         'image',
