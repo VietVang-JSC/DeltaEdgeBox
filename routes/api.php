@@ -211,7 +211,7 @@ Route::prefix('common/payment-status')->middleware('edge.api.key')->group(functi
 });
 
 Route::prefix('user/split-merge-invoice')->middleware('edge.api.key')->group(function () {
-    Route::get('/get-list-invoice', [SplitMergeInvoiceController::class, 'getListInvoice']);
+    Route::any('/get-list-invoice', [SplitMergeInvoiceController::class, 'getListInvoice']);
     Route::post('/split-invoice', [SplitMergeInvoiceController::class, 'splitInvoice']);
     Route::post('/merge-invoice', [SplitMergeInvoiceController::class, 'mergeInvoice']);
 });
