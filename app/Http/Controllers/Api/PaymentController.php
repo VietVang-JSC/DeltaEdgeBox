@@ -110,6 +110,13 @@ class PaymentController extends Controller
                 Log::warning('Edge payment sync failed', ['error' => $th->getMessage()]);
             }
 
+            Log::info('EDGE BOX: Payment created successfully', [
+                'payment_id' => $payment->id,
+                'payment_code' => $payment->payment_code,
+                'final_total' => $payment->final_total,
+                'table_id' => $payment->table_id,
+            ]);
+
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
@@ -232,6 +239,13 @@ class PaymentController extends Controller
             } catch (\Throwable $th) {
                 Log::warning('Edge payment update sync failed', ['error' => $th->getMessage()]);
             }
+
+            Log::info('EDGE BOX: Payment updated successfully', [
+                'payment_id' => $payment->id,
+                'payment_code' => $payment->payment_code,
+                'final_total' => $payment->final_total,
+                'table_id' => $payment->table_id,
+            ]);
 
             return response()->json([
                 'status' => true,
