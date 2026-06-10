@@ -6,6 +6,12 @@ echo   DeltaPOS Edge Box Installer
 echo =====================================
 echo.
 
+:: Dùng PHP bundled (nếu có) hoặc system PHP
+set "PHP=php"
+if exist "%~dp0php\php.exe" set "PHP=%~dp0php\php.exe"
+set "COMPOSER=composer"
+if exist "%~dp0composer.phar" set "COMPOSER=%PHP% %~dp0composer.phar"
+
 :: Kiểm tra Administrator
 net session >nul 2>&1
 if %errorLevel% neq 0 (
@@ -32,22 +38,22 @@ if not exist "%ROOT%.env" (
     pause
 )
 
-:: Cài PHP + Composer
+:: Cài dependencies
 echo [2/6] Cai dat dependencies...
 cd /d "%ROOT%"
-php artisan key:generate --force 2>nul
-composer install --no-dev --quiet 2>nul
+%PHP% artisan key:generate --force 2>nul
+%PHP% -d memory_limit=-1 %ROOT%composer.phar install --no-dev --quiet 2>nul
 echo OK
 
 :: Database
 echo [3/6] Tao database...
 del /q database\database.sqlite 2>nul
-php artisan migrate --force --quiet
+%PHP% artisan migrate --force --quiet
 echo OK
 
 :: Sync master data tu cloud
 echo [4/6] Dong bo du lieu...
-php artisan edge:sync-master --quiet
+%PHP% artisan edge:sync-master --quiet
 echo OK
 
 :: Tao services tu dong
@@ -76,8 +82,8 @@ echo } >> "%PS_SYNC%"
 :: Tao batch file de start ca 2
 echo @echo off > "%ROOT%start.bat"
 echo cd /d "%ROOT%" >> "%ROOT%start.bat"
-echo start "EdgeBox-Server" /MIN php artisan serve --host=0.0.0.0 --port=8000 >> "%ROOT%start.bat"
-echo start "EdgeBox-Sync" /MIN php artisan sync:worker --daemon >> "%ROOT%start.bat"
+echo start "EdgeBox-Server" /MIN "%PHP%" artisan serve --host=0.0.0.0 --port=8000 >> "%ROOT%start.bat"
+echo start "EdgeBox-Sync" /MIN "%PHP%" artisan sync:worker --daemon >> "%ROOT%start.bat"
 echo exit >> "%ROOT%start.bat"
 
 :: Them vao Startup
@@ -86,8 +92,8 @@ echo OK
 
 :: Khoi dong
 echo [6/6] Khoi dong Edge Box...
-start /MIN php artisan serve --host=0.0.0.0 --port=8000
-start /MIN php artisan sync:worker --daemon
+start /MIN "%PHP%" artisan serve --host=0.0.0.0 --port=8000
+start /MIN "%PHP%" artisan sync:worker --daemon
 
 timeout /t 3 >nul
 curl -s http://localhost:8000/api/health >nul 2>&1
