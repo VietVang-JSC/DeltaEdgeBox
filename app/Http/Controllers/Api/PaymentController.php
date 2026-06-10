@@ -114,9 +114,7 @@ class PaymentController extends Controller
                 'status' => true,
                 'status_code' => 200,
                 'message' => __('api.payment_create'),
-                'data' => [
-                    'paymentInfo' => $payment->toArray(),
-                ],
+                'paymentInfo' => $payment->toArray(),
             ]);
         } catch (\Throwable $th) {
             Log::error('Edge payment create failed', [
@@ -233,9 +231,7 @@ class PaymentController extends Controller
                 'status' => true,
                 'status_code' => 200,
                 'message' => __('api.payment_update'),
-                'data' => [
-                    'paymentInfo' => $payment->toArray(),
-                ],
+                'paymentInfo' => $payment->toArray(),
             ]);
         } catch (\RuntimeException $th) {
             return response()->json([
