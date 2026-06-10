@@ -53,6 +53,7 @@ class MasterDataSyncService
                 || ProductTimePrice::count() == 0
                 || Store::count() == 0
                 || User::count() == 0
+                || \App\Models\Customer::count() == 0
                 || Inventory::count() == 0
                 || Agency::count() == 0
                 || Types::count() == 0
@@ -570,6 +571,36 @@ class MasterDataSyncService
                 DB::rollBack();
                 Log::error('Sync product_types failed: ' . $e->getMessage());
                 $syncErrors['product_types'] = $e->getMessage();
+            }
+
+            // Sync CUSTOMERS
+            try {
+                if (isset($data['customers'])) {
+                    DB::beginTransaction();
+                    foreach ($data['customers'] as $customer) {
+                        \App\Models\Customer::updateOrCreate(
+                            ['id' => $customer['id']],
+                            [
+                                'store_id'   => $customer['store_id'] ?? $this->storeId,
+                                'name'       => $customer['name'] ?? '',
+                                'phone'      => $customer['phone'] ?? null,
+                                'email'      => $customer['email'] ?? null,
+                                'address'    => $customer['address'] ?? null,
+                                'birthday'   => $customer['birthday'] ?? null,
+                                'note'       => $customer['note'] ?? null,
+                                'admin_id'   => $customer['admin_id'] ?? null,
+                                'created_at' => $customer['created_at'] ?? now(),
+                                'updated_at' => $customer['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['customers'] = count($data['customers']);
+                }
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Sync customers failed: ' . $e->getMessage());
+                $syncErrors['customers'] = $e->getMessage();
             }
 
             // Sync PAYMENTS
