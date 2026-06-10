@@ -36,13 +36,18 @@ class TableController extends Controller
 
     public function show(Request $request, $id = null)
     {
-        $tableId = $id ?: $request->input('id');
+        $tableId = $id ?: $request->input('id') ?: $request->input('table_id');
         $table = $this->findTable($tableId, $request);
         if (!$table) {
             return $this->error('api.table_empty', 404);
         }
 
-        return $this->success('api.table_get', ['table' => $this->tablePayload($table)]);
+        return response()->json([
+            'status' => true,
+            'status_code' => 200,
+            'message' => __('api.table_get'),
+            'data' => ['data_table' => [$this->tablePayload($table)]],
+        ]);
     }
 
     public function checkIn(Request $request)
@@ -121,11 +126,12 @@ class TableController extends Controller
                     return null;
                 }
 
-                $paymentId = $request->input('payment_id', $table->payment_id);
+                $paymentId = $request->input('payment_id') ?: $table->payment_id;
                 if ($paymentId) {
                     Payment::whereKey($paymentId)->update([
                         'status' => self::PAYMENT_CANCELLED,
-                        'note' => $request->input('reason'),
+            'note' => $request->input('reason'),
+            'reason' => $request->input('reason'),
                     ]);
                 }
 
@@ -171,6 +177,13 @@ class TableController extends Controller
                 $listitem = $this->normalizeListItem($request->input('listitem'));
                 $items = $this->decodeItems($listitem);
                 $summary = $this->summarizeItems($items, $request);
+
+                Log::debug('Edge updateOrder items', [
+                    'table_id' => $table->id,
+                    'items_count' => count($items),
+                    'first_item' => $items[0] ?? null,
+                ]);
+
                 $payment = $this->upsertPendingPayment($request, $table, $items, $summary);
 
                 $table->fill([
@@ -200,7 +213,11 @@ class TableController extends Controller
                 ],
             ]);
         } catch (\Throwable $th) {
-            Log::error('Edge table update order failed', ['error' => $th->getMessage()]);
+            Log::error('Edge table update order failed', [
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString(),
+                'request_id' => $request->input('id'),
+            ]);
 
             return $this->error('api.ISError', 500);
         }
@@ -305,6 +322,17 @@ class TableController extends Controller
             'note' => $request->input('reason'),
             'status' => (int) $request->input('status', self::PAYMENT_PENDING),
             'user_id' => $this->userId($request),
+            'type_discount' => $request->input('type_discount', 'amount'),
+            'discount_percent' => (int) $request->input('discount_percent', 0),
+            'surcharge' => (float) $request->input('surcharge', 0),
+            'surcharge_percent' => (int) $request->input('surcharge_percent', 0),
+            'surcharge_reason' => $request->input('surcharge_reason'),
+            'service_charge' => (int) $request->input('service_charge', 0),
+            'service_charge_amount' => (float) $request->input('service_charge_amount', 0),
+            'is_senior_discount' => $request->input('is_senior_discount', false),
+            'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
+            'sub_total_before_discount' => (float) $request->input('sub_total_before_discount', 0),
+            'total_incl_vat_before_discount' => (float) $request->input('total_incl_vat_before_discount', 0),
         ];
 
         if ($payment) {
@@ -488,15 +516,11 @@ class TableController extends Controller
 
     private function processSyncAfterResponse(): void
     {
-        app()->terminating(function () {
-            try {
-                app(SyncService::class)->processQueue(10);
-            } catch (\Throwable $th) {
-                Log::warning('Edge table post-response sync failed', [
-                    'error' => $th->getMessage(),
-                ]);
-            }
-        });
+        try {
+            app(SyncService::class)->processQueue(10);
+        } catch (\Throwable $th) {
+            Log::warning('Edge table sync failed', ['error' => $th->getMessage()]);
+        }
     }
 
     public function getServedStatus(Request $request)

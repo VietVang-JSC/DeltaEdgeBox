@@ -11,6 +11,7 @@ class Payment extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
+        'id',
         'payment_code',
         'parent_id',
         'store_id',
@@ -39,6 +40,8 @@ class Payment extends Model
         'number_of_people',
         'type_discount',
         'discount_percent',
+        'is_senior_discount',
+        'senior_discount_amount',
         'payment_transaction_id',
         'sub_total_before_discount',
         'total_incl_vat_before_discount',

@@ -10,6 +10,7 @@ class Category extends Model
     use HasFactory;
 
     protected $fillable = [
+        'id',
         'store_id',
         'name',
         'description',
@@ -23,7 +24,7 @@ class Category extends Model
     protected $casts = [
         'store_id' => 'integer',
         'sort_order' => 'integer',
-        'status' => 'boolean',
+        'status' => 'integer',
         'parent_id' => 'integer',
         'admin_id' => 'integer',
     ];

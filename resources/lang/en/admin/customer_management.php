@@ -1,0 +1,30 @@
+<?php
+return [
+    'title' => [
+        'Danh sách Khách hàng' => 'Customer List',
+        'Thêm khách hàng' => 'Add Customer',
+        'ID' => 'ID',
+        'Tên khách hàng' => 'Customer Name',
+        'Số điện thoại' => 'Phone Number',
+        'Điểm thưởng' => 'Reward Points',
+        'Tổng tiền thanh toán' => 'Total Payment',
+        'Thao tác' => 'Actions',
+        'Xem' => 'View',
+        'Tìm khách hàng' => 'Find Customers',
+        'Chi tiết Khách hàng' => 'Customer Details',
+        'Quay lại' => 'Go Back',
+        'Cập nhật' => 'Update',
+        'Thêm Khách hàng' => 'Add Customer',
+        'Tạo' => 'Create',
+    ],
+    'message' => [
+        'Khách hàng này đã tồn tại' => 'Customer already exists',
+        'Thêm khách hàng thành công' => 'Customer added successfully',
+        'Thêm khách hàng không thành công' => 'Customer addition failed',
+        'Không tìm thấy khách hàng' => 'Customer not found',
+        'Số điện thoại này đã tồn tại' => 'This phone number already exists',
+        'Sửa thông tin khách hàng thành công' => 'Customer information updated successfully',
+        'Họ và tên không được vượt quá 20 ký tự' => 'Full name cannot exceed 20 characters',
+        'Permission Denied' => "Permission denied",
+    ],
+];

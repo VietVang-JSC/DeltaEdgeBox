@@ -213,7 +213,7 @@ class SyncService
         }
     }
 
-    protected function syncDependencyOrderSql(): string
+    public function syncDependencyOrderSql(): string
     {
         return "CASE table_name
             WHEN 'products' THEN 10
@@ -445,15 +445,13 @@ class SyncService
     public function isOnline(): bool
     {
         try {
-            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/cloud/sync-status";
+            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/health";
             $statusResponse = Http::withHeaders([
-                'Authorization' => "Bearer {$this->apiKey}",
-                'X-Store-API-Key' => $this->apiKey,
+                'X-Edge-Api-Key' => $this->apiKey,
                 'X-Store-ID' => $this->storeId,
-            ])->connectTimeout(1)->timeout(2)->get($statusUrl);
-            // max 1 second to connect and 2 seconds total for the request
+            ])->connectTimeout(2)->timeout(3)->head($statusUrl);
 
-            return $statusResponse->successful();
+            return $statusResponse->status() < 500;
         } catch (\Exception $e) {
             return false;
         }
@@ -465,6 +463,10 @@ class SyncService
     public function getSyncStatus(): array
     {
         $metadata = SyncMetadata::where('store_id', $this->storeId)->first();
+        $queueCounts = SyncQueue::where('store_id', $this->storeId)
+            ->select('status', DB::raw('count(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status');
         $cloudStatus = null;
         try{  
                 $response = Http::withHeaders([
@@ -480,7 +482,9 @@ class SyncService
             'store_id' => $this->storeId,
             'is_online' => $this->isOnline(),
             'sync_status' => $metadata?->sync_status ?? 'idle',
-            'pending_count' => $metadata?->pending_records_count ?? 0,
+            'pending_count' => (int) ($queueCounts['pending'] ?? 0),
+            'retrying_count' => (int) ($queueCounts['retrying'] ?? 0),
+            'failed_count' => (int) ($queueCounts['failed'] ?? 0),
             'unresolved_conflicts_count' => SyncConflict::where('store_id', $this->storeId)
                 ->where('resolution_status', 'unresolved')
                 ->count(),
