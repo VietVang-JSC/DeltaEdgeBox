@@ -64,7 +64,7 @@ return new class extends Migration
         });
 
         // Tables (bàn ăn) table
-        Schema::create('tables', function (Blueprint $table) {
+        Schema::create('table', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('store_id')->nullable()->index();
             $table->string('name');
@@ -124,7 +124,7 @@ return new class extends Migration
     {
         Schema::dropIfExists('payment_details');
         Schema::dropIfExists('payments');
-        Schema::dropIfExists('tables');
+        Schema::dropIfExists('table');
         Schema::dropIfExists('products');
         Schema::dropIfExists('categories');
         Schema::dropIfExists('customers');
