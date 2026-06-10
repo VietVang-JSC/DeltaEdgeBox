@@ -280,8 +280,19 @@ class PosWebFilterController extends Controller
         $currentTime = $now->format('H:i:s');
 
         $timePrices = $product->timePrices ?? collect();
-        $applied = false;
 
+        // Build available frames for ALL matching day+time frames
+        foreach ($timePrices as $tp) {
+            if (empty($tp->is_active)) {
+                continue;
+            }
+            $days = $tp->days_of_week;
+            if (is_array($days) && in_array($currentDay, $days)) {
+                $availableFrames[] = substr($tp->start_time, 0, 5) . '-' . substr($tp->end_time, 0, 5);
+            }
+        }
+
+        // Apply first matching time price (same as cloud: first-match-wins, no priority/date used)
         foreach ($timePrices as $tp) {
             if (empty($tp->is_active)) {
                 continue;
@@ -289,14 +300,10 @@ class PosWebFilterController extends Controller
 
             $days = $tp->days_of_week;
 
-            if (is_array($days) && in_array($currentDay, $days)) {
-                $availableFrames[] = substr($tp->start_time, 0, 5) . '-' . substr($tp->end_time, 0, 5);
-
-                if (!$applied && $currentTime >= $tp->start_time && $currentTime <= $tp->end_time) {
-                    $product->price = $tp->price ?? $product->price;
-                    $product->price_after_tax = $tp->price_after_tax ?? $product->price_after_tax;
-                    $applied = true;
-                }
+            if (is_array($days) && in_array($currentDay, $days) && $currentTime >= $tp->start_time && $currentTime <= $tp->end_time) {
+                $product->price = $tp->price ?? $product->price;
+                $product->price_after_tax = $tp->price_after_tax ?? $product->price_after_tax;
+                break;
             }
         }
 
