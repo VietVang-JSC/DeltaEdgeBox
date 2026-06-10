@@ -89,7 +89,7 @@ Route::prefix('printers')->group(function () {
 Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
     Route::post('/update_payment', [PaymentController::class, 'updatePayment']);
-    Route::post('/get_sale_today', [PaymentController::class, 'getSaleToday']);
+    Route::match(['GET', 'POST'], '/get_sale_today', [PaymentController::class, 'getSaleToday']);
 });
 Route::post('/user/payment/list_open', [PaymentController::class, 'listOpen']);
 Route::get('/user/payment/get/{id}', [PaymentController::class, 'getPayment']);
