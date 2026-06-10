@@ -627,13 +627,13 @@ class PosWebFilterController extends Controller
             ->where('store_id', $storeId)->where('status', 1)->where('is_show', 1)->orderBy('sort_rank')->get();
         return response()->json([
             'status' => true,
-            'data' => $products->map(function ($p) {
-                $data = $p->toArray();
-                $data['product_code'] = $p->code;
-                $data['price_after_tax'] = $p->price_after_tax ?? $p->price;
-                return $data;
-            }),
+            'data' => $products->map(fn($p) => $this->productPayload($p))->values()->all(),
         ]);
+    }
+
+    public function publicProductPayload(Product $product): array
+    {
+        return $this->productPayload($product);
     }
 
     public function getCategory(Request $request)
