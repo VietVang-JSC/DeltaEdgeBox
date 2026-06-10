@@ -67,12 +67,28 @@ return new class extends Migration
         Schema::create('table', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('store_id')->nullable()->index();
-            $table->string('name');
-            $table->string('code')->unique();
-            $table->integer('capacity')->default(2);
-            $table->tinyInteger('status')->default(0); // 0: empty, 1: occupied, 2: reserved
-            $table->text('note')->nullable();
-            $table->integer('admin_id');
+            $table->string('name')->nullable();
+            $table->string('code')->nullable();
+            $table->string('tablename')->nullable();
+            $table->text('listitem')->nullable();
+            $table->string('image')->nullable();
+            $table->tinyInteger('status')->default(0);
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->unsignedBigInteger('admin_id')->nullable();
+            $table->unsignedBigInteger('payment_id')->nullable();
+            $table->boolean('is_show')->default(true);
+            $table->integer('sort_rank')->default(0);
+            $table->string('userordered')->nullable();
+            $table->string('booking_code')->nullable();
+            $table->string('qr_token')->nullable();
+            $table->timestamp('lock_time')->nullable();
+            $table->integer('number_of_people')->default(0);
+            $table->boolean('can_order')->default(true);
+            $table->string('qr_code')->nullable();
+            $table->boolean('is_order_enabled')->default(true);
+            $table->string('pin')->nullable();
+            $table->string('qr_code_token')->nullable();
+            $table->softDeletes();
             $table->timestamps();
 
             $table->index(['store_id', 'status']);
