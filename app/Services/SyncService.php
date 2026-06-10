@@ -445,12 +445,13 @@ class SyncService
     public function isOnline(): bool
     {
         try {
-            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/edge-cloud/master-sync";
+            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/health";
             $statusResponse = Http::withHeaders([
+                'X-Edge-Api-Key' => $this->apiKey,
                 'X-Store-ID' => $this->storeId,
-            ])->connectTimeout(1)->timeout(2)->get($statusUrl);
+            ])->connectTimeout(2)->timeout(3)->head($statusUrl);
 
-            return $statusResponse->successful();
+            return $statusResponse->status() < 500;
         } catch (\Exception $e) {
             return false;
         }
