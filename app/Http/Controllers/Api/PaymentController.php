@@ -819,6 +819,8 @@ class PaymentController extends Controller
                 $data = $p->toArray();
                 $data['valuetotal'] = $data['total'] ?? 0;
                 $data['reasonSurcharge'] = $data['surcharge_reason'] ?? '';
+                $data['user'] = $data['user'] ?? ['id' => 0, 'name' => 'Unknown'];
+                $data['customer'] = $data['customer'] ?? null;
                 return $data;
             });
 
