@@ -397,51 +397,72 @@ class PaymentController extends Controller
                 ], 404);
             }
 
-            $payment = DB::transaction(function () use ($payment, $productKey, $deleteQuantity, $deletePayment, $tableId, $storeId) {
+            $productList = $request->input('product_list');
+            $discount = (float) $request->input('discount', 0);
+            $surcharge = (float) $request->input('surcharge', 0);
+            $totalTax = (float) $request->input('total_tax', 0);
+            $valuetotal = (float) $request->input('valuetotal', 0);
+
+            $payment = DB::transaction(function () use ($payment, $productKey, $deleteQuantity, $deletePayment, $tableId, $storeId, $productList, $discount, $surcharge, $totalTax, $valuetotal) {
                 if ($deletePayment) {
-                    // Update table status if set
                     if (!empty($tableId)) {
                         $this->clearTableAfterPayment($tableId, $storeId);
                     }
-                    
-                    // Soft/Hard delete payment
                     $payment->status = -1;
                     $payment->save();
-                    
                     $payment->details()->delete();
                     $payment->delete();
                 } else {
-                    // Part-delete quantity
-                    $items = json_decode($payment->items, true) ?: [];
-                    $rawItems = $items['item'] ?? $items ?? [];
-
-                    if (isset($rawItems[$productKey])) {
-                        $currentQty = (int) ($rawItems[$productKey]['quantity'] ?? 0);
-                        if ($currentQty - $deleteQuantity > 0) {
-                            $rawItems[$productKey]['quantity'] -= $deleteQuantity;
-                            $price = (float) ($rawItems[$productKey]['price'] ?? 0);
-                            $vat = (float) ($rawItems[$productKey]['vat'] ?? 0);
-                            $rawItems[$productKey]['TotalPrice'] = ($price + ($price * $vat / 100)) * $rawItems[$productKey]['quantity'];
-                        } else {
-                            unset($rawItems[$productKey]);
+                    if (!empty($productList) && is_array($productList)) {
+                        // Use product_list from FE (same as cloud)
+                        $rawItems = $productList;
+                        if (isset($rawItems[$productKey])) {
+                            $currentQty = (int) ($rawItems[$productKey]['quantity'] ?? 0);
+                            if ($currentQty - $deleteQuantity > 0) {
+                                $rawItems[$productKey]['quantity'] -= $deleteQuantity;
+                                $price = (float) ($rawItems[$productKey]['price'] ?? 0);
+                                $vat = (float) ($rawItems[$productKey]['vat'] ?? 0);
+                                $rawItems[$productKey]['TotalPrice'] = ($price + ($price * $vat / 100)) * $rawItems[$productKey]['quantity'];
+                            } else {
+                                unset($rawItems[$productKey]);
+                            }
                         }
+                        $dataItem = [
+                            'item' => $rawItems,
+                            'discountPayment' => $discount,
+                            'reasonSurcharge' => $request->input('surcharge_reason', ''),
+                            'surcharge' => $surcharge,
+                            'total_tax' => $totalTax,
+                        ];
+                        $newPayload = json_encode($dataItem);
+                        $payment->items = $newPayload;
+                        $payment->discount = $discount;
+                        $payment->surcharge = $surcharge;
+                        $payment->tax = $totalTax;
+                        $payment->total = $valuetotal > 0 ? $valuetotal : array_sum(array_column($rawItems, 'TotalPrice'));
+                        $payment->final_total = max(0, $payment->total - $discount + $surcharge);
+                    } else {
+                        // No product_list from FE — fallback to decoding payment->items (old path)
+                        $items = json_decode($payment->items, true) ?: [];
+                        $rawItems = $items['item'] ?? $items ?? [];
+
+                        if (isset($rawItems[$productKey])) {
+                            $currentQty = (int) ($rawItems[$productKey]['quantity'] ?? 0);
+                            if ($currentQty - $deleteQuantity > 0) {
+                                $rawItems[$productKey]['quantity'] -= $deleteQuantity;
+                            } else {
+                                unset($rawItems[$productKey]);
+                            }
+                        }
+                        $newPayload = json_encode(['item' => $rawItems]);
+                        $payment->items = $newPayload;
                     }
-
-                    $newPayload = json_encode(['item' => array_values($rawItems)]);
-                    
-                    // Recalculate totals
-                    $decodedItems = $this->decodeItems($newPayload);
-                    $summary = $this->summarizeItems($decodedItems);
-
-                    $payment->items = $newPayload;
-                    $payment->total = $summary['total'];
-                    $payment->final_total = max(0, $summary['total'] - (float) $payment->discount + (float) $payment->surcharge);
                     $payment->save();
 
-                    // Update Table item list
+                    // Update Table listitem
                     if (!empty($tableId)) {
                         Table::whereKey($tableId)->where('store_id', $storeId)->update([
-                            'listitem' => $newPayload,
+                            'listitem' => $payment->items,
                         ]);
                     }
 
