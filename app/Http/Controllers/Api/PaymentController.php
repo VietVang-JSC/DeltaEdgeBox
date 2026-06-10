@@ -115,7 +115,7 @@ class PaymentController extends Controller
                 'status_code' => 200,
                 'message' => __('api.payment_create'),
                 'data' => [
-                    'payment' => $payment->toArray(),
+                    'paymentInfo' => $payment->toArray(),
                 ],
             ]);
         } catch (\Throwable $th) {
@@ -234,7 +234,7 @@ class PaymentController extends Controller
                 'status_code' => 200,
                 'message' => __('api.payment_update'),
                 'data' => [
-                    'payment' => $payment->toArray(),
+                    'paymentInfo' => $payment->toArray(),
                 ],
             ]);
         } catch (\RuntimeException $th) {
