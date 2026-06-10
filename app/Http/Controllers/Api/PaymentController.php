@@ -133,8 +133,14 @@ class PaymentController extends Controller
     {
         app()->setLocale($request->input('isCheckLanguage', 'vi'));
 
+        $paymentId = $request->input('id', $request->input('payment_id'));
+
+        // If no payment_id provided, create new payment instead of updating
+        if (!$paymentId) {
+            return $this->createPayment($request);
+        }
+
         $validator = Validator::make($request->all(), [
-            'id' => ['required'],
             'items' => ['required'],
         ]);
 
