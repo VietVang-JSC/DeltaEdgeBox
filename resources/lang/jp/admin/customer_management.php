@@ -1,0 +1,30 @@
+<?php
+return [
+    'title' => [
+        'Danh sách Khách hàng' => '顧客リスト',
+        'Thêm khách hàng' => '追加',
+        'ID' => 'コード',
+        'Tên khách hàng' => '顧客名',
+        'Số điện thoại' => '電話番号',
+        'Điểm thưởng' => 'ポイント',
+        'Tổng tiền thanh toán' => '支払総額',
+        'Thao tác' => '操作',
+        'Xem' => '閲覧',
+        'Tìm khách hàng' => '検索',
+        'Chi tiết Khách hàng' => '顧客の詳細',
+        'Quay lại' => '戻る',
+        'Cập nhật' => '更新',
+        'Thêm Khách hàng' => '追加',
+        'Tạo' => '作成',
+    ],
+    'message' => [
+        'Khách hàng này đã tồn tại' => 'この顧客は既に存在しています',
+        'Thêm khách hàng thành công' => '顧客の追加に成功しました',
+        'Thêm khách hàng không thành công' => '顧客の追加に失敗しました',
+        'Không tìm thấy khách hàng' => '顧客が見つかりません',
+        'Số điện thoại này đã tồn tại' => 'この電話番号は既に存在しています',
+        'Sửa thông tin khách hàng thành công' => '顧客情報の更新に成功しました',
+        'Họ và tên không được vượt quá 20 ký tự' => '氏名は20文字を超えてはいけません',
+        'Permission Denied' => "アクセスが拒否されました",
+    ],
+];

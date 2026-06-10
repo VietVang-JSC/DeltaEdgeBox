@@ -61,6 +61,7 @@ class PaymentController extends Controller
                     'final_total' => round((float) $request->input('amount_received', $request->input('valuetotal', $summary['total']))),
                     'payment_method' => $request->input('payment_method', 'cash') ?: 'cash',
                     'note' => $request->input('reason'),
+                    'reason' => $request->input('reason'),
                     'status' => $status,
                     'user_id' => $userId,
                     'admin_id' => $request->input('admin_id', $userId),
@@ -103,23 +104,17 @@ class PaymentController extends Controller
                 return $payment->load('details');
             });
 
-            app()->terminating(function () {
-                try {
-                    app(SyncService::class)->processQueue(10);
-                } catch (\Throwable $th) {
-                    Log::warning('Edge payment post-response sync failed', [
-                        'error' => $th->getMessage(),
-                    ]);
-                }
-            });
+            try {
+                app(SyncService::class)->processQueue(10);
+            } catch (\Throwable $th) {
+                Log::warning('Edge payment sync failed', ['error' => $th->getMessage()]);
+            }
 
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
                 'message' => __('api.payment_create'),
-                'data' => [
-                    'payment' => $payment->toArray(),
-                ],
+                'paymentInfo' => $payment->toArray(),
             ]);
         } catch (\Throwable $th) {
             Log::error('Edge payment create failed', [
@@ -187,6 +182,7 @@ class PaymentController extends Controller
                     'final_total' => round((float) $request->input('amount_received', $request->input('valuetotal', $summary['total']))),
                     'payment_method' => $request->input('payment_method', $payment->payment_method ?: 'cash'),
                     'note' => $request->input('reason'),
+                    'reason' => $request->input('reason'),
                     'status' => $status,
                     'user_id' => $userId,
                     'admin_id' => $request->input('admin_id', $payment->admin_id ?: $userId),
@@ -225,23 +221,17 @@ class PaymentController extends Controller
                 return $payment->load('details');
             });
 
-            app()->terminating(function () {
-                try {
-                    app(SyncService::class)->processQueue(10);
-                } catch (\Throwable $th) {
-                    Log::warning('Edge payment update post-response sync failed', [
-                        'error' => $th->getMessage(),
-                    ]);
-                }
-            });
+            try {
+                app(SyncService::class)->processQueue(10);
+            } catch (\Throwable $th) {
+                Log::warning('Edge payment update sync failed', ['error' => $th->getMessage()]);
+            }
 
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
                 'message' => __('api.payment_update'),
-                'data' => [
-                    'payment' => $payment->toArray(),
-                ],
+                'paymentInfo' => $payment->toArray(),
             ]);
         } catch (\RuntimeException $th) {
             return response()->json([
@@ -405,51 +395,72 @@ class PaymentController extends Controller
                 ], 404);
             }
 
-            $payment = DB::transaction(function () use ($payment, $productKey, $deleteQuantity, $deletePayment, $tableId, $storeId) {
+            $productList = $request->input('product_list');
+            $discount = (float) $request->input('discount', 0);
+            $surcharge = (float) $request->input('surcharge', 0);
+            $totalTax = (float) $request->input('total_tax', 0);
+            $valuetotal = (float) $request->input('valuetotal', 0);
+
+            $payment = DB::transaction(function () use ($payment, $productKey, $deleteQuantity, $deletePayment, $tableId, $storeId, $productList, $discount, $surcharge, $totalTax, $valuetotal) {
                 if ($deletePayment) {
-                    // Update table status if set
                     if (!empty($tableId)) {
                         $this->clearTableAfterPayment($tableId, $storeId);
                     }
-                    
-                    // Soft/Hard delete payment
                     $payment->status = -1;
                     $payment->save();
-                    
                     $payment->details()->delete();
                     $payment->delete();
                 } else {
-                    // Part-delete quantity
-                    $items = json_decode($payment->items, true) ?: [];
-                    $rawItems = $items['item'] ?? $items ?? [];
-
-                    if (isset($rawItems[$productKey])) {
-                        $currentQty = (int) ($rawItems[$productKey]['quantity'] ?? 0);
-                        if ($currentQty - $deleteQuantity > 0) {
-                            $rawItems[$productKey]['quantity'] -= $deleteQuantity;
-                            $price = (float) ($rawItems[$productKey]['price'] ?? 0);
-                            $vat = (float) ($rawItems[$productKey]['vat'] ?? 0);
-                            $rawItems[$productKey]['TotalPrice'] = ($price + ($price * $vat / 100)) * $rawItems[$productKey]['quantity'];
-                        } else {
-                            unset($rawItems[$productKey]);
+                    if (!empty($productList) && is_array($productList)) {
+                        // Use product_list from FE (same as cloud)
+                        $rawItems = $productList;
+                        if (isset($rawItems[$productKey])) {
+                            $currentQty = (int) ($rawItems[$productKey]['quantity'] ?? 0);
+                            if ($currentQty - $deleteQuantity > 0) {
+                                $rawItems[$productKey]['quantity'] -= $deleteQuantity;
+                                $price = (float) ($rawItems[$productKey]['price'] ?? 0);
+                                $vat = (float) ($rawItems[$productKey]['vat'] ?? 0);
+                                $rawItems[$productKey]['TotalPrice'] = ($price + ($price * $vat / 100)) * $rawItems[$productKey]['quantity'];
+                            } else {
+                                unset($rawItems[$productKey]);
+                            }
                         }
+                        $dataItem = [
+                            'item' => $rawItems,
+                            'discountPayment' => $discount,
+                            'reasonSurcharge' => $request->input('surcharge_reason', ''),
+                            'surcharge' => $surcharge,
+                            'total_tax' => $totalTax,
+                        ];
+                        $newPayload = json_encode($dataItem);
+                        $payment->items = $newPayload;
+                        $payment->discount = $discount;
+                        $payment->surcharge = $surcharge;
+                        $payment->tax = $totalTax;
+                        $payment->total = $valuetotal > 0 ? $valuetotal : array_sum(array_column($rawItems, 'TotalPrice'));
+                        $payment->final_total = max(0, $payment->total - $discount + $surcharge);
+                    } else {
+                        // No product_list from FE — fallback to decoding payment->items (old path)
+                        $items = json_decode($payment->items, true) ?: [];
+                        $rawItems = $items['item'] ?? $items ?? [];
+
+                        if (isset($rawItems[$productKey])) {
+                            $currentQty = (int) ($rawItems[$productKey]['quantity'] ?? 0);
+                            if ($currentQty - $deleteQuantity > 0) {
+                                $rawItems[$productKey]['quantity'] -= $deleteQuantity;
+                            } else {
+                                unset($rawItems[$productKey]);
+                            }
+                        }
+                        $newPayload = json_encode(['item' => $rawItems]);
+                        $payment->items = $newPayload;
                     }
-
-                    $newPayload = json_encode(['item' => array_values($rawItems)]);
-                    
-                    // Recalculate totals
-                    $decodedItems = $this->decodeItems($newPayload);
-                    $summary = $this->summarizeItems($decodedItems);
-
-                    $payment->items = $newPayload;
-                    $payment->total = $summary['total'];
-                    $payment->final_total = max(0, $summary['total'] - (float) $payment->discount + (float) $payment->surcharge);
                     $payment->save();
 
-                    // Update Table item list
+                    // Update Table listitem
                     if (!empty($tableId)) {
                         Table::whereKey($tableId)->where('store_id', $storeId)->update([
-                            'listitem' => $newPayload,
+                            'listitem' => $payment->items,
                         ]);
                     }
 
@@ -650,6 +661,173 @@ class PaymentController extends Controller
                 'status_code' => 500,
                 'message' => __('api.ISError'),
             ], 500);
+        }
+    }
+
+    public function listOpen(Request $request)
+    {
+        app()->setLocale($request->input('isCheckLanguage', 'vi'));
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $payments = Payment::with('details')
+                ->where('store_id', $storeId)
+                ->where('status', 0)
+                ->orderBy('created_at', 'desc')
+                ->get();
+            return response()->json([
+                'status' => true,
+                'data' => $payments,
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge listOpen failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
+    public function getPayment($id)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $payment = Payment::with('details')->where('store_id', $storeId)->where('id', $id)->first();
+            if (!$payment) {
+                return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+            }
+            return response()->json(['status' => true, 'data' => $payment], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getPayment failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
+    public function checkIsPrinted(Request $request)
+    {
+        $paymentId = $request->input('payment_id');
+        if (!$paymentId) {
+            return response()->json(['status' => false, 'status_code' => 400, 'message' => 'payment_id required'], 400);
+        }
+
+        $payment = Payment::find($paymentId);
+        if (!$payment) {
+            return response()->json(['status' => false, 'status_code' => 404, 'data' => ['is_printed' => false]], 404);
+        }
+
+        return response()->json([
+            'status' => true,
+            'status_code' => 200,
+            'data' => [
+                'is_printed' => (bool) $payment->is_printed,
+            ],
+        ]);
+    }
+
+    public function getPaymentByRequest(Request $request)
+    {
+        $id = $request->input('id', $request->input('payment_id'));
+        if (!$id) {
+            return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Payment ID required'], 400);
+        }
+        return $this->getPayment($id);
+    }
+
+    public function getPaymentByTable(Request $request)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $tableId = $request->input('table_id', $request->input('id'));
+            if (!$tableId) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Table ID required'], 400);
+            }
+            $table = \App\Models\Table::with('payment.details')->where('store_id', $storeId)->where('id', $tableId)->first();
+            if (!$table || !$table->payment) {
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'No payment found for table'], 404);
+            }
+            return response()->json([
+                'status' => true,
+                'data_table' => [$table->toArray()],
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getPaymentByTable failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
+    public function getAllPaymentForUserNew(Request $request)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $payments = Payment::with('details')
+                ->where('store_id', $storeId)
+                ->where('status', 0)
+                ->orderBy('created_at', 'desc')
+                ->get();
+            return response()->json([
+                'status' => true,
+                'data_table' => $payments->toArray(),
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getAllPaymentForUserNew failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
+    public function getAllPaymentForUserNewPaginate(Request $request)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $page = (int) $request->input('page', 1);
+            $pageSize = (int) $request->input('pageSize', 15);
+            $query = $request->input('query', []);
+
+            $paymentsQuery = Payment::with(['user', 'customer', 'details'])
+                ->where('store_id', $storeId);
+
+            // Apply filters
+            if (!empty($query['user_id'])) {
+                $paymentsQuery->where('user_id', $query['user_id']);
+            }
+            if (!empty($query['customer_id']) || isset($query['customer_id'])) {
+                $paymentsQuery->where('customer_id', $query['customer_id']);
+            }
+            if (!empty($query['payment_method'])) {
+                $paymentsQuery->where('payment_method', $query['payment_method']);
+            }
+            if (isset($query['status']) && $query['status'] !== '' && $query['status'] !== null) {
+                $paymentsQuery->where('status', (int) $query['status']);
+            }
+            if (!empty($query['updated_at']) && is_array($query['updated_at'])) {
+                $dates = array_filter($query['updated_at']);
+                if (!empty($dates)) {
+                    $paymentsQuery->whereDate('updated_at', '>=', $dates[0]);
+                    if (isset($dates[1])) {
+                        $paymentsQuery->whereDate('updated_at', '<=', $dates[1]);
+                    }
+                }
+            }
+
+            $total = $paymentsQuery->count();
+            $totalPages = max(1, ceil($total / $pageSize));
+            $payments = $paymentsQuery->orderBy('created_at', 'desc')
+                ->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->get();
+
+            $payments = $payments->map(function ($p) {
+                $data = $p->toArray();
+                $data['valuetotal'] = $data['total'] ?? 0;
+                $data['reasonSurcharge'] = $data['surcharge_reason'] ?? '';
+                $data['user'] = $data['user'] ?? ['id' => 0, 'name' => ''];
+                $data['customer'] = $data['customer'] ?? null;
+                return $data;
+            });
+
+            return response()->json([
+                'payments' => $payments,
+                'currentPage' => $page,
+                'total' => $totalPages,
+            ]);
+        } catch (\Throwable $th) {
+            Log::error('Edge getAllPaymentForUserNewPaginate failed', ['error' => $th->getMessage()]);
+            return response()->json(['payments' => [], 'currentPage' => 1, 'total' => 1], 200);
         }
     }
 

@@ -12,6 +12,7 @@ class Product extends Model
     protected $with = ['inventory'];
 
     protected $fillable = [
+        'id',
         'store_id',
         'category_id',
         'code',

@@ -7,6 +7,7 @@ use App\Models\Table;
 use App\Models\Store;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class KitchenPrintController extends Controller
 {
@@ -41,17 +42,45 @@ class KitchenPrintController extends Controller
     {
         $table = $this->findTable($request);
         if (!$table) {
-            return $this->error('Table not found', 404);
+            return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Table not found'], 404);
         }
 
-        return DB::transaction(function () use ($table) {
+        try {
             $products = $this->listPrintableItems($table, true);
             if (empty($products)) {
-                return $this->error('No items to print', 404);
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'No items to print', 'error_code' => 'no_items'], 404);
             }
 
-            return $this->success($this->tablePrintPayload($table, $products));
-        });
+            $payload = $this->tablePrintPayload($table, $products);
+            $store = Store::find($table->store_id);
+            $paperSize = $request->input('paper_size', '80');
+            $language = $request->input('language', 'vi');
+            app()->setLocale($language);
+
+            // Render kitchen template HTML
+            $tplName = 'kitchen.cook_template_print_' . $paperSize;
+            if (!view()->exists($tplName)) {
+                $tplName = 'kitchen.cook_template_print_80';
+            }
+            $html = view($tplName, [
+                'data' => $payload,
+                'payment' => $payload['payment'] ?? [],
+                'setting_print_kitchen' => $payload['setting_print_kitchen'] ?? null,
+                'bill_setting' => [],
+            ])->render();
+
+            return response()->json([
+                'status' => true,
+                'data' => [
+                    'browser' => [
+                        'view' => ['default' => $html],
+                    ],
+                ],
+            ]);
+        } catch (\Throwable $th) {
+            Log::error('Edge kitchen print on browser failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => 'Print render failed'], 500);
+        }
     }
 
     public function checkPrintedStatus(Request $request)
@@ -87,7 +116,7 @@ class KitchenPrintController extends Controller
 
     private function findTable(Request $request): ?Table
     {
-        $tableId = $request->input('table_id', $request->input('id'));
+        $tableId = $request->input('table_id', $request->input('id')) ?: $request->input('table.id');
         if (!$tableId) {
             return null;
         }
@@ -106,16 +135,22 @@ class KitchenPrintController extends Controller
         $payment = $table->payment;
         $user = $payment && $payment->user ? $payment->user->toArray() : null;
         $store = Store::find($table->store_id);
+        $productsList = $products ?? $this->listItems($table);
 
         return [
             'id' => $table->id,
             'table_id' => $table->id,
             'tablename' => $table->tablename ?? $table->name ?? null,
             'number_of_people' => $table->number_of_people ?? 0,
-            'products' => $products ?? $this->listItems($table),
+            'products' => $productsList,
             'user' => $user,
             'payment_code' => $payment->payment_code ?? null,
-            'payment' => $payment ? $payment->toArray() : null,
+            'payment' => $payment ? array_merge($payment->toArray(), [
+                'tablename' => $table->tablename ?? $table->name ?? null,
+                'products' => $productsList,
+                'created_at' => optional($table->created_at)->format('Y-m-d H:i:s'),
+                'updated_at' => optional($table->updated_at)->format('Y-m-d H:i:s'),
+            ]) : null,
             'created_at' => optional($table->created_at)->format('Y-m-d H:i:s'),
             'updated_at' => optional($table->updated_at)->format('Y-m-d H:i:s'),
             'setting_print_kitchen' => $store ? $store->setting_print_kitchen : null,
@@ -157,6 +192,15 @@ class KitchenPrintController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
+        Log::debug('KitchenPrint listPrintableItems', [
+            'table_id' => $table->id,
+            'payment_id' => $table->payment_id,
+            'has_payment' => $table->payment ? 'yes' : 'no',
+            'all_details_count' => $table->payment ? $table->payment->details()->withoutGlobalScope('Illuminate\Database\Eloquent\SoftDeletingScope')->count() : 0,
+            'active_details_count' => $table->payment ? $table->payment->details()->count() : 0,
+            'where_count' => $details->count(),
+        ]);
+
         $items = [];
         foreach ($details as $detail) {
             $printCount = (int) $detail->quantity - (int) $detail->printed_quantity;
@@ -190,6 +234,8 @@ class KitchenPrintController extends Controller
         if ($markPrinted && !empty($items)) {
             $this->syncPrintedStateToTableListItem($table);
         }
+
+        Log::debug('KitchenPrint listPrintableItems result', ['items_count' => count($items)]);
 
         return $items;
     }

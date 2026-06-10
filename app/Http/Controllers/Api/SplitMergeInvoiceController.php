@@ -25,7 +25,7 @@ class SplitMergeInvoiceController extends Controller
 
             $query1 = Payment::where('payments.store_id', $storeId)
                 ->where('payments.status', 0) // Unpaid
-                ->join('tables', 'payments.id', '=', 'tables.payment_id')
+                ->join('table', 'payments.id', '=', 'table.payment_id')
                 ->select(
                     'payments.id',
                     'payments.status',

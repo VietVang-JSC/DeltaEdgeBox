@@ -1,0 +1,48 @@
+<?php
+return [
+    'title' => [
+        'Quản lý chi nhánh' => 'Quản lý chi nhánh',
+        'Tạo chi nhánh' => 'Tạo chi nhánh',
+        'Tên chi nhánh' => 'Tên chi nhánh',
+        'Địa chỉ' => 'Địa chỉ',
+        'Điện thoại' => 'Điện thoại',
+        'Trạng thái' => 'Trạng thái',
+        'Thao tác' => 'Thao tác',
+        'Xem' => 'Xem',
+        'Xóa' => 'Xóa',
+        'Đã xóa' => 'Đã xóa',
+        'Tạm vắng' => 'Tạm vắng',
+        'Ngưng hoạt động' => 'Ngưng hoạt động',
+        'Đã kích hoạt' => 'Đã kích hoạt',
+        'Thành công' => 'Thành công',
+        'Thông báo' => 'Thông báo',
+        'Lỗi' => 'Lỗi',
+        'Chi nhánh' => 'Chi nhánh',
+        'Bỏ qua' => 'Bỏ qua',
+        'Lưu' => 'Lưu',
+        'Cập nhật' => 'Cập nhật',
+        "Chi nhánh trung tâm" => "(Chi nhánh trung tâm)",
+    ],
+    'message' => [
+        'errors' => [
+            'Không tìm thấy thông tin cửa hàng' => 'Không tìm thấy thông tin cửa hàng',
+            'Số điện thoại đã tồn tại' => 'Số điện thoại đã tồn tại',
+            'Tạo cửa hàng chi nhánh không thành công' => 'Tạo cửa hàng chi nhánh không thành công',
+            'Tạo tài khoản đăng nhập cửa hàng chi nhánh không thành công' => 'Tạo tài khoản đăng nhập cửa hàng chi nhánh không thành công',
+            'Cập nhật thông tin cửa hàng không thành công' => 'Cập nhật thông tin cửa hàng không thành công',
+            'Cửa hàng không thuộc trụ sở chính này' => 'Cửa hàng không thuộc trụ sở chính này',
+            'Chỉ trụ sở chính mới có thể truy cập tính năng này' => 'Chỉ trụ sở chính mới có thể truy cập tính năng này',
+            'Xóa cửa hàng không thành công' => 'Xóa cửa hàng không thành công',
+            'Kích hoạt cửa hàng không thành công' => 'Kích hoạt cửa hàng không thành công',
+            'Chuyển cửa hàng không thành công' => 'Chuyển cửa hàng không thành công',
+        ],
+        'success' => [
+            'Tạo chi nhánh cửa hàng thành công' => 'Tạo chi nhánh cửa hàng thành công',
+            'Lấy thông tin cửa hàng thành công' => 'Lấy thông tin cửa hàng thành công',
+            'Cập nhật thông tin cửa hàng thành công' => 'Cập nhật thông tin cửa hàng thành công',
+            'Xóa cửa hàng thành công' => 'Xóa cửa hàng thành công',
+            'Kích hoạt cửa hàng thành công' => 'Kích hoạt cửa hàng thành công',
+            'Chuyển cửa hàng thành công' => 'Chuyển cửa hàng thành công',
+        ],
+    ]
+];

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
+use App\Models\Store;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PaymentPrintController extends Controller
 {
@@ -34,7 +36,51 @@ class PaymentPrintController extends Controller
 
     public function printForWeb(Request $request)
     {
-        return $this->printPayment($request);
+        $paymentId = $request->input('payment_id');
+        if (!$paymentId) {
+            return response()->json(['status' => false, 'message' => 'payment_id is required'], 400);
+        }
+
+        $payment = Payment::with(['table', 'user', 'store', 'details.product'])->find($paymentId);
+        if (!$payment) {
+            return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+        }
+
+        $store = $payment->store;
+        $language = $request->input('language', 'vi');
+        app()->setLocale($language);
+
+        // Use paymentPayload() for 100% consistent format with cloud API
+        $paymentData = $this->paymentPayload($payment);
+        $paymentData['created_at'] = date('d-m-Y H:i:s', strtotime($payment->created_at));
+        $paymentData['updated_at'] = date('d-m-Y H:i:s', strtotime($payment->updated_at));
+
+        // Generate QR image if needed (use blank for now)
+        $qrImagePath = '';
+
+        $paperSize = $request->input('paper_size', '80');
+        $tpl = 'invoice.template_invoice_' . $language . '_' . $paperSize;
+        if (!view()->exists($tpl)) {
+            $tpl = 'invoice.template_invoice_vi_80';
+        }
+
+        try {
+            $html = view($tpl, [
+                'payment' => $paymentData,
+                'bill_setting' => [],
+                'data_bank_payment' => [],
+                'is_tax_included' => $store ? ($store->is_tax_included ?? false) : false,
+                'qrImagePath' => $qrImagePath,
+            ])->render();
+        } catch (\Throwable $th) {
+            Log::error('Edge print template render failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => 'Print render failed'], 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'data' => $html,
+        ]);
     }
 
     private function paymentPayload(Payment $payment): array

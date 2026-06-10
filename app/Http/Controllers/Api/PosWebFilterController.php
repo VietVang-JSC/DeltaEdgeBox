@@ -280,8 +280,19 @@ class PosWebFilterController extends Controller
         $currentTime = $now->format('H:i:s');
 
         $timePrices = $product->timePrices ?? collect();
-        $applied = false;
 
+        // Build available frames for ALL matching day+time frames
+        foreach ($timePrices as $tp) {
+            if (empty($tp->is_active)) {
+                continue;
+            }
+            $days = $tp->days_of_week;
+            if (is_array($days) && in_array($currentDay, $days)) {
+                $availableFrames[] = substr($tp->start_time, 0, 5) . '-' . substr($tp->end_time, 0, 5);
+            }
+        }
+
+        // Apply first matching time price (same as cloud: first-match-wins, no priority/date used)
         foreach ($timePrices as $tp) {
             if (empty($tp->is_active)) {
                 continue;
@@ -289,14 +300,10 @@ class PosWebFilterController extends Controller
 
             $days = $tp->days_of_week;
 
-            if (is_array($days) && in_array($currentDay, $days)) {
-                $availableFrames[] = substr($tp->start_time, 0, 5) . '-' . substr($tp->end_time, 0, 5);
-
-                if (!$applied && $currentTime >= $tp->start_time && $currentTime <= $tp->end_time) {
-                    $product->price = $tp->price ?? $product->price;
-                    $product->price_after_tax = $tp->price_after_tax ?? $product->price_after_tax;
-                    $applied = true;
-                }
+            if (is_array($days) && in_array($currentDay, $days) && $currentTime >= $tp->start_time && $currentTime <= $tp->end_time) {
+                $product->price = $tp->price ?? $product->price;
+                $product->price_after_tax = $tp->price_after_tax ?? $product->price_after_tax;
+                break;
             }
         }
 
@@ -618,5 +625,35 @@ class PosWebFilterController extends Controller
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function getProductList(Request $request)
+    {
+        $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id ?? 1;
+        $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory')
+            ->where('store_id', $storeId)->where('status', 1)->where('is_show', 1)->orderBy('sort_rank')->get();
+        return response()->json([
+            'status' => true,
+            'data' => $products->map(fn($p) => $this->productPayload($p))->values()->all(),
+        ]);
+    }
+
+    public function publicProductPayload(Product $product): array
+    {
+        return $this->productPayload($product);
+    }
+
+    public function getCategory(Request $request)
+    {
+        $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id ?? 1;
+        $categories = \App\Models\Category::where('store_id', $storeId)->where('status', 1)->orderBy('sort_order')->get();
+        return response()->json(['status' => true, 'data' => $categories]);
+    }
+
+    public function getAllCustomer(Request $request)
+    {
+        $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id ?? 1;
+        $customers = \App\Models\Customer::where('store_id', $storeId)->orderBy('name')->get();
+        return response()->json(['status' => true, 'data' => $customers]);
     }
 }

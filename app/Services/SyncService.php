@@ -445,15 +445,13 @@ class SyncService
     public function isOnline(): bool
     {
         try {
-            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/cloud/sync-status";
+            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/health";
             $statusResponse = Http::withHeaders([
-                'Authorization' => "Bearer {$this->apiKey}",
-                'X-Store-API-Key' => $this->apiKey,
+                'X-Edge-Api-Key' => $this->apiKey,
                 'X-Store-ID' => $this->storeId,
-            ])->connectTimeout(1)->timeout(2)->get($statusUrl);
-            // max 1 second to connect and 2 seconds total for the request
+            ])->connectTimeout(2)->timeout(3)->head($statusUrl);
 
-            return $statusResponse->successful();
+            return $statusResponse->status() < 500;
         } catch (\Exception $e) {
             return false;
         }
