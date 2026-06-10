@@ -105,6 +105,7 @@ Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/get_payment', [PaymentController::class, 'getPaymentByRequest']);
     Route::post('/get_payment_by_table', [PaymentController::class, 'getPaymentByTable']);
     Route::post('/get_all_payment_for_user_new', [PaymentController::class, 'getAllPaymentForUserNew']);
+    Route::match(['GET', 'POST'], '/get_all_payment_for_user_new_paginate', [PaymentController::class, 'getAllPaymentForUserNewPaginate']);
 });
 
 Route::prefix('payment')->middleware('edge.api.key')->group(function () {

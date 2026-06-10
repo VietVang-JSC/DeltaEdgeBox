@@ -61,6 +61,7 @@ class PaymentController extends Controller
                     'final_total' => round((float) $request->input('amount_received', $request->input('valuetotal', $summary['total']))),
                     'payment_method' => $request->input('payment_method', 'cash') ?: 'cash',
                     'note' => $request->input('reason'),
+                    'reason' => $request->input('reason'),
                     'status' => $status,
                     'user_id' => $userId,
                     'admin_id' => $request->input('admin_id', $userId),
@@ -183,6 +184,7 @@ class PaymentController extends Controller
                     'final_total' => round((float) $request->input('amount_received', $request->input('valuetotal', $summary['total']))),
                     'payment_method' => $request->input('payment_method', $payment->payment_method ?: 'cash'),
                     'note' => $request->input('reason'),
+                    'reason' => $request->input('reason'),
                     'status' => $status,
                     'user_id' => $userId,
                     'admin_id' => $request->input('admin_id', $payment->admin_id ?: $userId),
@@ -769,6 +771,65 @@ class PaymentController extends Controller
         } catch (\Throwable $th) {
             Log::error('Edge getAllPaymentForUserNew failed', ['error' => $th->getMessage()]);
             return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
+    public function getAllPaymentForUserNewPaginate(Request $request)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $page = (int) $request->input('page', 1);
+            $pageSize = (int) $request->input('pageSize', 15);
+            $query = $request->input('query', []);
+
+            $paymentsQuery = Payment::with(['user', 'customer', 'details'])
+                ->where('store_id', $storeId);
+
+            // Apply filters
+            if (!empty($query['user_id'])) {
+                $paymentsQuery->where('user_id', $query['user_id']);
+            }
+            if (!empty($query['customer_id']) || isset($query['customer_id'])) {
+                $paymentsQuery->where('customer_id', $query['customer_id']);
+            }
+            if (!empty($query['payment_method'])) {
+                $paymentsQuery->where('payment_method', $query['payment_method']);
+            }
+            if (isset($query['status']) && $query['status'] !== '' && $query['status'] !== null) {
+                $paymentsQuery->where('status', (int) $query['status']);
+            }
+            if (!empty($query['updated_at']) && is_array($query['updated_at'])) {
+                $dates = array_filter($query['updated_at']);
+                if (!empty($dates)) {
+                    $paymentsQuery->whereDate('updated_at', '>=', $dates[0]);
+                    if (isset($dates[1])) {
+                        $paymentsQuery->whereDate('updated_at', '<=', $dates[1]);
+                    }
+                }
+            }
+
+            $total = $paymentsQuery->count();
+            $totalPages = max(1, ceil($total / $pageSize));
+            $payments = $paymentsQuery->orderBy('created_at', 'desc')
+                ->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->get();
+
+            $payments = $payments->map(function ($p) {
+                $data = $p->toArray();
+                $data['valuetotal'] = $data['total'] ?? 0;
+                $data['reasonSurcharge'] = $data['surcharge_reason'] ?? '';
+                return $data;
+            });
+
+            return response()->json([
+                'payments' => $payments,
+                'currentPage' => $page,
+                'total' => $totalPages,
+            ]);
+        } catch (\Throwable $th) {
+            Log::error('Edge getAllPaymentForUserNewPaginate failed', ['error' => $th->getMessage()]);
+            return response()->json(['payments' => [], 'currentPage' => 1, 'total' => 1], 200);
         }
     }
 

@@ -130,7 +130,8 @@ class TableController extends Controller
                 if ($paymentId) {
                     Payment::whereKey($paymentId)->update([
                         'status' => self::PAYMENT_CANCELLED,
-                        'note' => $request->input('reason'),
+            'note' => $request->input('reason'),
+            'reason' => $request->input('reason'),
                     ]);
                 }
 
