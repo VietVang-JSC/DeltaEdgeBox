@@ -38,66 +38,58 @@ class PaymentController extends Controller
         }
 
         try {
-            $items = $this->decodeItems($request->input('items'));
-            $summary = $this->summarizeItems($items);
-
-            $payment = DB::transaction(function () use ($request, $items, $summary) {
+            $payment = DB::transaction(function () use ($request) {
                 $status = (int) $request->input('status', self::STATUS_PAYMENT_ACTIVE);
                 $tableId = $request->input('table_id', $request->input('tableID'));
-                $storeId = (int) $request->input('store_id', config('app.store_id'));
+                $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
                 $userId = (int) $request->input('user_id', 1);
                 $paymentTime = $this->storeNow($storeId);
+                $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
 
                 $payment = Payment::create([
                     'payment_code' => $request->input('payment_code') ?: 'EDGE-' . $paymentTime->format('YmdHis') . '-' . random_int(1000, 9999),
                     'store_id' => $storeId,
                     'table_id' => $tableId,
                     'customer_id' => $request->input('customer_id'),
-                    'items' => $this->normalizeItemsPayload($request->input('items')),
+                    'items' => $calculation['items_payload'],
                     'paid_date' => $paymentTime,
-                    'total' => round((float) $request->input('valuetotal', $summary['total'])),
-                    'discount' => (float) $request->input('discount', 0),
-                    'tax' => (float) $request->input('total_tax', 0),
-                    'final_total' => round((float) $request->input('amount_received', $request->input('valuetotal', $summary['total']))),
+                    'total' => $calculation['total'],
+                    'discount' => $calculation['discount'],
+                    'tax' => $calculation['tax'],
+                    'final_total' => $calculation['final_total'],
                     'payment_method' => $request->input('payment_method', 'cash') ?: 'cash',
                     'note' => $request->input('reason'),
                     'reason' => $request->input('reason'),
                     'status' => $status,
                     'user_id' => $userId,
                     'admin_id' => $request->input('admin_id', $userId),
-                    'surcharge' => (float) $request->input('surcharge', 0),
-                    'surcharge_reason' => $request->input('surcharge_reason'),
-                    'surcharge_percent' => (int) $request->input('surcharge_percent', 0),
-                    'service_charge' => (int) $request->input('service_charge', 0),
-                    'service_charge_amount' => (float) $request->input('service_charge_amount', 0),
-                    'type_discount' => $request->input('type_discount', 'amount'),
-                    'discount_percent' => (int) $request->input('discount_percent', 0),
-                    'is_senior_discount' => $request->input('is_senior_discount', false),
-                    'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
-                    'sub_total_before_discount' => (float) $request->input('sub_total_before_discount', 0),
-                    'total_incl_vat_before_discount' => (float) $request->input('total_incl_vat_before_discount', 0),
+                    'surcharge' => $calculation['surcharge'],
+                    'surcharge_reason' => $calculation['surcharge_reason'],
+                    'surcharge_percent' => $calculation['surcharge_percent'],
+                    'service_charge' => $calculation['service_charge'],
+                    'service_charge_amount' => $calculation['service_charge_amount'],
+                    'type_discount' => $calculation['type_discount'],
+                    'discount_percent' => $calculation['discount_percent'],
+                    'is_senior_discount' => $calculation['is_senior_discount'],
+                    'senior_discount_amount' => $calculation['senior_discount_amount'],
+                    'sub_total_before_discount' => $calculation['sub_total_before_discount'],
+                    'total_incl_vat_before_discount' => $calculation['total_incl_vat_before_discount'],
                     'created_at' => $paymentTime,
                     'updated_at' => $paymentTime,
                 ]);
 
-                foreach ($items as $item) {
-                    PaymentDetail::create([
-                        'payment_id' => $payment->id,
-                        'product_id' => $item['product_id'],
-                        'product_key' => $item['product_key'] ?? null,
-                        'quantity' => $item['quantity'],
-                        'price' => $item['price'],
-                        'total' => $item['total'],
-                        'note' => $item['note'] ?? null,
-                        'admin_id' => $request->input('admin_id', $userId),
-                        'store_id' => $storeId,
-                        'created_at' => $paymentTime,
-                        'updated_at' => $paymentTime,
-                    ]);
+                foreach ($calculation['items'] as $item) {
+                    PaymentDetail::create($this->buildPaymentDetailAttributes(
+                        $payment,
+                        $item,
+                        $storeId,
+                        (int) $request->input('admin_id', $userId),
+                        $paymentTime
+                    ));
                 }
 
                 if ($status === self::STATUS_PAYMENT_ACTIVE) {
-                    $this->deductInventoryForPayment($payment, $items, $storeId, $userId);
+                    $this->deductInventoryForPayment($payment, array_values($calculation['items']), $storeId, $userId);
                     $this->clearTableAfterPayment($tableId, $storeId);
                 }
 
@@ -160,11 +152,8 @@ class PaymentController extends Controller
         }
 
         try {
-            $items = $this->decodeItems($request->input('items'));
-            $summary = $this->summarizeItems($items);
-
-            $payment = DB::transaction(function () use ($request, $items, $summary) {
-                $storeId = (int) $request->input('store_id', config('app.store_id'));
+            $payment = DB::transaction(function () use ($request) {
+                $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
                 $payment = Payment::whereKey($request->input('id'))
                     ->where('store_id', $storeId)
                     ->lockForUpdate()
@@ -178,56 +167,51 @@ class PaymentController extends Controller
                 $status = (int) $request->input('status', $oldStatus);
                 $userId = (int) $request->input('user_id', $payment->user_id ?: 1);
                 $paymentTime = $this->storeNow($storeId);
+                $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
 
                 $payment->fill([
                     'table_id' => $request->input('table_id', $payment->table_id),
                     'customer_id' => $request->input('customer_id', $payment->customer_id),
-                    'items' => $this->normalizeItemsPayload($request->input('items')),
+                    'items' => $calculation['items_payload'],
                     'paid_date' => $status === self::STATUS_PAYMENT_ACTIVE ? $paymentTime : $payment->paid_date,
-                    'total' => round((float) $request->input('valuetotal', $summary['total'])),
-                    'discount' => (float) $request->input('discount', 0),
-                    'surcharge' => (float) $request->input('surcharge', 0),
-                    'surcharge_reason' => $request->input('surcharge_reason'),
-                    'surcharge_percent' => (int) $request->input('surcharge_percent', 0),
-                    'service_charge' => (int) $request->input('service_charge', 0),
-                    'service_charge_amount' => (float) $request->input('service_charge_amount', 0),
-                    'tax' => (float) $request->input('total_tax', 0),
-                    'final_total' => round((float) $request->input('amount_received', $request->input('valuetotal', $summary['total']))),
+                    'total' => $calculation['total'],
+                    'discount' => $calculation['discount'],
+                    'surcharge' => $calculation['surcharge'],
+                    'surcharge_reason' => $calculation['surcharge_reason'],
+                    'surcharge_percent' => $calculation['surcharge_percent'],
+                    'service_charge' => $calculation['service_charge'],
+                    'service_charge_amount' => $calculation['service_charge_amount'],
+                    'tax' => $calculation['tax'],
+                    'final_total' => $calculation['final_total'],
                     'payment_method' => $request->input('payment_method', $payment->payment_method ?: 'cash'),
                     'note' => $request->input('reason'),
                     'reason' => $request->input('reason'),
                     'status' => $status,
                     'user_id' => $userId,
                     'admin_id' => $request->input('admin_id', $payment->admin_id ?: $userId),
-                    'type_discount' => $request->input('type_discount', 'amount'),
-                    'discount_percent' => (int) $request->input('discount_percent', 0),
-                    'is_senior_discount' => $request->input('is_senior_discount', false),
-                    'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
-                    'sub_total_before_discount' => (float) $request->input('sub_total_before_discount', 0),
-                    'total_incl_vat_before_discount' => (float) $request->input('total_incl_vat_before_discount', 0),
+                    'type_discount' => $calculation['type_discount'],
+                    'discount_percent' => $calculation['discount_percent'],
+                    'is_senior_discount' => $calculation['is_senior_discount'],
+                    'senior_discount_amount' => $calculation['senior_discount_amount'],
+                    'sub_total_before_discount' => $calculation['sub_total_before_discount'],
+                    'total_incl_vat_before_discount' => $calculation['total_incl_vat_before_discount'],
                     'updated_at' => $paymentTime,
                 ]);
                 $payment->save();
 
                 $payment->details()->delete();
-                foreach ($items as $item) {
-                    PaymentDetail::create([
-                        'payment_id' => $payment->id,
-                        'product_id' => $item['product_id'],
-                        'product_key' => $item['product_key'] ?? null,
-                        'quantity' => $item['quantity'],
-                        'price' => $item['price'],
-                        'total' => $item['total'],
-                        'note' => $item['note'] ?? null,
-                        'admin_id' => $request->input('admin_id', $payment->admin_id ?: $userId),
-                        'store_id' => $storeId,
-                        'created_at' => $paymentTime,
-                        'updated_at' => $paymentTime,
-                    ]);
+                foreach ($calculation['items'] as $item) {
+                    PaymentDetail::create($this->buildPaymentDetailAttributes(
+                        $payment,
+                        $item,
+                        $storeId,
+                        (int) $request->input('admin_id', $payment->admin_id ?: $userId),
+                        $paymentTime
+                    ));
                 }
 
                 if ($oldStatus !== self::STATUS_PAYMENT_ACTIVE && $status === self::STATUS_PAYMENT_ACTIVE) {
-                    $this->deductInventoryForPayment($payment, $items, $storeId, $userId);
+                    $this->deductInventoryForPayment($payment, array_values($calculation['items']), $storeId, $userId);
                     $this->clearTableAfterPayment($payment->table_id, $storeId);
                 }
 
@@ -277,6 +261,324 @@ class PaymentController extends Controller
         $timeZone = Store::whereKey($storeId)->value('time_zone') ?: config('app.timezone', 'Asia/Ho_Chi_Minh');
 
         return now($timeZone);
+    }
+
+    private function buildCalculatedPaymentData($itemsInput, int $storeId, array $input): array
+    {
+        $rawItems = $this->decodeRawItems($itemsInput);
+        $store = Store::whereKey($storeId)->first();
+        $isTaxIncluded = (bool) ($store->is_tax_included ?? false);
+        $typeDiscount = ($input['type_discount'] ?? 'amount') ?: 'amount';
+        $discountValue = $typeDiscount === 'percent'
+            ? (float) ($input['discount_percent'] ?? $input['discount'] ?? 0)
+            : (float) ($input['discount'] ?? 0);
+
+        $bill = $isTaxIncluded
+            ? $this->allocateDiscountTaxIncluded($rawItems, $discountValue, $typeDiscount)
+            : $this->allocateDiscountTaxExcluded($rawItems, $discountValue, $typeDiscount);
+
+        $items = $bill['items'];
+        $summary = $bill['summary'];
+        $discountTotal = (float) ($summary['discount_total'] ?? 0);
+        $taxTotal = (float) ($summary['total_vat'] ?? 0);
+        $surcharge = (float) ($input['surcharge'] ?? 0);
+        $surchargeReason = $input['surcharge_reason'] ?? $input['reasonSurcharge'] ?? null;
+        $surchargePercent = $this->nullableNumber($input['surcharge_percent'] ?? null);
+        $serviceCharge = (int) ($input['service_charge'] ?? 0);
+        $serviceChargeAmount = (float) ($input['service_charge_amount'] ?? 0);
+        $seniorDiscount = filter_var($input['is_senior_discount'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $seniorDiscountAmount = (float) ($input['senior_discount_amount'] ?? 0);
+        $total = (float) ($summary['total_with_vat'] ?? 0) + $surcharge;
+
+        if (($store->time_zone ?? null) === 'Asia/Manila') {
+            if (!array_key_exists('service_charge', $input) && isset($store->service_charge)) {
+                $serviceCharge = (int) $store->service_charge;
+            }
+
+            $baseForCharge = $isTaxIncluded
+                ? (float) ($summary['total_with_vat'] ?? 0)
+                : (float) ($summary['subtotal_after'] ?? $summary['total_with_vat'] ?? 0);
+
+            if ($surchargePercent !== null) {
+                $surcharge = $baseForCharge * $surchargePercent / 100;
+            }
+
+            $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
+            $total = (float) ($summary['total_with_vat'] ?? 0) + $serviceChargeAmount + $surcharge;
+
+            if ($seniorDiscount) {
+                $rate = (float) config('params.senior_discount.rate', 20);
+                $seniorDiscountAmount = round((float) ($summary['subtotal_before'] ?? 0) * $rate / 100);
+                $afterSenior = (float) ($summary['subtotal_before'] ?? 0) - $seniorDiscountAmount;
+
+                if ($typeDiscount === 'percent') {
+                    $discountTotal = round($afterSenior * $discountValue / 100);
+                }
+
+                $totalAfterDiscount = max(0, $afterSenior - $discountTotal);
+                $taxTotal = 0;
+                $serviceChargeAmount = round($totalAfterDiscount * $serviceCharge / 100);
+
+                if ($surchargePercent !== null) {
+                    $surcharge = $totalAfterDiscount * $surchargePercent / 100;
+                }
+
+                $total = $totalAfterDiscount + $serviceChargeAmount + $surcharge;
+            }
+        }
+
+        $finalTotal = array_key_exists('amount_received', $input) && $input['amount_received'] !== null && $input['amount_received'] !== ''
+            ? round((float) $input['amount_received'])
+            : round($total);
+
+        $payload = [
+            'item' => $items,
+            'discountPayment' => $discountTotal,
+            'reasonSurcharge' => $surchargeReason,
+            'surcharge' => $surcharge,
+            'total_tax' => $taxTotal,
+        ];
+
+        return [
+            'items' => $items,
+            'items_payload' => json_encode($payload),
+            'total' => round($total),
+            'discount' => $discountTotal,
+            'tax' => $taxTotal,
+            'final_total' => $finalTotal,
+            'surcharge' => $surcharge,
+            'surcharge_reason' => $surchargeReason,
+            'surcharge_percent' => $surchargePercent ?? 0,
+            'service_charge' => $serviceCharge,
+            'service_charge_amount' => $serviceChargeAmount,
+            'type_discount' => $typeDiscount,
+            'discount_percent' => $typeDiscount === 'percent' ? (int) $discountValue : 0,
+            'is_senior_discount' => $seniorDiscount,
+            'senior_discount_amount' => $seniorDiscountAmount,
+            'sub_total_before_discount' => (float) ($summary['subtotal_before'] ?? 0),
+            'total_incl_vat_before_discount' => (float) ($summary['total_incl_vat_before_discount'] ?? 0),
+        ];
+    }
+
+    private function decodeRawItems($itemsInput): array
+    {
+        $decoded = is_string($itemsInput) ? json_decode($itemsInput, true) : $itemsInput;
+        $rawItems = $decoded['item'] ?? $decoded ?? [];
+        $items = [];
+
+        foreach ($rawItems as $key => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $productId = $item['product_id'] ?? $item['id'] ?? null;
+            if (empty($productId)) {
+                continue;
+            }
+
+            $productKey = $item['product_key'] ?? $item['key'] ?? (is_string($key) ? $key : null);
+            if (empty($productKey)) {
+                $productKey = (string) $productId;
+            }
+
+            $quantity = max(0, (int) ($item['quantity'] ?? 1));
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $price = (float) ($item['price'] ?? 0);
+            $vat = (float) ($item['vat'] ?? 0);
+            $item['id'] = (int) $productId;
+            $item['product_id'] = (int) $productId;
+            $item['product_key'] = $productKey;
+            $item['quantity'] = $quantity;
+            $item['price'] = $price;
+            $item['vat'] = $vat;
+            $item['TotalPrice'] = (float) ($item['TotalPrice'] ?? $item['total'] ?? ($price * $quantity));
+            $items[$productKey] = $item;
+        }
+
+        return $items;
+    }
+
+    private function allocateDiscountTaxExcluded(array $items, float $discountValue, string $typeDiscount = 'amount'): array
+    {
+        $totalBase = 0;
+        foreach ($items as $item) {
+            $totalBase += (float) $item['price'] * (int) $item['quantity'];
+        }
+
+        if ($totalBase <= 0) {
+            return ['items' => [], 'summary' => $this->emptyBillSummary()];
+        }
+
+        $allocatedSum = 0;
+        $lastKey = array_key_last($items);
+
+        foreach ($items as $key => &$item) {
+            $subTotal = (float) $item['price'] * (int) $item['quantity'];
+            $item['sub_total_excl_vat'] = round($subTotal);
+
+            if ($typeDiscount === 'percent') {
+                $item['discount_percent'] = $discountValue;
+                $item['discount_allocated_excl_vat'] = round($subTotal * $discountValue / 100);
+            } else {
+                $ratio = $subTotal / $totalBase;
+                if ($key !== $lastKey) {
+                    $item['discount_allocated_excl_vat'] = round($discountValue * $ratio);
+                    $allocatedSum += $item['discount_allocated_excl_vat'];
+                } else {
+                    $item['discount_allocated_excl_vat'] = $discountValue - $allocatedSum;
+                }
+            }
+
+            $item['net_excl_vat'] = $item['sub_total_excl_vat'] - $item['discount_allocated_excl_vat'];
+            $item['tax_amount'] = round($item['net_excl_vat'] * ((float) $item['vat'] / 100));
+            $item['total_with_vat_after_discount'] = $item['net_excl_vat'] + $item['tax_amount'];
+            $item['detail_discount'] = $item['discount_allocated_excl_vat'];
+            $item['TotalPrice'] = round($item['sub_total_excl_vat'] * (1 + ((float) $item['vat'] / 100)));
+            $item['detail_discount_excluding_tax'] = $item['discount_allocated_excl_vat'];
+            $item['unit_price_excluding_tax'] = (float) $item['price'];
+            $item['discounted_price_excluding_tax'] = $item['net_excl_vat'];
+        }
+        unset($item);
+
+        return [
+            'items' => $items,
+            'summary' => [
+                'subtotal_before' => array_sum(array_column($items, 'sub_total_excl_vat')),
+                'discount_total' => $typeDiscount === 'percent' ? round($totalBase * $discountValue / 100) : $discountValue,
+                'subtotal_after' => array_sum(array_column($items, 'net_excl_vat')),
+                'total_vat' => array_sum(array_column($items, 'tax_amount')),
+                'total_with_vat' => array_sum(array_column($items, 'total_with_vat_after_discount')),
+                'total_incl_vat_before_discount' => array_sum(array_column($items, 'TotalPrice')),
+            ],
+        ];
+    }
+
+    private function allocateDiscountTaxIncluded(array $items, float $discountValue, string $typeDiscount = 'amount'): array
+    {
+        $totalWithVat = 0;
+        foreach ($items as $item) {
+            $totalWithVat += (float) $item['price'] * (int) $item['quantity'];
+        }
+
+        if ($totalWithVat <= 0) {
+            return ['items' => [], 'summary' => $this->emptyBillSummary()];
+        }
+
+        $allocatedSum = 0;
+        $lastKey = array_key_last($items);
+
+        foreach ($items as $key => &$item) {
+            $vatRate = (float) $item['vat'];
+            $vatDivisor = 1 + ($vatRate / 100);
+            $subTotalInclVat = (float) $item['price'] * (int) $item['quantity'];
+            $item['sub_total_incl_vat'] = round($subTotalInclVat);
+
+            if ($typeDiscount === 'percent') {
+                $item['discount_percent'] = $discountValue;
+                $item['discount_allocated_incl_vat'] = round($subTotalInclVat * $discountValue / 100);
+            } else {
+                $ratio = $subTotalInclVat / $totalWithVat;
+                if ($key !== $lastKey) {
+                    $item['discount_allocated_incl_vat'] = round($discountValue * $ratio);
+                    $allocatedSum += $item['discount_allocated_incl_vat'];
+                } else {
+                    $item['discount_allocated_incl_vat'] = $discountValue - $allocatedSum;
+                }
+            }
+
+            $item['unit_price_excluding_tax'] = round((float) $item['price'] / $vatDivisor);
+            $item['discount_allocated_excl_vat'] = round($item['discount_allocated_incl_vat'] / $vatDivisor);
+            $item['total_with_vat_after_discount'] = $item['sub_total_incl_vat'] - $item['discount_allocated_incl_vat'];
+            $item['net_excl_vat'] = round($item['total_with_vat_after_discount'] / $vatDivisor);
+            $item['tax_amount'] = $item['total_with_vat_after_discount'] - $item['net_excl_vat'];
+            $item['detail_discount'] = $item['discount_allocated_incl_vat'];
+            $item['TotalPrice'] = $item['sub_total_incl_vat'];
+            $item['detail_discount_excluding_tax'] = $item['discount_allocated_excl_vat'];
+            $item['discounted_price_excluding_tax'] = $item['net_excl_vat'];
+        }
+        unset($item);
+
+        return [
+            'items' => $items,
+            'summary' => [
+                'subtotal_before' => array_sum(array_map(function ($item) {
+                    return $item['sub_total_incl_vat'] / (1 + ((float) $item['vat'] / 100));
+                }, $items)),
+                'discount_total' => $typeDiscount === 'percent' ? round($totalWithVat * $discountValue / 100) : $discountValue,
+                'subtotal_after' => array_sum(array_column($items, 'net_excl_vat')),
+                'total_vat' => array_sum(array_column($items, 'tax_amount')),
+                'total_with_vat' => array_sum(array_column($items, 'total_with_vat_after_discount')),
+                'total_incl_vat_before_discount' => array_sum(array_column($items, 'TotalPrice')),
+            ],
+        ];
+    }
+
+    private function emptyBillSummary(): array
+    {
+        return [
+            'subtotal_before' => 0,
+            'discount_total' => 0,
+            'subtotal_after' => 0,
+            'total_vat' => 0,
+            'total_with_vat' => 0,
+            'total_incl_vat_before_discount' => 0,
+        ];
+    }
+
+    private function nullableNumber($value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (float) $value;
+    }
+
+    private function buildPaymentDetailAttributes(Payment $payment, array $item, int $storeId, int $adminId, $timestamp): array
+    {
+        return [
+            'payment_id' => $payment->id,
+            'product_id' => $item['product_id'],
+            'product_key' => $item['product_key'] ?? null,
+            'quantity' => (int) $item['quantity'],
+            'price' => (float) $item['price'],
+            'total' => (float) ($item['TotalPrice'] ?? $item['total'] ?? 0),
+            'note' => $item['note'] ?? $item['noted'] ?? null,
+            'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : ($item['product_extra'] ?? null),
+            'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
+            'inventory_histories' => !empty($item['inventory_histories']) ? json_encode($item['inventory_histories']) : null,
+            'input_code' => $item['input_code'] ?? null,
+            'admin_id' => $adminId,
+            'store_id' => $storeId,
+            'debt' => (float) ($item['debt'] ?? 0),
+            'status' => $item['status'] ?? null,
+            'detail_discount' => (float) ($item['detail_discount'] ?? 0),
+            'served' => filter_var($item['served'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'tax_amount' => (float) ($item['tax_amount'] ?? 0),
+            'detail_discount_excluding_tax' => (float) ($item['detail_discount_excluding_tax'] ?? 0),
+            'unit_price_excluding_tax' => (float) ($item['unit_price_excluding_tax'] ?? 0),
+            'discounted_price_excluding_tax' => (float) ($item['discounted_price_excluding_tax'] ?? 0),
+            'printed_quantity' => (int) ($item['printed_quantity'] ?? 0),
+            'created_at' => $timestamp,
+            'updated_at' => $timestamp,
+        ];
+    }
+
+    private function applyDetailQuantityRatio(PaymentDetail $detail, int $targetQuantity, int $originalQuantity): void
+    {
+        $ratio = $targetQuantity / max(1, $originalQuantity);
+        foreach ([
+            'total',
+            'detail_discount',
+            'tax_amount',
+            'detail_discount_excluding_tax',
+            'discounted_price_excluding_tax',
+        ] as $field) {
+            $detail->{$field} = round((float) $detail->{$field} * $ratio, 4);
+        }
     }
 
     private function normalizeItemsPayload($items): string
@@ -387,6 +689,7 @@ class PaymentController extends Controller
         $validator = Validator::make($request->all(), [
             'payment_id' => ['required'],
             'product_key' => ['required'],
+            'delete_note' => ['required'],
             'delete_quantity' => ['required', 'integer', 'min:1'],
         ]);
 
@@ -404,9 +707,44 @@ class PaymentController extends Controller
             $deleteQuantity = (int) $request->input('delete_quantity');
             $deletePayment = filter_var($request->input('delete_payment'), FILTER_VALIDATE_BOOLEAN);
             $tableId = $request->input('table_id');
-            $storeId = (int) $request->input('store_id', config('app.store_id', 1));
+            $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id', 1));
+            $deleteNote = (string) $request->input('delete_note', '');
+            $surchargeReason = (string) $request->input('surcharge_reason', '');
+
+            Log::info('Edge delete payment detail request', [
+                'payment_id' => $paymentId,
+                'product_key' => $productKey,
+                'table_id' => $tableId,
+                'store_id' => $storeId,
+                'delete_quantity' => $deleteQuantity,
+                'delete_payment' => $deletePayment,
+                'has_product_list' => $request->has('product_list'),
+                'product_list_count' => is_array($request->input('product_list')) ? count($request->input('product_list')) : null,
+            ]);
+
+            $table = null;
+            if (!empty($tableId)) {
+                $table = Table::whereKey($tableId)->first();
+                if ($table && !$request->filled('store_id')) {
+                    $storeId = (int) ($table->store_id ?: $storeId);
+                }
+            }
 
             $payment = Payment::whereKey($paymentId)->where('store_id', $storeId)->first();
+            if (!$payment && !empty($tableId)) {
+                if ($table && !empty($table->payment_id)) {
+                    $payment = Payment::whereKey($table->payment_id)->where('store_id', $storeId)->first();
+                }
+
+                if (!$payment) {
+                    $payment = Payment::where('table_id', $tableId)
+                        ->where('store_id', $storeId)
+                        ->whereNull('deleted_at')
+                        ->orderByDesc('id')
+                        ->first();
+                }
+            }
+
             if (!$payment) {
                 return response()->json([
                     'status' => false,
@@ -415,50 +753,85 @@ class PaymentController extends Controller
                 ], 404);
             }
 
+            Log::info('Edge delete payment detail resolved payment', [
+                'requested_payment_id' => $paymentId,
+                'resolved_payment_id' => $payment->id,
+                'table_id' => $tableId,
+                'store_id' => $storeId,
+            ]);
+
             $productList = $request->input('product_list');
             $discount = (float) $request->input('discount', 0);
             $surcharge = (float) $request->input('surcharge', 0);
             $totalTax = (float) $request->input('total_tax', 0);
             $valuetotal = (float) $request->input('valuetotal', 0);
+            $calculationInput = [
+                'discount' => $payment->discount ?? $discount,
+                'type_discount' => $payment->type_discount ?? 'amount',
+                'discount_percent' => $payment->discount_percent ?? 0,
+                'surcharge' => $surcharge,
+                'surcharge_reason' => $surchargeReason,
+                'surcharge_percent' => $payment->surcharge_percent ?? null,
+                'service_charge' => $payment->service_charge ?? 0,
+                'service_charge_amount' => $payment->service_charge_amount ?? 0,
+                'is_senior_discount' => $payment->is_senior_discount ?? false,
+                'senior_discount_amount' => $payment->senior_discount_amount ?? 0,
+                'amount_received' => $request->input('amount_received'),
+            ];
 
-            $payment = DB::transaction(function () use ($payment, $productKey, $deleteQuantity, $deletePayment, $tableId, $storeId, $productList, $discount, $surcharge, $totalTax, $valuetotal) {
+            if ($request->has('product_list') && empty($productList)) {
+                $deletePayment = true;
+            }
+
+            $payment = DB::transaction(function () use ($payment, $productKey, $deleteQuantity, $deletePayment, $tableId, $storeId, $productList, $discount, $surcharge, $totalTax, $valuetotal, $deleteNote, $surchargeReason, $calculationInput) {
+                $detail = PaymentDetail::where('payment_id', $payment->id)
+                    ->where('product_key', $productKey)
+                    ->where(function ($query) use ($storeId) {
+                        $query->where('store_id', $storeId)
+                            ->orWhereNull('store_id');
+                    })
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$detail) {
+                    throw new \RuntimeException('payment_detail_not_found');
+                }
+
+                if ($deleteQuantity > (int) $detail->quantity) {
+                    throw new \InvalidArgumentException('invalid_delete_quantity');
+                }
+
                 if ($deletePayment) {
                     if (!empty($tableId)) {
                         $this->clearTableAfterPayment($tableId, $storeId);
                     }
+                    $payment->items = json_encode([]);
+                    $payment->discount = 0;
+                    $payment->surcharge = 0;
+                    $payment->surcharge_reason = null;
+                    $payment->tax = 0;
+                    $payment->total = 0;
+                    $payment->final_total = 0;
                     $payment->status = -1;
                     $payment->save();
+                    $payment->details()->update(['delete_note' => $deleteNote]);
                     $payment->details()->delete();
                     $payment->delete();
                 } else {
                     if (!empty($productList) && is_array($productList)) {
-                        // Use product_list from FE (same as cloud)
-                        $rawItems = $productList;
-                        if (isset($rawItems[$productKey])) {
-                            $currentQty = (int) ($rawItems[$productKey]['quantity'] ?? 0);
-                            if ($currentQty - $deleteQuantity > 0) {
-                                $rawItems[$productKey]['quantity'] -= $deleteQuantity;
-                                $price = (float) ($rawItems[$productKey]['price'] ?? 0);
-                                $vat = (float) ($rawItems[$productKey]['vat'] ?? 0);
-                                $rawItems[$productKey]['TotalPrice'] = ($price + ($price * $vat / 100)) * $rawItems[$productKey]['quantity'];
-                            } else {
-                                unset($rawItems[$productKey]);
-                            }
-                        }
-                        $dataItem = [
-                            'item' => $rawItems,
-                            'discountPayment' => $discount,
-                            'reasonSurcharge' => $request->input('surcharge_reason', ''),
-                            'surcharge' => $surcharge,
-                            'total_tax' => $totalTax,
-                        ];
-                        $newPayload = json_encode($dataItem);
-                        $payment->items = $newPayload;
-                        $payment->discount = $discount;
-                        $payment->surcharge = $surcharge;
-                        $payment->tax = $totalTax;
-                        $payment->total = $valuetotal > 0 ? $valuetotal : array_sum(array_column($rawItems, 'TotalPrice'));
-                        $payment->final_total = max(0, $payment->total - $discount + $surcharge);
+                        // FE sends product_list after deletion, so do not subtract quantity again.
+                        $calculation = $this->buildCalculatedPaymentData($productList, $storeId, $calculationInput);
+                        $payment->items = $calculation['items_payload'];
+                        $payment->discount = $calculation['discount'];
+                        $payment->surcharge = $calculation['surcharge'];
+                        $payment->surcharge_reason = $calculation['surcharge_reason'];
+                        $payment->tax = $calculation['tax'];
+                        $payment->total = $calculation['total'];
+                        $payment->final_total = $calculation['final_total'];
+                        $payment->service_charge = $calculation['service_charge'];
+                        $payment->service_charge_amount = $calculation['service_charge_amount'];
+                        $payment->sub_total_before_discount = $calculation['sub_total_before_discount'];
+                        $payment->total_incl_vat_before_discount = $calculation['total_incl_vat_before_discount'];
                     } else {
                         // No product_list from FE — fallback to decoding payment->items (old path)
                         $items = json_decode($payment->items, true) ?: [];
@@ -472,8 +845,18 @@ class PaymentController extends Controller
                                 unset($rawItems[$productKey]);
                             }
                         }
-                        $newPayload = json_encode(['item' => $rawItems]);
-                        $payment->items = $newPayload;
+                        $calculation = $this->buildCalculatedPaymentData($rawItems, $storeId, $calculationInput);
+                        $payment->items = $calculation['items_payload'];
+                        $payment->discount = $calculation['discount'];
+                        $payment->surcharge = $calculation['surcharge'];
+                        $payment->surcharge_reason = $calculation['surcharge_reason'];
+                        $payment->tax = $calculation['tax'];
+                        $payment->total = $calculation['total'];
+                        $payment->final_total = $calculation['final_total'];
+                        $payment->service_charge = $calculation['service_charge'];
+                        $payment->service_charge_amount = $calculation['service_charge_amount'];
+                        $payment->sub_total_before_discount = $calculation['sub_total_before_discount'];
+                        $payment->total_incl_vat_before_discount = $calculation['total_incl_vat_before_discount'];
                     }
                     $payment->save();
 
@@ -484,33 +867,90 @@ class PaymentController extends Controller
                         ]);
                     }
 
-                    // Update corresponding PaymentDetail
-                    $detail = PaymentDetail::where('payment_id', $payment->id)
-                        ->where('product_key', $productKey)
-                        ->first();
-
                     if ($detail) {
                         if ((int) $detail->quantity === $deleteQuantity) {
+                            $detail->delete_note = $deleteNote;
+                            $detail->save();
                             $detail->delete();
                         } else if ($deleteQuantity < (int) $detail->quantity) {
-                            $detail->quantity = (int) $detail->quantity - $deleteQuantity;
-                            $detail->total = $detail->price * $detail->quantity;
+                            $originalQuantity = max(1, (int) $detail->quantity);
+
+                            $remainingDetail = $detail->replicate();
+                            $remainingDetail->quantity = (int) $detail->quantity - $deleteQuantity;
+                            $remainingDetail->delete_note = null;
+                            $this->applyDetailQuantityRatio($remainingDetail, $remainingDetail->quantity, $originalQuantity);
+                            $remainingDetail->save();
+
+                            $detail->quantity = $deleteQuantity;
+                            $detail->delete_note = $deleteNote;
+                            $this->applyDetailQuantityRatio($detail, $detail->quantity, $originalQuantity);
                             $detail->save();
+                            $detail->delete();
                         }
                     }
                 }
                 return $payment;
             });
 
+            $paymentInfo = $payment->load('details')->toArray();
+
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
                 'message' => 'Xóa chi tiết hóa đơn thành công',
-                'data' => $payment->load('details')->toArray(),
+                'data' => $paymentInfo,
+                'paymentInfo' => $paymentInfo,
             ]);
 
+        } catch (\RuntimeException $th) {
+            if ($th->getMessage() === 'payment_detail_not_found') {
+                return response()->json([
+                    'status' => false,
+                    'status_code' => 404,
+                    'message' => 'Khong tim thay chi tiet hoa don',
+                ], 404);
+            }
+
+            Log::error('Edge delete payment detail failed', [
+                'payment_id' => $request->input('payment_id'),
+                'product_key' => $request->input('product_key'),
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'status_code' => 500,
+                'message' => 'Loi xu ly he thong cuc bo',
+            ], 500);
+        } catch (\InvalidArgumentException $th) {
+            if ($th->getMessage() === 'invalid_delete_quantity') {
+                return response()->json([
+                    'status' => false,
+                    'status_code' => 400,
+                    'message' => 'So luong xoa khong hop le',
+                ], 400);
+            }
+
+            Log::error('Edge delete payment detail failed', [
+                'payment_id' => $request->input('payment_id'),
+                'product_key' => $request->input('product_key'),
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'status_code' => 500,
+                'message' => 'Loi xu ly he thong cuc bo',
+            ], 500);
         } catch (\Throwable $th) {
-            Log::error('Edge delete payment detail failed', ['error' => $th->getMessage()]);
+            Log::error('Edge delete payment detail failed', [
+                'payment_id' => $request->input('payment_id'),
+                'product_key' => $request->input('product_key'),
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString(),
+            ]);
             return response()->json([
                 'status' => false,
                 'status_code' => 500,
@@ -578,7 +1018,12 @@ class PaymentController extends Controller
 
             // Lấy danh sách payment methods
             $methods = PaymentMethod::where('store_id', $storeId)->get();
-            $methodValues = $methods->pluck('value')->all();
+            $methodValues = $methods->pluck('value')
+                ->map(fn ($value) => (int) $value)
+                ->filter(fn ($value) => $value > 0)
+                ->unique()
+                ->values()
+                ->all();
             
             Log::info('Edge getSaleToday: fetched payment methods', [
                 'methods_count' => $methods->count(),
@@ -1050,4 +1495,3 @@ class PaymentController extends Controller
         }
     }
 }
-

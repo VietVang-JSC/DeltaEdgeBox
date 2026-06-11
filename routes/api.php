@@ -122,12 +122,6 @@ Route::prefix('payment')->group(function () {
     Route::get('/print-for-web', [PaymentPrintController::class, 'printForWeb']);
 });
 
-Route::prefix('admin/payment')->group(function () {
-    Route::get('/print_payment', [PaymentPrintController::class, 'printPayment']);
-    Route::post('/delete-payment-detail', [PaymentController::class, 'deletePaymentDetail']);
-});
-
-
 // Inventory management endpoints 
 Route::prefix('inventory')->middleware('edge.api.key')->group(function () {
     Route::get('/',           [InventoryController::class, 'index']);
