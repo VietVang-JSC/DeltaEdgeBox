@@ -744,11 +744,8 @@ class MasterDataSyncService
             'categories' => $this->formatSyncTime(Category::where('store_id', $this->storeId)->max('updated_at')),
             'products' => $this->formatSyncTime(Product::where('store_id', $this->storeId)->max('updated_at')),
             'printers' => $this->formatSyncTime(Printer::where('store_id', $this->storeId)->max('updated_at')),
-            'payment_methods' => $this->formatSyncTime(
-                PaymentMethod::where(function ($query) {
-                    $query->where('store_id', $this->storeId)->orWhere('store_id', 0);
-                })->max('updated_at')
-            ),
+            // Small reference table: fetch fully to avoid store-specific methods being hidden by old/global watermarks.
+            'payment_methods' => null,
             'product_time_prices' => $this->formatSyncTime(ProductTimePrice::where('store_id', $this->storeId)->max('updated_at')),
             'store' => $this->formatSyncTime(Store::where('id', $this->storeId)->max('updated_at')),
             'users' => $this->formatSyncTime(User::where('store_id', $this->storeId)->max('updated_at')),
