@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\SyncService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SyncWorker extends Command
@@ -54,18 +55,25 @@ class SyncWorker extends Command
      */
     protected function processOnce(): void
     {
-        $startTime = microtime(true);
+        $lock = Cache::lock('edge-box:sqlite-sync-writer', config('edge_box.sqlite_lock_ttl', 600));
+        if (!$lock->get()) {
+            $this->warn('Sync worker skipped: another sync process is using SQLite.');
+            return;
+        }
 
-        $this->info('Processing sync queue...');
+        try {
+            $startTime = microtime(true);
 
-        $result = $this->syncService->processQueue($this->option('batch'));
+            $this->info('Processing sync queue...');
 
-        $duration = round(microtime(true) - $startTime, 2);
+            $result = $this->syncService->processQueue((int) $this->option('batch'));
+
+            $duration = round(microtime(true) - $startTime, 2);
 
         if ($result['skipped']) {
             $this->warn('Sync skipped (no pending items or offline)');
         } else {
-            $this->info("✓ Processed: {$result['success']} succeeded, {$result['failed']} failed");
+            $this->info("Processed: {$result['success']} succeeded, {$result['failed']} failed");
             $this->info("Duration: {$duration}s");
         }
 
@@ -74,6 +82,9 @@ class SyncWorker extends Command
             foreach ($result['errors'] as $error) {
                 $this->error("  - ID {$error['id']}: {$error['error']}");
             }
+            }
+        } finally {
+            $lock->release();
         }
     }
 
@@ -89,25 +100,35 @@ class SyncWorker extends Command
 
         while (true) {
             $iteration++;
-            $startTime = microtime(true);
+
+            if ($iteration % 100 === 0) {
+                $this->info("Memory usage: " . round(memory_get_usage(true) / 1024 / 1024, 2) . " MB");
+            }
+
+            $lock = Cache::lock('edge-box:sqlite-sync-writer', config('edge_box.sqlite_lock_ttl', 600));
+            if (!$lock->get()) {
+                $this->line("[Iteration {$iteration}] Skipped: another sync process is using SQLite");
+                sleep((int) $this->option('sleep'));
+                continue;
+            }
 
             try {
-                $result = $this->syncService->processQueue($this->option('batch'));
-
+                $startTime = microtime(true);
+                $result = $this->syncService->processQueue((int) $this->option('batch'));
                 $duration = round(microtime(true) - $startTime, 2);
 
                 if (!$result['skipped']) {
-                    $this->line("[Iteration {$iteration}] ✓ {$result['success']} synced, {$result['failed']} failed ({$duration}s)");
+                    $this->line("[Iteration {$iteration}] {$result['success']} synced, {$result['failed']} failed ({$duration}s)");
                 } else {
                     $this->line("[Iteration {$iteration}] No items to sync");
                 }
-
             } catch (\Exception $e) {
                 $this->error("[Iteration {$iteration}] Error: {$e->getMessage()}");
                 Log::error('Sync worker error', ['error' => $e->getMessage()]);
+            } finally {
+                $lock->release();
             }
 
-            // Sleep before next iteration
             sleep((int) $this->option('sleep'));
         }
     }
