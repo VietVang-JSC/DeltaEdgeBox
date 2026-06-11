@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\Store;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -95,6 +96,7 @@ class PaymentPrintController extends Controller
         $payload['amount_received'] = $payload['final_total'] ?? 0;
         $payload['sub_total_before_discount'] = $payload['sub_total_before_discount'] ?? ($payload['total'] ?? 0);
         $payload['total_incl_vat_before_discount'] = $payload['total_incl_vat_before_discount'] ?? ($payload['total'] ?? 0);
+        $payload['payment_code'] = $payload['payment_code'] ?: ('EDGE-' . $payment->id);
         $payload['is_senior_discount'] = $payload['is_senior_discount'] ?? false;
         $payload['senior_discount_amount'] = $payload['senior_discount_amount'] ?? 0;
         $payload['service_charge'] = $payload['service_charge'] ?? 0;
@@ -104,7 +106,17 @@ class PaymentPrintController extends Controller
         $payload['type_discount'] = $payload['type_discount'] ?? 'amount';
         $payload['discount_percent'] = $payload['discount_percent'] ?? 0;
         $payload['table'] = $table ? $table->toArray() : null;
-        $payload['user'] = $payment->user ? $payment->user->toArray() : null;
+        $user = $payment->user;
+        if (!$user && !empty($payment->admin_id)) {
+            $user = User::find($payment->admin_id);
+        }
+        if (!$user && !empty($payment->user_id)) {
+            $user = User::find($payment->user_id);
+        }
+        $payload['user'] = $user ? $user->toArray() : [
+            'id' => $payment->user_id,
+            'name' => '',
+        ];
         $payload['store'] = $payment->store ? $payment->store->toArray() : null;
         $payload['payment_details'] = $details ? $details->map(function ($detail) {
             $detailPayload = $detail->toArray();
