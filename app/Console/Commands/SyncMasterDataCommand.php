@@ -12,7 +12,7 @@ class SyncMasterDataCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'edge:sync-master';
+    protected $signature = 'edge:sync-master {--force : Force full master sync}';
 
     /**
      * The console command description.
@@ -27,7 +27,7 @@ class SyncMasterDataCommand extends Command
     public function handle(MasterDataSyncService $service): void
     {
         $this->info("Starting background master data sync...");
-        $result = $service->syncMasterData();
+        $result = $service->syncMasterData((bool) $this->option('force'));
         if ($result['success']) {
             $this->info("Master sync completed successfully: " . $result['message']);
         } else {
