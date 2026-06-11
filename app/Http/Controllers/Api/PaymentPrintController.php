@@ -91,9 +91,9 @@ class PaymentPrintController extends Controller
         $table = $payment->relationLoaded('table')
             ? $payment->getRelation('table')
             : $payment->table()->first();
-        $payload['valuetotal'] = $payload['total'] ?? 0;
+        $payload['valuetotal'] = $payload['final_total'] ?? 0;
         $payload['total_tax'] = $payload['tax'] ?? 0;
-        $payload['amount_received'] = $payload['final_total'] ?? 0;
+        $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
         $payload['sub_total_before_discount'] = $payload['sub_total_before_discount'] ?? ($payload['total'] ?? 0);
         $payload['total_incl_vat_before_discount'] = $payload['total_incl_vat_before_discount'] ?? ($payload['total'] ?? 0);
         $payload['payment_code'] = $payload['payment_code'] ?: ('EDGE-' . $payment->id);
