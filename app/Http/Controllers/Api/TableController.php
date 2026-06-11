@@ -464,9 +464,9 @@ class TableController extends Controller
     private function paymentPayload(Payment $payment): array
     {
         $payload = $payment->loadMissing('details')->toArray();
-        $payload['valuetotal'] = $payload['total'] ?? 0;
+        $payload['valuetotal'] = $payload['final_total'] ?? 0;
         $payload['total_tax'] = $payload['tax'] ?? 0;
-        $payload['amount_received'] = $payload['final_total'] ?? 0;
+        $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
         $payload['items'] = optional(Table::find($payment->table_id))->listitem;
         $payload['payment_details'] = $payload['details'] ?? [];
 

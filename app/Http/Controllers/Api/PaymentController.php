@@ -57,6 +57,9 @@ class PaymentController extends Controller
                     'discount' => $calculation['discount'],
                     'tax' => $calculation['tax'],
                     'final_total' => $calculation['final_total'],
+                    'amount_received' => $request->input('amount_received') !== null && $request->input('amount_received') !== ''
+                        ? round((float) $request->input('amount_received'))
+                        : null,
                     'payment_method' => $request->input('payment_method', 'cash') ?: 'cash',
                     'note' => $request->input('reason'),
                     'reason' => $request->input('reason'),
@@ -183,6 +186,9 @@ class PaymentController extends Controller
                     'service_charge_amount' => $calculation['service_charge_amount'],
                     'tax' => $calculation['tax'],
                     'final_total' => $calculation['final_total'],
+                    'amount_received' => $request->input('amount_received') !== null && $request->input('amount_received') !== ''
+                        ? round((float) $request->input('amount_received'))
+                        : $payment->amount_received,
                     'payment_method' => $request->input('payment_method', $payment->payment_method ?: 'cash'),
                     'note' => $request->input('reason'),
                     'reason' => $request->input('reason'),
@@ -327,9 +333,7 @@ class PaymentController extends Controller
             }
         }
 
-        $finalTotal = array_key_exists('amount_received', $input) && $input['amount_received'] !== null && $input['amount_received'] !== ''
-            ? round((float) $input['amount_received'])
-            : round($total);
+        $finalTotal = round($total);
 
         $payload = [
             'item' => $items,
@@ -1176,11 +1180,14 @@ class PaymentController extends Controller
             return response()->json(['status' => false, 'status_code' => 404, 'data' => ['is_printed' => false]], 404);
         }
 
+        $payment->is_printed = true;
+        $payment->save();
+
         return response()->json([
             'status' => true,
             'status_code' => 200,
             'data' => [
-                'is_printed' => (bool) $payment->is_printed,
+                'is_printed' => true,
             ],
         ]);
     }
