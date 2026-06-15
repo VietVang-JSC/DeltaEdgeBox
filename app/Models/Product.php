@@ -110,4 +110,8 @@ class Product extends Model
     {
         return $this->hasMany(ProductType::class, 'product_type_id', 'type_id')->select('id', 'product_type_id', 'product_type_attribute', 'product_type_attribute_value');
     }
+    public function combo_products()
+    {
+        return $this->hasMany(ComboProduct::class, 'product_id', 'id');
+    }
 }

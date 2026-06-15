@@ -72,6 +72,12 @@ return [
             'days' => 14,
             'replace_placeholders' => true,
         ],
+        'edge' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/edge.log'),
+            'level' => 'debug',
+            'days' => 30,
+        ],
 
         'slack' => [
             'driver' => 'slack',

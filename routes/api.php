@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\SplitMergeInvoiceController;
 use App\Http\Controllers\Api\InventoryApiController;
 use App\Http\Controllers\Api\InventoryInputController;
 use App\Http\Controllers\Api\InventoryOutputController;
+use App\Http\Controllers\ApiEdgeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,6 +38,9 @@ Route::post('/edge/login', [UserController::class, 'loginWeb']);
 Route::get('/health', [HealthController::class, 'index']);
 Route::get('/health/detailed', [HealthController::class, 'detailed'])->middleware('edge.api.key');
 
+//get all master data for edge sync
+Route::get('/edge/filter', [ApiEdgeController::class, 'filter'])->middleware('edge.api.key');
+
 // Edge box config (public - LAN only)
 Route::get('/edge/config', function () {
     return response()->json([
@@ -46,7 +50,6 @@ Route::get('/edge/config', function () {
         'edge_box_api_key' => config('edge_box.api_key'),
     ]);
 });
-
 // Sync status endpoints
 Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/status', [SyncStatusController::class, 'index']);
@@ -200,7 +203,7 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
 });
 
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
-    Route::post('/filter', [PosWebFilterController::class, 'filter']);
+    Route::get('/filter', [PosWebFilterController::class, 'filter']);
 });
 
 Route::prefix('admin/product')->middleware('edge.api.key')->group(function () {
