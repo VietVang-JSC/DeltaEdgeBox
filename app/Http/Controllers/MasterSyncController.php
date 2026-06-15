@@ -4,16 +4,7 @@ namespace App\Http\Controllers;
 use App\Services\MasterDataSyncService;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-
-use App\Models\Table;
-use App\Models\Category;
-use App\Models\Product;
-use App\Models\Printer;
-use App\Models\PaymentMethod;
-use App\Models\ProductTimePrice;
-use App\Models\Store;
-use App\Models\User;
+use App\Models\SyncMetadata;
 
 class MasterSyncController extends Controller
 {
@@ -24,34 +15,22 @@ class MasterSyncController extends Controller
         $this->masterSyncService = $masterSyncService;
     }
 
-    public function sync()
+    public function sync(Request $request)
     {
-        $result = $this->masterSyncService->syncMasterData();
+        $result = $this->masterSyncService->syncMasterData($request->boolean('force', false));
 
-        return response()->json($result);
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 500);
     }
 
     public function lastMasterSync()
     {
-        $models = [
-            Table::class,
-            Category::class,
-            Product::class,
-            Printer::class,
-            PaymentMethod::class,
-            ProductTimePrice::class,
-            Store::class,
-            User::class,
-        ];
-
-        $times = array_filter(
-            array_map(fn($model) => $model::max('updated_at'), $models)
-        );
-        $lastSyncTime = !empty($times) ? Carbon::parse(max($times))->toIso8601String() : null;
+        $metadata = SyncMetadata::where('store_id', config('edge_box.store_id'))->first();
 
         return response()->json([
             'success' => true,
-            'timestamp' => $lastSyncTime,
+            'timestamp' => $metadata?->last_sync_timestamp?->toIso8601String(),
+            'sync_status' => $metadata?->sync_status,
+            'last_error' => $metadata?->last_error,
         ]);
     }
 }

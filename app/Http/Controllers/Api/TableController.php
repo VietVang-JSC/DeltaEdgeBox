@@ -347,13 +347,18 @@ class TableController extends Controller
             ->mapWithKeys(function ($detail) {
                 $key = $detail->product_key ?: 'product:' . $detail->product_id;
 
-                return [$key => (int) $detail->printed_quantity];
+                return [$key => [
+                    'printed_quantity' => (int) $detail->printed_quantity,
+                    'served' => (bool) $detail->served,
+                ]];
             });
 
         $payment->details()->delete();
         foreach ($items as $item) {
             $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
-            $printedQuantity = min((int) ($printedQuantities[$detailKey] ?? 0), (int) $item['quantity']);
+            $previousData = $printedQuantities[$detailKey] ?? [];
+            $printedQuantity = min((int) ($previousData['printed_quantity'] ?? 0), (int) $item['quantity']);
+            $served = $previousData['served'] ?? false;
 
             PaymentDetail::create([
                 'payment_id' => $payment->id,
@@ -366,6 +371,7 @@ class TableController extends Controller
                 'product_extra' => $item['product_extra'] ?? null,
                 'optional_products' => $item['optional_products'] ?? null,
                 'printed_quantity' => $printedQuantity,
+                'served' => $served,
             ]);
         }
 
@@ -458,9 +464,9 @@ class TableController extends Controller
     private function paymentPayload(Payment $payment): array
     {
         $payload = $payment->loadMissing('details')->toArray();
-        $payload['valuetotal'] = $payload['total'] ?? 0;
+        $payload['valuetotal'] = $payload['final_total'] ?? 0;
         $payload['total_tax'] = $payload['tax'] ?? 0;
-        $payload['amount_received'] = $payload['final_total'] ?? 0;
+        $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
         $payload['items'] = optional(Table::find($payment->table_id))->listitem;
         $payload['payment_details'] = $payload['details'] ?? [];
 
@@ -486,7 +492,11 @@ class TableController extends Controller
 
     private function storeId(Request $request): int
     {
-        return (int) $request->input('store_id', config('app.store_id', 1));
+        return (int) (
+            $request->input('store_id')
+            ?: $request->header('X-Store-ID')
+            ?: config('app.store_id', 1)
+        );
     }
 
     private function userId(Request $request): int

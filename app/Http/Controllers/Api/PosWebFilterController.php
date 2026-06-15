@@ -445,7 +445,7 @@ class PosWebFilterController extends Controller
         $payload = $payment->toArray();
         $payload['payment_code'] = $payload['payment_code'] ?? 'EDGE-' . $payment->id;
         $payload['reason'] = $payload['reason'] ?? ($payload['note'] ?? '');
-        $payload['valuetotal'] = $payload['valuetotal'] ?? ($payload['total'] ?? 0);
+        $payload['valuetotal'] = $payload['valuetotal'] ?? ($payload['final_total'] ?? ($payload['total'] ?? 0));
         $payload['total_tax'] = $payload['total_tax'] ?? ($payload['tax'] ?? 0);
         $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
         $payload['sub_total_before_discount'] = $payload['sub_total_before_discount'] ?? ($payload['total'] ?? 0);

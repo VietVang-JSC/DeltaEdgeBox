@@ -41,6 +41,15 @@ Route::get('/health/detailed', [HealthController::class, 'detailed'])->middlewar
 //get all master data for edge sync
 Route::get('/edge/filter', [ApiEdgeController::class, 'filter'])->middleware('edge.api.key');
 
+// Edge box config (public - LAN only)
+Route::get('/edge/config', function () {
+    return response()->json([
+        'store_id' => config('app.store_id'),
+        'api_key' => config('app.api_key'),
+        'deployment_mode' => config('app.deployment_mode', 'offline-first'),
+        'edge_box_api_key' => config('edge_box.api_key'),
+    ]);
+});
 // Sync status endpoints
 Route::prefix('sync')->middleware('edge.api.key')->group(function () {
     Route::get('/status', [SyncStatusController::class, 'index']);
@@ -112,15 +121,9 @@ Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
 });
 Route::match(['GET', 'POST'], '/user/payment/get_all_payment_for_user_new_paginate', [PaymentController::class, 'getAllPaymentForUserNewPaginate']);
 
-Route::prefix('payment')->middleware('edge.api.key')->group(function () {
+Route::prefix('payment')->group(function () {
     Route::get('/print-for-web', [PaymentPrintController::class, 'printForWeb']);
 });
-
-Route::prefix('admin/payment')->middleware('edge.api.key')->group(function () {
-    Route::get('/print_payment', [PaymentPrintController::class, 'printPayment']);
-    Route::post('/delete-payment-detail', [PaymentController::class, 'deletePaymentDetail']);
-});
-
 
 // Inventory management endpoints 
 Route::prefix('inventory')->middleware('edge.api.key')->group(function () {
@@ -206,6 +209,7 @@ Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
 Route::prefix('admin/product')->middleware('edge.api.key')->group(function () {
     Route::post('/search', [PosWebFilterController::class, 'searchProducts']);
 });
+
 Route::post('/user/product/search_products', [PosWebFilterController::class, 'searchProducts'])->middleware('edge.api.key');
 Route::post('/user/product/get_product_list', [PosWebFilterController::class, 'getProductList'])->middleware('edge.api.key');
 Route::post('/user/category/get_category', [PosWebFilterController::class, 'getCategory'])->middleware('edge.api.key');
@@ -214,6 +218,25 @@ Route::post('/user/customer/get_all_customer', [PosWebFilterController::class, '
 Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function () {
     Route::get('/getServedStatus', [TableController::class, 'getServedStatus']);
     Route::post('/served', [TableController::class, 'served']);
+});
+
+Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {
+    Route::get('/get-all', [TableController::class, 'getPaymentMethods']);
+});
+
+Route::prefix('user/split-merge-invoice')->middleware('edge.api.key')->group(function () {
+    Route::any('/get-list-invoice', [SplitMergeInvoiceController::class, 'getListInvoice']);
+    Route::post('/split-invoice', [SplitMergeInvoiceController::class, 'splitInvoice']);
+    Route::post('/merge-invoice', [SplitMergeInvoiceController::class, 'mergeInvoice']);
+});
+
+Route::prefix('payment')->middleware('edge.api.key')->group(function () {
+    Route::get('/print-for-web', [PaymentPrintController::class, 'printForWeb']);
+});
+
+Route::prefix('admin/payment')->middleware('edge.api.key')->group(function () {
+    Route::get('/print_payment', [PaymentPrintController::class, 'printPayment']);
+    Route::post('/delete-payment-detail', [PaymentController::class, 'deletePaymentDetail']);
 });
 
 Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {

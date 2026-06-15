@@ -72,7 +72,33 @@ Get-ChildItem -Path $SourcePath -Recurse | Where-Object {
 Write-Host "[3/8] Creating .env configuration template..." -ForegroundColor Yellow
 Copy-Item "$SourcePath\.env.example" "$PackageDir\.env" -Force
 
-# Step 4: Download dependencies info
+# Step 4: Download PHP portable + Composer
+Write-Host "[4/8] Downloading PHP + Composer..." -ForegroundColor Yellow
+$phpUrl = "https://windows.php.net/downloads/releases/php-8.3.17-nts-Win32-vs16-x64.zip"
+$phpZip = "$PackageDir\php.zip"
+try {
+    Invoke-WebRequest -Uri $phpUrl -OutFile $phpZip -UseBasicParsing -TimeoutSec 120
+    Expand-Archive -Path $phpZip -DestinationPath "$PackageDir\php" -Force
+    Remove-Item $phpZip -Force
+    Write-Host "  ✓ PHP 8.3 downloaded" -ForegroundColor Green
+} catch {
+    Write-Host "  ⚠ Could not download PHP automatically. Install manually: https://windows.php.net/download" -ForegroundColor Yellow
+}
+
+# Download Composer
+$composerUrl = "https://getcomposer.org/composer-stable.phar"
+$composerPhar = "$PackageDir\composer.phar"
+try {
+    Invoke-WebRequest -Uri $composerUrl -OutFile $composerPhar -UseBasicParsing -TimeoutSec 60
+    Write-Host "  ✓ Composer downloaded" -ForegroundColor Green
+} catch {
+    Write-Host "  ⚠ Could not download Composer. Install manually: https://getcomposer.org" -ForegroundColor Yellow
+}
+
+# Update setup.bat to use bundled PHP
+(Get-Content "$PackageDir\setup.bat") -replace 'php ', '.\php\php.exe ' -replace 'composer ', '.\php\php.exe .\composer.phar ' | Set-Content "$PackageDir\setup.bat"
+
+# Step 5: Generate dependency list
 Write-Host "[4/8] Generating dependency list..." -ForegroundColor Yellow
 Set-Location $PackageDir
 composer show --all > DEPENDENCIES.txt 2>&1 | Out-Null
