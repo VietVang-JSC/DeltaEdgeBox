@@ -7,11 +7,7 @@
     "require": {
         "php": "^8.1",
         "barryvdh/laravel-dompdf": "^3.1",
-<<<<<<< HEAD
-        "doctrine/dbal": "^3.10",
-=======
         "doctrine/dbal": "*",
->>>>>>> c3b68804bdd199484e41f680af41c0a3e1acbef7
         "guzzlehttp/guzzle": "^7.2",
         "laravel/framework": "^10.10",
         "laravel/sanctum": "^3.3",
