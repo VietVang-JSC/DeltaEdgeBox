@@ -227,7 +227,7 @@ class SyncTransformer
 
         return [
             'id' => $data['id'] ?? null,
-            'payment_code' => null,
+              'payment_code' => $data['payment_code'] ?? ('EDGE-' . ($data['id'] ?? time())),
             'customer_id' => $data['customer_id'],
             'reason' => null,
             'items' => $itemsJson, // Backend stores all items as JSON

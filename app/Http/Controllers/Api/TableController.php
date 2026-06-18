@@ -671,6 +671,41 @@ class TableController extends Controller
         }
     }
 
+    public function updateNumberOfPeople(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'data' => ['required', 'array'],
+                'number_of_people' => ['required', 'integer', 'min:1'],
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => $validator->errors()], 400);
+            }
+
+            $data = $request->input('data');
+            $tableId = $data['table_id'] ?? null;
+            $numberOfPeople = (int) $request->input('number_of_people');
+
+            if (!$tableId) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'table_id is required'], 400);
+            }
+
+            $table = Table::find($tableId);
+            if (!$table) {
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Table not found'], 404);
+            }
+
+            $table->number_of_people = $numberOfPeople;
+            $table->save();
+
+            return response()->json(['status' => true, 'status_code' => 200, 'message' => 'Cập nhật số lượng khách thành công']);
+        } catch (\Throwable $th) {
+            Log::error('Edge updateNumberOfPeople failed: ' . $th->getMessage());
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => 'Cập nhật số lượng khách không thành công'], 500);
+        }
+    }
+
     public function getPaymentMethods(Request $request)
     {
         try {

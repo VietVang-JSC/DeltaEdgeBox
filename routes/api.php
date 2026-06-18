@@ -236,6 +236,8 @@ Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function
     Route::post('/served', [TableController::class, 'served']);
 });
 
+Route::post('/api/update_number_of_people', [TableController::class, 'updateNumberOfPeople'])->middleware('edge.api.key');
+
 Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {
     Route::get('/get-all', [TableController::class, 'getPaymentMethods']);
 });
