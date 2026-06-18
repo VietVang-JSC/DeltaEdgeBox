@@ -97,8 +97,10 @@ class PaymentPrintController extends Controller
         $payload['valuetotal'] = $payload['final_total'] ?? 0;
         $payload['total_tax'] = $payload['tax'] ?? 0;
         $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
-        $payload['sub_total_before_discount'] = !empty($payload['sub_total_before_discount']) ? $payload['sub_total_before_discount'] : ($payload['total'] ?? 0);
-        $payload['total_incl_vat_before_discount'] = !empty($payload['total_incl_vat_before_discount']) ? $payload['total_incl_vat_before_discount'] : ($payload['total'] ?? 0);
+        // Calculate subtotal from payment_details for accuracy
+        $subtotalFromDetails = $details ? array_sum(array_map(fn($d) => (float)($d['total_price'] ?? $d['total'] ?? 0), $details->toArray())) : 0;
+        $payload['sub_total_before_discount'] = !empty($payload['sub_total_before_discount']) ? (float)$payload['sub_total_before_discount'] : ($subtotalFromDetails ?: ($payload['total'] ?? 0));
+        $payload['total_incl_vat_before_discount'] = !empty($payload['total_incl_vat_before_discount']) ? (float)$payload['total_incl_vat_before_discount'] : ($subtotalFromDetails ?: ($payload['total'] ?? 0));
         $payload['payment_code'] = $payload['payment_code'] ?: ('EDGE-' . $payment->id);
         $payload['is_senior_discount'] = $payload['is_senior_discount'] ?? false;
         $payload['senior_discount_amount'] = $payload['senior_discount_amount'] ?? 0;
