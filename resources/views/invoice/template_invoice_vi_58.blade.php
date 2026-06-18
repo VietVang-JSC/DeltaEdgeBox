@@ -270,8 +270,8 @@
                         $itemVat = ($item['products']['vat'] ?? 0) / 100;
                         $subTotal += $is_tax_included == 1 ? $item['total_price'] : round($item['total_price'] / (1 + $itemVat));
                     }
-                    if($discount > 0 ){
-                        $subTotalAfterDiscount = $subTotal - $discount;
+                    if($discount > 0 || $seniorDiscount > 0){
+                        $subTotalAfterDiscount = $subTotal - $discount - $seniorDiscount;
                     }
                 @endphp
                 @foreach ($payment['payment_details'] as $item)

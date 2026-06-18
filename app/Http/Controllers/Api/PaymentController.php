@@ -1179,6 +1179,36 @@ class PaymentController extends Controller
         }
     }
 
+    public function getPaymentDetail($id)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $payment = Payment::with(['details.product', 'user', 'customer', 'table'])->where('store_id', $storeId)->where('id', $id)->first();
+            if (!$payment) {
+                return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+            }
+            $data = $payment->toArray();
+            $data['unit_price_excluding_tax'] = 0;
+            $data['detail_discount_excluding_tax'] = 0;
+            $data['discounted_price_excluding_tax'] = 0;
+            if (!empty($data['details'])) {
+                foreach ($data['details'] as &$detail) {
+                    $detail['products'] = isset($detail['product']) ? $detail['product'] : [];
+                    unset($detail['product']);
+                    $detail['total_price'] = $detail['total'] ?? 0;
+                }
+                $data['payment_details'] = $data['details'];
+            } else {
+                $data['payment_details'] = [];
+            }
+            unset($data['details']);
+            return response()->json(['status' => true, 'data_payment' => [$data]], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getPaymentDetail failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
     public function checkIsPrinted(Request $request)
     {
         $paymentId = $request->input('payment_id');

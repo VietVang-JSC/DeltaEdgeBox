@@ -106,6 +106,7 @@ Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
 });
 Route::post('/user/payment/list_open', [PaymentController::class, 'listOpen']);
 Route::get('/user/payment/get/{id}', [PaymentController::class, 'getPayment']);
+Route::get('/user/payment/get-payment-new/{id}', [PaymentController::class, 'getPaymentDetail']);
 // View payment details for POS web
 Route::prefix('edge')->middleware('edge.api.key')->group(function () {
     Route::post('/list-order-new', [PosWebFilterController::class, 'apiEdgeFilterByCondition']);
