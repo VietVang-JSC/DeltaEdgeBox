@@ -414,10 +414,9 @@ class PosWebFilterController extends Controller
     {
         return Payment::with(['details.product', 'user', 'customer'])
             ->where(function ($query) use ($storeId) {
-                $query->whereNull('store_id')->orWhere('store_id', $storeId);
+                $query->whereNull('store_id')
+                    ->orWhere('store_id', $storeId);
             })
-            ->where('status', 0)
-            ->whereNull('table_id')
             ->get()
             ->map(fn (Payment $payment) => $this->paymentPayload($payment))
             ->values()
