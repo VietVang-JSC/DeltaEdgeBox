@@ -303,15 +303,18 @@ class PaymentController extends Controller
         $seniorDiscount = filter_var($input['is_senior_discount'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $seniorDiscountAmount = (float) ($input['senior_discount_amount'] ?? 0);
         $total = (float) ($summary['total_with_vat'] ?? 0) + $surcharge;
+        $baseForCharge = $isTaxIncluded
+            ? (float) ($summary['total_with_vat'] ?? 0)
+            : (float) ($summary['subtotal_after'] ?? $summary['total_with_vat'] ?? 0);
+        if ($serviceCharge > 0 && $serviceChargeAmount == 0) {
+            $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
+        }
 
         if (($store->time_zone ?? null) === 'Asia/Manila') {
             if (!array_key_exists('service_charge', $input) && isset($store->service_charge)) {
                 $serviceCharge = (int) $store->service_charge;
+                $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
             }
-
-            $baseForCharge = $isTaxIncluded
-                ? (float) ($summary['total_with_vat'] ?? 0)
-                : (float) ($summary['subtotal_after'] ?? $summary['total_with_vat'] ?? 0);
 
             if ($surchargePercent !== null) {
                 $surcharge = $baseForCharge * $surchargePercent / 100;
@@ -1293,10 +1296,23 @@ class PaymentController extends Controller
 
             $payments = $payments->map(function ($p) {
                 $data = $p->toArray();
-                $data['valuetotal'] = $data['total'] ?? 0;
+                $data['valuetotal'] = $data['final_total'] ?? ($data['total'] ?? 0);
                 $data['reasonSurcharge'] = $data['surcharge_reason'] ?? '';
                 $data['user'] = $data['user'] ?? ['id' => 0, 'name' => ''];
                 $data['customer'] = $data['customer'] ?? null;
+                $data['payment_details'] = $data['details'] ?? [];
+                $data['sub_total_before_discount'] = $data['sub_total_before_discount'] ?? 0;
+                $data['total_incl_vat_before_discount'] = $data['total_incl_vat_before_discount'] ?? 0;
+                $data['total_tax'] = $data['tax'] ?? 0;
+                $data['service_charge_amount'] = $data['service_charge_amount'] ?? 0;
+                if (!empty($data['details'])) {
+                    foreach ($data['details'] as &$detail) {
+                        if (empty($detail['products']) && !empty($detail['product_id'])) {
+                            $product = \App\Models\Product::find($detail['product_id']);
+                            $detail['products'] = $product ? $product->toArray() : [];
+                        }
+                    }
+                }
                 return $data;
             });
 

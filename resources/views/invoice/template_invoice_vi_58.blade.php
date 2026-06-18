@@ -340,7 +340,7 @@
                     <td class="Info_Total_Sub_number">{{ number_format($totalTax) }}</td>
                 </tr>
                 @endif
-                @if(($payment['service_charge_amount'] ?? 0) > 0 || (Session::get('user')['store']['time_zone'] ?? '') == 'Asia/Manila')
+                @if(($payment['service_charge_amount'] ?? 0) > 0 || ($timeZone ?? '') == 'Asia/Manila')
                 <tr>
                     <td class="Info_Total_Sub_name">{{ __('front/pos_order.content.Phí dịch vụ') }}:</td>
                     <td class="Info_Total_Sub_number">{{ number_format($payment['service_charge_amount'] ?? 0) }}</td>

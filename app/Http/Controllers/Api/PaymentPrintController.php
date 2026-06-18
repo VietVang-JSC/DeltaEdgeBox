@@ -236,6 +236,7 @@ class PaymentPrintController extends Controller
                 'data_bank_payment' => [],
                 'is_tax_included' => $store ? ($store->is_tax_included ?? false) : false,
                 'qrImagePath' => $qrImagePath,
+                'timeZone' => $timeZone,
             ];
 
             // Localized Japanese date formatting to match Cloud BE
@@ -305,6 +306,7 @@ class PaymentPrintController extends Controller
         $storeId = config('edge_box.store_id', 1);
         $store = Store::find($storeId);
         $isTaxIncluded = $store ? ($store->is_tax_included ?? false) : false;
+        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
 
         // Re-allocate discounts/taxes among split items using local buildSimplePayment
         $itemsInput = $filters['split_merge_item'];
@@ -327,14 +329,20 @@ class PaymentPrintController extends Controller
         if (!$user && $payment && !empty($payment->admin_id)) {
             $user = User::find($payment->admin_id);
         }
+        if (!$user && $payment && !empty($payment->user_id)) {
+            $user = User::find($payment->user_id);
+        }
+        if (!$user) {
+            $user = User::where('store_id', $storeId)->first();
+        }
         $temporaryPayment['user'] = $user ? $user->toArray() : [
             'id' => $payment ? $payment->user_id : null,
             'name' => '',
         ];
 
         // Format times and payment code to match Cloud
-        $temporaryPayment['created_at'] = date('d-m-Y H:i:s');
-        $temporaryPayment['updated_at'] = date('d-m-Y H:i:s');
+        $temporaryPayment['created_at'] = now($timeZone)->format('d-m-Y H:i:s');
+        $temporaryPayment['updated_at'] = now($timeZone)->format('d-m-Y H:i:s');
         $temporaryPayment['payment_code'] = $payment ? ($payment->payment_code ?: 'EDGE-' . $payment->id) : 'EDGE-TEMP';
 
         // Fetch printer details
@@ -373,6 +381,7 @@ class PaymentPrintController extends Controller
                 'data_bank_payment' => [],
                 'is_tax_included' => $isTaxIncluded,
                 'qrImagePath' => $qrImagePath,
+                'timeZone' => $timeZone,
             ];
 
             // Localized Japanese date formatting to match Cloud BE

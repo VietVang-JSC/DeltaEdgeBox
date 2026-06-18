@@ -596,7 +596,7 @@ class SplitMergeInvoiceController extends Controller
                 'product_key' => $key,
                 'quantity' => $value['quantity'],
                 'price' => $value['price'],
-                'total' => $value['TotalPrice'],
+                'total' => $value['TotalPrice'] ?? ($value['total'] ?? ($value['price'] * $value['quantity'])),
                 'note' => $value['note'] ?? '',
                 'admin_id' => $payment->admin_id,
                 'store_id' => $payment->store_id,
@@ -639,7 +639,7 @@ class SplitMergeInvoiceController extends Controller
                 [
                     'quantity' => $value['quantity'],
                     'price' => $value['price'],
-                    'total' => $value['TotalPrice'],
+                    'total' => $value['TotalPrice'] ?? ($value['total'] ?? ($value['price'] * $value['quantity'])),
                     'note' => $value['note'] ?? '',
                     'admin_id' => $data['admin_id'] ?? 1,
                     'store_id' => $data['store_id'],
