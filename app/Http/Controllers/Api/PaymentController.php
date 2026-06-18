@@ -99,11 +99,7 @@ class PaymentController extends Controller
                 return $payment->load('details');
             });
 
-            try {
-                app(SyncService::class)->processQueue(10);
-            } catch (\Throwable $th) {
-                Log::warning('Edge payment sync failed', ['error' => $th->getMessage()]);
-            }
+            // Sync runs via background SyncWorker — no blocking needed
 
             Log::info('EDGE BOX: Payment created successfully', [
                 'payment_id' => $payment->id,

@@ -232,7 +232,7 @@ Route::post('/user/product/get_product_list', [PosWebFilterController::class, 'g
 Route::post('/user/category/get_category', [PosWebFilterController::class, 'getCategory'])->middleware('edge.api.key');
 Route::post('/user/customer/get_all_customer', [PosWebFilterController::class, 'getAllCustomer'])->middleware('edge.api.key');
 
-Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function () {
+Route::prefix('user/payment_detail')->group(function () {
     Route::get('/getServedStatus', [TableController::class, 'getServedStatus']);
     Route::post('/served', [TableController::class, 'served']);
 });

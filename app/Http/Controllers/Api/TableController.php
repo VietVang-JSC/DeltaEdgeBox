@@ -577,11 +577,7 @@ class TableController extends Controller
 
     private function processSyncAfterResponse(): void
     {
-        try {
-            app(SyncService::class)->processQueue(10);
-        } catch (\Throwable $th) {
-            Log::warning('Edge table sync failed', ['error' => $th->getMessage()]);
-        }
+        // Sync runs via background SyncWorker — no blocking needed
     }
 
     public function getServedStatus(Request $request)
