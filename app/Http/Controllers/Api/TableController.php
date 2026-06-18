@@ -7,6 +7,7 @@ use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\Table;
 use App\Models\User;
+use App\Models\Store;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,11 +26,11 @@ class TableController extends Controller
     {
         $storeId = $this->storeId($request);
         $tables = Table::query()
-            ->when($storeId, fn ($query) => $query->where('store_id', $storeId))
+            ->when($storeId, fn($query) => $query->where('store_id', $storeId))
             ->where('status', '!=', -1)
             ->orderBy('id')
             ->get()
-            ->map(fn (Table $table) => $this->tablePayload($table));
+            ->map(fn(Table $table) => $this->tablePayload($table));
 
         return $this->success('api.table_get_list', ['table' => $tables]);
     }
@@ -92,7 +93,7 @@ class TableController extends Controller
 
             // Check-in does NOT change status, only sets can_order=0 and lock_time to prevent conflicts
             $table->fill([
-                'user_id'   => $userId,
+                'user_id' => $userId,
                 'can_order' => 0,
                 'lock_time' => $lockTime,
             ])->save();
@@ -130,8 +131,8 @@ class TableController extends Controller
                 if ($paymentId) {
                     Payment::whereKey($paymentId)->update([
                         'status' => self::PAYMENT_CANCELLED,
-            'note' => $request->input('reason'),
-            'reason' => $request->input('reason'),
+                        'note' => $request->input('reason'),
+                        'reason' => $request->input('reason'),
                     ]);
                 }
 
@@ -309,30 +310,56 @@ class TableController extends Controller
             ? Payment::find($request->input('payment_id'))
             : ($table->payment_id ? Payment::find($table->payment_id) : null);
 
+        $storeId = $this->storeId($request);
+        $store = \App\Models\Store::find($storeId);
+        $isTaxIncluded = $store ? ($store->is_tax_included ?? false) : false;
+
+        $calcItems = [];
+        foreach ($items as $item) {
+            $key = $item['product_key'] ?: 'product:' . $item['product_id'];
+            $calcItems[$key] = $item;
+        }
+
+        $calcAttributes = [
+            'split_merge_item' => $calcItems,
+            'discount' => (float) $request->input('discount', 0),
+            'surcharge' => (float) $request->input('surcharge', 0),
+            'type_discount' => $request->input('type_discount', 'amount'),
+            'discount_percent' => (int) $request->input('discount_percent', 0),
+            'surcharge_percent' => (int) $request->input('surcharge_percent', 0),
+            'service_charge' => (int) $request->input('service_charge', 0),
+            'is_senior_discount' => $request->input('is_senior_discount', false),
+            'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
+            'amount_received' => (float) $request->input('amount_received', 0),
+        ];
+
+        $calcResult = $this->buildSimplePayment($calcAttributes, $isTaxIncluded);
+
         $payload = [
-            'store_id' => $this->storeId($request),
+            'store_id' => $storeId,
             'table_id' => $table->id,
             'customer_id' => $request->input('customer_id') ?: null,
             'paid_date' => now(),
-            'total' => $summary['total'],
-            'discount' => (float) $request->input('discount', 0),
-            'tax' => (float) $request->input('total_tax', 0),
-            'final_total' => (float) $request->input('valuetotal', $summary['total']),
+            'total' => $isTaxIncluded ? $calcResult['total_incl_vat_before_discount'] : $calcResult['sub_total_before_discount'],
+            'discount' => $calcResult['discount'],
+            'tax' => $calcResult['total_tax'],
+            'final_total' => $calcResult['valuetotal'],
             'payment_method' => (string) $request->input('payment_method', 'cash'),
             'note' => $request->input('reason'),
             'status' => (int) $request->input('status', self::PAYMENT_PENDING),
             'user_id' => $this->userId($request),
             'type_discount' => $request->input('type_discount', 'amount'),
             'discount_percent' => (int) $request->input('discount_percent', 0),
-            'surcharge' => (float) $request->input('surcharge', 0),
+            'surcharge' => $calcResult['surcharge'],
             'surcharge_percent' => (int) $request->input('surcharge_percent', 0),
             'surcharge_reason' => $request->input('surcharge_reason'),
-            'service_charge' => (int) $request->input('service_charge', 0),
-            'service_charge_amount' => (float) $request->input('service_charge_amount', 0),
+            'service_charge' => $calcResult['service_charge'] ?? (int) $request->input('service_charge', 0),
+            'service_charge_amount' => $calcResult['service_charge_amount'] ?? 0.0,
             'is_senior_discount' => $request->input('is_senior_discount', false),
-            'senior_discount_amount' => (float) $request->input('senior_discount_amount', 0),
-            'sub_total_before_discount' => (float) $request->input('sub_total_before_discount', 0),
-            'total_incl_vat_before_discount' => (float) $request->input('total_incl_vat_before_discount', 0),
+            'senior_discount_amount' => $calcResult['senior_discount_amount'] ?? 0.0,
+            'sub_total_before_discount' => $calcResult['sub_total_before_discount'],
+            'total_incl_vat_before_discount' => $calcResult['total_incl_vat_before_discount'],
+            'amount_received' => $calcResult['amount_received'],
         ];
 
         if ($payment) {
@@ -347,10 +374,12 @@ class TableController extends Controller
             ->mapWithKeys(function ($detail) {
                 $key = $detail->product_key ?: 'product:' . $detail->product_id;
 
-                return [$key => [
-                    'printed_quantity' => (int) $detail->printed_quantity,
-                    'served' => (bool) $detail->served,
-                ]];
+                return [
+                    $key => [
+                        'printed_quantity' => (int) $detail->printed_quantity,
+                        'served' => (bool) $detail->served,
+                    ]
+                ];
             });
 
         $payment->details()->delete();
@@ -359,6 +388,8 @@ class TableController extends Controller
             $previousData = $printedQuantities[$detailKey] ?? [];
             $printedQuantity = min((int) ($previousData['printed_quantity'] ?? 0), (int) $item['quantity']);
             $served = $previousData['served'] ?? false;
+
+            $calcItem = $calcResult['items'][$detailKey] ?? [];
 
             PaymentDetail::create([
                 'payment_id' => $payment->id,
@@ -372,6 +403,11 @@ class TableController extends Controller
                 'optional_products' => $item['optional_products'] ?? null,
                 'printed_quantity' => $printedQuantity,
                 'served' => $served,
+                'detail_discount' => $calcItem['detail_discount'] ?? 0.0,
+                'tax_amount' => $calcItem['tax_amount'] ?? 0.0,
+                'detail_discount_excluding_tax' => $calcItem['detail_discount_excluding_tax'] ?? 0.0,
+                'unit_price_excluding_tax' => $calcItem['unit_price_excluding_tax'] ?? 0.0,
+                'discounted_price_excluding_tax' => $calcItem['discounted_price_excluding_tax'] ?? 0.0,
             ]);
         }
 
@@ -420,6 +456,7 @@ class TableController extends Controller
             $quantity = (int) ($item['quantity'] ?? 1);
             $price = (float) ($item['price'] ?? 0);
             $total = (float) ($item['TotalPrice'] ?? $item['total'] ?? ($price * $quantity));
+            $vat = (float) ($item['vat'] ?? 0);
 
             $items[] = [
                 'product_id' => (int) $productId,
@@ -427,6 +464,7 @@ class TableController extends Controller
                 'quantity' => $quantity,
                 'price' => $price,
                 'total' => $total,
+                'vat' => $vat,
                 'note' => $item['note'] ?? $item['noted'] ?? null,
                 'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : null,
                 'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
@@ -440,7 +478,7 @@ class TableController extends Controller
     {
         $total = (float) $request->input('valuetotal', 0);
         if ($total <= 0) {
-            $total = array_sum(array_map(fn ($item) => (float) $item['total'], $items));
+            $total = array_sum(array_map(fn($item) => (float) $item['total'], $items));
         }
 
         return ['total' => $total];
@@ -484,8 +522,8 @@ class TableController extends Controller
             'number_of_people' => 0,
             'pin' => null,
             'qr_token' => null,
-            'lock_time'        => null,
-            'can_order'        => 1,
+            'lock_time' => null,
+            'can_order' => 1,
             'is_order_enabled' => 1,
         ];
     }
@@ -590,16 +628,16 @@ class TableController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'table_id'    => ['required'],
-                'product_id'  => ['required'],
+                'table_id' => ['required'],
+                'product_id' => ['required'],
                 'product_key' => ['required'],
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'status'      => false,
+                    'status' => false,
                     'status_code' => 400,
-                    'messages'    => $validator->errors(),
+                    'messages' => $validator->errors(),
                 ], 400);
             }
 
@@ -607,8 +645,8 @@ class TableController extends Controller
 
             if (!$table || !$table->payment_id) {
                 return response()->json([
-                    'status'      => false,
-                    'message'     => 'Không tìm thấy bàn hoặc payment_id',
+                    'status' => false,
+                    'message' => 'Không tìm thấy bàn hoặc payment_id',
                     'status_code' => 404,
                 ], 404);
             }
@@ -656,5 +694,238 @@ class TableController extends Controller
             Log::error('Edge getPaymentMethods failed: ' . $th->getMessage());
             return $this->error('api.ISError', 500);
         }
+    }
+
+    public function buildSimplePayment(array $attributes, $isTaxIncluded = 0): array
+    {
+        $paymentDetails = [];
+        $originalOrder = array_keys($attributes['split_merge_item'] ?? []);
+
+        uasort($attributes['split_merge_item'], function ($a, $b) {
+            return ($b['vat'] ?? 0) <=> ($a['vat'] ?? 0);
+        });
+
+        if (!isset($attributes['discount'])) {
+            $attributes['discount'] = 0;
+        }
+
+        $totalDiscount = $attributes['discount'] ?? 0;
+        $typeDiscount = $attributes['type_discount'] ?? 'amount';
+        if ($typeDiscount == 'percent') {
+            $totalDiscount = $attributes['discount_percent'] ?? 0;
+        } else {
+            $attributes['discount_percent'] = null;
+        }
+
+        $billItem = $isTaxIncluded
+            ? $this->allocateDiscountTaxIncluded($attributes['split_merge_item'], $totalDiscount, $typeDiscount)
+            : $this->allocateDiscountTaxExcluded($attributes['split_merge_item'], $totalDiscount, $typeDiscount);
+
+        $attributes['split_merge_item'] = array_replace(array_flip($originalOrder), $billItem['items']);
+
+        foreach ($attributes['split_merge_item'] as $key => $value) {
+            $paymentDetails[] = [
+                'quantity' => $value['quantity'],
+                'price' => $value['price'],
+                'total_price' => $value['TotalPrice'] ?? $value['total'] ?? 0,
+                'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
+                'products' => [
+                    'title' => $value['title'] ?? '',
+                    'vat' => $value['vat'] ?? 0,
+                ],
+                'tax_amount' => $value['tax_amount'] ?? 0,
+            ];
+        }
+
+        $params = [
+            'payment_details' => $paymentDetails,
+            'surcharge' => $attributes['surcharge'] ?? 0,
+            'discount' => $billItem['summary']['discount_total'],
+            'total_tax' => $billItem['summary']['total_vat'],
+            'valuetotal' => $billItem['summary']['total_with_vat'] + ($attributes['surcharge'] ?? 0),
+            'amount_received' => $attributes['amount_received'] ?? ($billItem['summary']['total_with_vat'] + ($attributes['surcharge'] ?? 0)),
+            'status' => 0,
+            'sub_total_before_discount' => round($billItem['summary']['subtotal_before']),
+            'total_incl_vat_before_discount' => $billItem['summary']['total_incl_vat_before_discount'],
+            'items' => $billItem['items'],
+        ];
+
+        // Surcharge percent and service charge calculations for Asia/Manila store branch
+        $storeId = config('edge_box.store_id', 1);
+        $store = Store::find($storeId);
+        if ($store && $store->time_zone == 'Asia/Manila') {
+            $serviceCharge = isset($attributes['service_charge']) ? (int) $attributes['service_charge'] : ($store->service_charge ?? 0);
+            $params['service_charge'] = $serviceCharge;
+
+            $baseForSurcharge = $isTaxIncluded
+                ? $billItem['summary']['total_with_vat']
+                : ($billItem['summary']['subtotal_after'] ?? $billItem['summary']['total_with_vat']);
+
+            // surcharge percent
+            if (!empty($attributes['surcharge_percent'])) {
+                $params['surcharge_percent'] = $attributes['surcharge_percent'];
+                $params['surcharge'] = $baseForSurcharge * $attributes['surcharge_percent'] / 100;
+            }
+
+            $params['service_charge_amount'] = round($baseForSurcharge * $serviceCharge / 100);
+            $params['valuetotal'] = $billItem['summary']['total_with_vat'] + $params['service_charge_amount'] + ($params['surcharge'] ?? 0);
+            $params['amount_received'] = $params['valuetotal'];
+
+            // Senior Discount (RA 9994)
+            if (!empty($attributes['is_senior_discount'])) {
+                $seniorRate = 20; // Default 20%
+                $seniorDiscountAmount = round($billItem['summary']['subtotal_before'] * $seniorRate / 100);
+                $params['senior_discount_amount'] = $seniorDiscountAmount;
+
+                $afterSenior = $billItem['summary']['subtotal_before'] - $seniorDiscountAmount;
+
+                if ($typeDiscount === 'percent') {
+                    $billItem['summary']['discount_total'] = round($afterSenior * $totalDiscount / 100);
+                }
+                $params['discount'] = $billItem['summary']['discount_total'];
+
+                $totalAfterDiscount = $afterSenior - $billItem['summary']['discount_total'];
+                $params['total_tax'] = 0; // VAT exempt
+
+                $basePositive = max(0, $totalAfterDiscount);
+                $params['service_charge_amount'] = round($basePositive * $serviceCharge / 100);
+
+                if (!empty($attributes['surcharge_percent'])) {
+                    $params['surcharge'] = $basePositive * $attributes['surcharge_percent'] / 100;
+                }
+
+                $params['valuetotal'] = $basePositive + $params['service_charge_amount'] + ($params['surcharge'] ?? 0);
+            }
+        }
+
+        return $params;
+    }
+
+    private function allocateDiscountTaxExcluded(array $items, float $discountValue, string $typeDiscount = 'amount'): array
+    {
+        $totalBase = 0;
+        foreach ($items as $item) {
+            $totalBase += (float) $item['price'] * (int) $item['quantity'];
+        }
+
+        if ($totalBase <= 0) {
+            return ['items' => [], 'summary' => $this->emptyBillSummary()];
+        }
+
+        $allocatedSum = 0;
+        $lastKey = array_key_last($items);
+
+        foreach ($items as $key => &$item) {
+            $subTotal = (float) $item['price'] * (int) $item['quantity'];
+            $item['sub_total_excl_vat'] = round($subTotal);
+
+            if ($typeDiscount === 'percent') {
+                $item['discount_percent'] = $discountValue;
+                $item['discount_allocated_excl_vat'] = round($subTotal * $discountValue / 100);
+            } else {
+                $ratio = $subTotal / $totalBase;
+                if ($key !== $lastKey) {
+                    $item['discount_allocated_excl_vat'] = round($discountValue * $ratio);
+                    $allocatedSum += $item['discount_allocated_excl_vat'];
+                } else {
+                    $item['discount_allocated_excl_vat'] = $discountValue - $allocatedSum;
+                }
+            }
+
+            $item['net_excl_vat'] = $item['sub_total_excl_vat'] - $item['discount_allocated_excl_vat'];
+            $item['tax_amount'] = round($item['net_excl_vat'] * ((float) $item['vat'] / 100));
+            $item['total_with_vat_after_discount'] = $item['net_excl_vat'] + $item['tax_amount'];
+            $item['detail_discount'] = $item['discount_allocated_excl_vat'];
+            $item['detail_discount_excluding_tax'] = $item['discount_allocated_excl_vat'];
+            $item['TotalPrice'] = round($item['sub_total_excl_vat'] * (1 + ((float) $item['vat'] / 100)));
+            $item['detail_discount_excluding_tax'] = $item['discount_allocated_excl_vat'];
+            $item['unit_price_excluding_tax'] = (float) $item['price'];
+            $item['discounted_price_excluding_tax'] = $item['net_excl_vat'];
+        }
+        unset($item);
+
+        return [
+            'items' => $items,
+            'summary' => [
+                'subtotal_before' => array_sum(array_column($items, 'sub_total_excl_vat')),
+                'discount_total' => $typeDiscount === 'percent' ? round($totalBase * $discountValue / 100) : $discountValue,
+                'subtotal_after' => array_sum(array_column($items, 'net_excl_vat')),
+                'total_vat' => array_sum(array_column($items, 'tax_amount')),
+                'total_with_vat' => array_sum(array_column($items, 'total_with_vat_after_discount')),
+                'total_incl_vat_before_discount' => array_sum(array_column($items, 'TotalPrice')),
+            ],
+        ];
+    }
+
+    private function allocateDiscountTaxIncluded(array $items, float $discountValue, string $typeDiscount = 'amount'): array
+    {
+        $totalWithVat = 0;
+        foreach ($items as $item) {
+            $totalWithVat += (float) $item['price'] * (int) $item['quantity'];
+        }
+
+        if ($totalWithVat <= 0) {
+            return ['items' => [], 'summary' => $this->emptyBillSummary()];
+        }
+
+        $allocatedSum = 0;
+        $lastKey = array_key_last($items);
+
+        foreach ($items as $key => &$item) {
+            $vatRate = (float) $item['vat'];
+            $vatDivisor = 1 + ($vatRate / 100);
+            $subTotalInclVat = (float) $item['price'] * (int) $item['quantity'];
+            $item['sub_total_incl_vat'] = round($subTotalInclVat);
+
+            if ($typeDiscount === 'percent') {
+                $item['discount_percent'] = $discountValue;
+                $item['discount_allocated_incl_vat'] = round($subTotalInclVat * $discountValue / 100);
+            } else {
+                $ratio = $subTotalInclVat / $totalWithVat;
+                if ($key !== $lastKey) {
+                    $item['discount_allocated_incl_vat'] = round($discountValue * $ratio);
+                    $allocatedSum += $item['discount_allocated_incl_vat'];
+                } else {
+                    $item['discount_allocated_incl_vat'] = $discountValue - $allocatedSum;
+                }
+            }
+
+            $item['unit_price_excluding_tax'] = round((float) $item['price'] / $vatDivisor);
+            $item['discount_allocated_excl_vat'] = round($item['discount_allocated_incl_vat'] / $vatDivisor);
+            $item['total_with_vat_after_discount'] = $item['sub_total_incl_vat'] - $item['discount_allocated_incl_vat'];
+            $item['net_excl_vat'] = round($item['total_with_vat_after_discount'] / $vatDivisor);
+            $item['tax_amount'] = $item['total_with_vat_after_discount'] - $item['net_excl_vat'];
+            $item['detail_discount'] = $item['discount_allocated_incl_vat'];
+            $item['TotalPrice'] = $item['sub_total_incl_vat'];
+            $item['detail_discount_excluding_tax'] = $item['discount_allocated_excl_vat'];
+            $item['discounted_price_excluding_tax'] = $item['net_excl_vat'];
+        }
+        unset($item);
+
+        return [
+            'items' => $items,
+            'summary' => [
+                'subtotal_before' => array_sum(array_map(function ($item) {
+                    return $item['sub_total_incl_vat'] / (1 + ((float) $item['vat'] / 100));
+                }, $items)),
+                'discount_total' => $typeDiscount === 'percent' ? round($totalWithVat * $discountValue / 100) : $discountValue,
+                'subtotal_after' => array_sum(array_column($items, 'net_excl_vat')),
+                'total_vat' => array_sum(array_column($items, 'tax_amount')),
+                'total_with_vat' => array_sum(array_column($items, 'total_with_vat_after_discount')),
+                'total_incl_vat_before_discount' => array_sum(array_column($items, 'TotalPrice')),
+            ],
+        ];
+    }
+
+    private function emptyBillSummary(): array
+    {
+        return [
+            'subtotal_before' => 0,
+            'discount_total' => 0,
+            'subtotal_after' => 0,
+            'total_vat' => 0,
+            'total_with_vat' => 0,
+            'total_incl_vat_before_discount' => 0,
+        ];
     }
 }
