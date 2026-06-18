@@ -560,28 +560,33 @@ class SplitMergeInvoiceController extends Controller
     private function createPaymentLocal($data)
     {
         $amountReceived = isset($data['amount_received']) ? round((float) $data['amount_received']) : null;
-        $payment = Payment::create([
-            'payment_code' => $data['payment_code'],
-            'store_id' => $data['store_id'],
-            'table_id' => $data['table_id'],
-            'customer_id' => $data['customer_id'],
-            'items' => $data['items'],
-            'paid_date' => now(),
-            'total' => round((float) ($data['valuetotal'] ?? 0)),
-            'discount' => (float) ($data['discount'] ?? 0),
-            'tax' => (float) ($data['total_tax'] ?? 0),
-            'final_total' => round((float) ($data['valuetotal'] ?? 0)),
-            'amount_received' => $amountReceived,
-            'payment_method' => $data['payment_method'] ?? 'cash',
-            'note' => $data['reason'] ?? null,
-            'status' => $data['status'],
-            'user_id' => $data['user_id'] ?? 1,
-            'admin_id' => $data['admin_id'] ?? 1,
-            'is_senior_discount' => $data['is_senior_discount'] ?? false,
-            'senior_discount_amount' => $data['senior_discount_amount'] ?? 0,
-            'service_charge' => $data['service_charge'] ?? 0,
-            'service_charge_amount' => $data['service_charge_amount'] ?? 0,
-        ]);
+          $payment = Payment::create([
+              'payment_code' => $data['payment_code'],
+              'store_id' => $data['store_id'],
+              'table_id' => $data['table_id'],
+              'customer_id' => $data['customer_id'],
+              'items' => $data['items'],
+              'paid_date' => now(),
+              'total' => round((float) ($data['valuetotal'] ?? 0)),
+              'discount' => (float) ($data['discount'] ?? 0),
+              'surcharge' => (float) ($data['surcharge'] ?? 0),
+              'surcharge_percent' => (int) ($data['surcharge_percent'] ?? 0),
+              'surcharge_reason' => $data['surcharge_reason'] ?? null,
+              'type_discount' => $data['type_discount'] ?? 'amount',
+              'discount_percent' => (int) ($data['discount_percent'] ?? 0),
+              'tax' => (float) ($data['total_tax'] ?? 0),
+              'final_total' => round((float) ($data['valuetotal'] ?? 0)),
+              'amount_received' => $amountReceived,
+              'payment_method' => $data['payment_method'] ?? 'cash',
+              'note' => $data['reason'] ?? null,
+              'status' => $data['status'],
+              'user_id' => $data['user_id'] ?? 1,
+              'admin_id' => $data['admin_id'] ?? 1,
+              'is_senior_discount' => $data['is_senior_discount'] ?? false,
+              'senior_discount_amount' => $data['senior_discount_amount'] ?? 0,
+              'service_charge' => $data['service_charge'] ?? 0,
+              'service_charge_amount' => $data['service_charge_amount'] ?? 0,
+          ]);
 
         $productList = json_decode($payment->items, true);
         foreach ($productList['item'] as $key => $value) {

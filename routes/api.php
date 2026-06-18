@@ -180,6 +180,20 @@ Route::get('/user/product/list', function (\Illuminate\Http\Request $req) {
         return $ctl->publicProductPayload($p);
     });
 });
+// Quick price check endpoint — returns current time-adjusted price for a product
+Route::get('/user/product/price/{id}', function (\Illuminate\Http\Request $req, $id) {
+    $sid = config('edge_box.store_id');
+    $product = \App\Models\Product::with('timePrices')->where('store_id', $sid)->find($id);
+    if (!$product) { return response()->json(['status' => false, 'message' => 'Product not found'], 404); }
+    $ctl = app(\App\Http\Controllers\Api\PosWebFilterController::class);
+    $payload = $ctl->publicProductPayload($product);
+    return response()->json([
+        'status' => true,
+        'price' => $payload['price'],
+        'price_after_tax' => $payload['price_after_tax'],
+        'unit_price' => $payload['unit_price'] ?? $payload['price'],
+    ]);
+});
 Route::get('/user/category/list', function (\Illuminate\Http\Request $req) {
     $sid = config('edge_box.store_id');
     return \App\Models\Category::where('store_id', $sid)->where('status', 1)->orderBy('sort_order')->get();
