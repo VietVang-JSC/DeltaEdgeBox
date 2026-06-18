@@ -53,11 +53,12 @@ class PaymentPrintController extends Controller
         $store = $payment->store;
         $language = $request->input('language', 'vi');
         app()->setLocale($language);
+        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
 
         // Use paymentPayload() for 100% consistent format with cloud API
         $paymentData = $this->paymentPayload($payment);
-        $paymentData['created_at'] = date('d-m-Y H:i:s', strtotime($payment->created_at));
-        $paymentData['updated_at'] = date('d-m-Y H:i:s', strtotime($payment->updated_at));
+        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->created_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->updated_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
         // Generate QR image if needed (use blank for now)
         $qrImagePath = '';
@@ -75,6 +76,7 @@ class PaymentPrintController extends Controller
                 'data_bank_payment' => [],
                 'is_tax_included' => $store ? ($store->is_tax_included ?? false) : false,
                 'qrImagePath' => $qrImagePath,
+                'timeZone' => $timeZone,
             ])->render();
         } catch (\Throwable $th) {
             Log::error('Edge print template render failed', ['error' => $th->getMessage()]);
@@ -117,6 +119,9 @@ class PaymentPrintController extends Controller
         }
         if (!$user && !empty($payment->user_id)) {
             $user = User::find($payment->user_id);
+        }
+        if (!$user) {
+            $user = User::where('store_id', $payment->store_id)->first();
         }
         $payload['user'] = $user ? $user->toArray() : [
             'id' => $payment->user_id,
@@ -202,8 +207,9 @@ class PaymentPrintController extends Controller
 
         // Use paymentPayload() for 100% consistent format with cloud API
         $paymentData = $this->paymentPayload($payment);
-        $paymentData['created_at'] = date('d-m-Y H:i:s', strtotime($payment->created_at));
-        $paymentData['updated_at'] = date('d-m-Y H:i:s', strtotime($payment->updated_at));
+        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
+        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->created_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->updated_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
         $qrImagePath = '';
 

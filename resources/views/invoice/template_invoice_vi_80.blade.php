@@ -221,7 +221,7 @@
                 <table class="info-table" aria-label="Thông tin hóa đơn">
                     <tr>
                         <th class="info_label">{{ __('front/pos_order.invoices.Ngày') }}:</th>
-                        <td class="Info_staff_input current_date">{{date('Y-m-d H:i:s')}}</td>
+                        <td class="Info_staff_input current_date">{{now($timeZone ?? config('app.timezone'))->format('Y-m-d H:i:s')}}</td>
                     </tr>
                     <tr>
                         <th class="info_label">{{ __('front/pos_order.invoices.Nhân viên') }}:</th>

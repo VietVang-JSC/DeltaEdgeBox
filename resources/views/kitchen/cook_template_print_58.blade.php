@@ -212,7 +212,7 @@
     @php
         $paymentCodeExploded = explode('-', $payment['payment_code'] ?? '');
         $language = App::getLocale();
-        $currentDate = $language == 'jp' ? date('Y年m月d日 H:i:s') : date('Y-m-d H:i:s');
+        $currentDate = $language == 'jp' ? now($timeZone ?? config('app.timezone'))->format('Y年m月d日 H:i:s') : now($timeZone ?? config('app.timezone'))->format('Y-m-d H:i:s');
     @endphp
     <div class="invoice" id="print">
         <div class="invoice-details">

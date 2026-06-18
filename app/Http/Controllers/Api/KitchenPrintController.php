@@ -55,6 +55,7 @@ class KitchenPrintController extends Controller
 
             $payload = $this->tablePrintPayload($table, $products);
             $store = Store::find($table->store_id);
+            $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             $paperSize = $request->input('paper_size', '80');
             $language = $request->input('language', 'vi');
             app()->setLocale($language);
@@ -69,6 +70,7 @@ class KitchenPrintController extends Controller
                 'payment' => $payload['payment'] ?? [],
                 'setting_print_kitchen' => $payload['setting_print_kitchen'] ?? null,
                 'bill_setting' => [],
+                'timeZone' => $timeZone,
             ])->render();
 
             return response()->json([
@@ -105,6 +107,7 @@ class KitchenPrintController extends Controller
             }
 
             $store = Store::find($table->store_id);
+            $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             $storeId = $table->store_id;
             $language = $request->input('language', 'vi');
             app()->setLocale($language);
@@ -188,6 +191,7 @@ class KitchenPrintController extends Controller
                     'payment' => $payload['payment'] ?? [],
                     'setting_print_kitchen' => $payload['setting_print_kitchen'] ?? null,
                     'bill_setting' => [],
+                    'timeZone' => $timeZone,
                 ])->render();
             }
             $browser['view'] = $view;
@@ -240,6 +244,7 @@ class KitchenPrintController extends Controller
             $heightExtra = 0;
             $store = Store::find($storeId);
             $setting_print_kitchen = [];
+            $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
 
             if ($store && !empty($store->setting_print_kitchen)) {
                 $setting_print_kitchen = is_string($store->setting_print_kitchen)
@@ -253,6 +258,7 @@ class KitchenPrintController extends Controller
                     'setting_print_kitchen' => $setting_print_kitchen,
                     'data' => $payload,
                     'bill_setting' => [],
+                    'timeZone' => $timeZone,
                 ]);
                 $contentHeight = $this->calculateKitchenContentHeight($payload, $heightExtra);
                 $pdf->setPaper([0, 0, $contentWidth, $contentHeight]);
