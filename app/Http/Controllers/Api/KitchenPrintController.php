@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Table;
 use App\Models\Store;
+use App\Models\Printer;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -80,6 +82,213 @@ class KitchenPrintController extends Controller
         } catch (\Throwable $th) {
             Log::error('Edge kitchen print on browser failed', ['error' => $th->getMessage()]);
             return response()->json(['status' => false, 'message' => 'Print render failed'], 500);
+        }
+    }
+
+    public function printRealBrowser(Request $request)
+    {
+        $table = $this->findTable($request);
+        if (!$table) {
+            return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Table not found'], 404);
+        }
+
+        try {
+            // Retrieve printable kitchen items (where printed_quantity < quantity) without updating DB
+            $products = $this->listPrintableItems($table, false);
+            if (empty($products)) {
+                return response()->json([
+                    'status' => false,
+                    'status_code' => 404,
+                    'message' => 'No items to print',
+                    'error_code' => 'no_items'
+                ], 404);
+            }
+
+            $store = Store::find($table->store_id);
+            $storeId = $table->store_id;
+            $language = $request->input('language', 'vi');
+            app()->setLocale($language);
+
+            // Group items by printer
+            $arrPrint = [];
+            foreach ($products as $item) {
+                $printId = $item['print_id'] ?? 'default';
+                $arrPrint[$printId][] = $item;
+            }
+
+            $real = [];
+            $browser = [];
+
+            // Fetch printers configuration
+            $printers = Printer::where('store_id', $storeId)->get();
+            $printerHost = $store ? $store->printer_host : '';
+
+            foreach ($arrPrint as $key => $itemPrint) {
+                if ($key === 'default' || $key == 0) {
+                    $defaultPrinter = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
+                } else {
+                    $defaultPrinter = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
+                }
+
+                $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
+                $tplName = 'kitchen.cook_template_print_' . $paperSize;
+                if (!view()->exists($tplName)) {
+                    $tplName = 'kitchen.cook_template_print_80';
+                }
+
+                // Compile payment data for grouping
+                $paymentGroup = [
+                    'user' => [
+                        'name' => ($table->payment && $table->payment->user) ? $table->payment->user->name : '',
+                    ],
+                    'tablename' => $table->tablename ?? $table->name ?? '',
+                    'payment_code' => $table->payment ? ($table->payment->payment_code ?: 'EDGE-' . $table->payment->id) : 'EDGE-TEMP',
+                    'products' => $itemPrint,
+                ];
+
+                // Generate PDF locally
+                $pdfContent = $this->generateKitchenPDF($paymentGroup, $storeId, $tplName, $paperSize);
+                $base64Pdf = base64_encode($pdfContent);
+
+                // Build real printing payload
+                $real[$key] = [
+                    'status' => true,
+                    'message' => 'print_success',
+                    'status_code' => 200,
+                    'data' => [
+                        'ip_address' => $defaultPrinter ? $defaultPrinter->ip_address : '',
+                        'printer_url' => $printerHost,
+                        'data' => $base64Pdf,
+                        'printer_type' => $defaultPrinter ? $defaultPrinter->printer_type : 'kitchen',
+                        'paper_size' => $paperSize,
+                    ],
+                ];
+
+                // Build browser fallback info
+                $browser[$key] = $paymentGroup;
+            }
+
+            // Compile browser view HTML templates for frontend fallback
+            $view = [];
+            foreach ($arrPrint as $key => $itemPrint) {
+                if ($key === 'default' || $key == 0) {
+                    $defaultPrinter = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
+                } else {
+                    $defaultPrinter = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
+                }
+                $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
+                $tplName = 'kitchen.cook_template_print_' . $paperSize;
+                if (!view()->exists($tplName)) {
+                    $tplName = 'kitchen.cook_template_print_80';
+                }
+
+                $payload = $this->tablePrintPayload($table, $itemPrint);
+                $view[$key] = view($tplName, [
+                    'data' => $payload,
+                    'payment' => $payload['payment'] ?? [],
+                    'setting_print_kitchen' => $payload['setting_print_kitchen'] ?? null,
+                    'bill_setting' => [],
+                ])->render();
+            }
+            $browser['view'] = $view;
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Get info success',
+                'status_code' => 200,
+                'data' => [
+                    'real' => $real,
+                    'browser' => $browser,
+                    'setting_print_kitchen' => $store ? $store->setting_print_kitchen : null,
+                ],
+            ]);
+
+        } catch (\Throwable $th) {
+            Log::error('Edge kitchen printRealBrowser failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => 'Print rendering or PDF generation failed: ' . $th->getMessage()], 500);
+        }
+    }
+
+    public function updatePrintedQuantity(Request $request)
+    {
+        $table = $this->findTable($request);
+        if (!$table) {
+            return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Table not found'], 404);
+        }
+
+        try {
+            // Call listPrintableItems with markPrinted = true to save state to DB
+            $products = $this->listPrintableItems($table, true);
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Update printed quantity success',
+                'status_code' => 200,
+            ]);
+        } catch (\Throwable $th) {
+            Log::error('Edge updatePrintedQuantity failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => 'Update failed: ' . $th->getMessage()], 500);
+        }
+    }
+
+    private function generateKitchenPDF($payload, $storeId, $templatePath, $paperSize = 80)
+    {
+        try {
+            $contentWidth = $paperSize == 58 ? 227 : 302;
+            $maxTries = 50;
+            $tryCount = 0;
+            $heightExtra = 0;
+            $store = Store::find($storeId);
+            $setting_print_kitchen = [];
+
+            if ($store && !empty($store->setting_print_kitchen)) {
+                $setting_print_kitchen = is_string($store->setting_print_kitchen)
+                    ? json_decode($store->setting_print_kitchen, true)
+                    : $store->setting_print_kitchen;
+            }
+
+            do {
+                $pdf = Pdf::loadView($templatePath, [
+                    'payment' => $payload,
+                    'setting_print_kitchen' => $setting_print_kitchen,
+                    'data' => $payload,
+                    'bill_setting' => [],
+                ]);
+                $contentHeight = $this->calculateKitchenContentHeight($payload, $heightExtra);
+                $pdf->setPaper([0, 0, $contentWidth, $contentHeight]);
+                $pdf->render();
+
+                $pageCount = $pdf->getDomPDF()->getCanvas()->get_page_count();
+                $heightExtra += 50;
+                $tryCount++;
+            } while ($pageCount > 1 && $tryCount < $maxTries);
+
+            return $pdf->output();
+        } catch (\Throwable $th) {
+            Log::error('generateKitchenPDF failed', ['error' => $th->getMessage()]);
+            throw $th;
+        }
+    }
+
+    private function calculateKitchenContentHeight($payment, $heightExtra = 0)
+    {
+        try {
+            $baseHeight = 150;
+            $itemHeight = 40;
+            $products = $payment['products'] ?? [];
+            $countProduct = count($products);
+            foreach ($products as $value) {
+               if(!empty($value['combo_products'])) {
+                    $combo = is_string($value['combo_products']) ? json_decode($value['combo_products'], true) : $value['combo_products'];
+                    if (is_array($combo)) {
+                        $countProduct += count($combo) - 1;
+                    }
+               }
+            }
+            $baseHeight += $heightExtra;
+            return $baseHeight + ($countProduct * $itemHeight);
+        } catch (\Throwable $th) {
+            throw $th;
         }
     }
 
@@ -187,6 +396,7 @@ class KitchenPrintController extends Controller
         $rawItems = $decoded['item'] ?? $decoded ?? [];
 
         $details = $table->payment->details()
+            ->with(['product', 'product.print'])
             ->whereColumn('printed_quantity', '<', 'quantity')
             ->whereNull('deleted_at')
             ->orderBy('id', 'asc')
@@ -220,9 +430,28 @@ class KitchenPrintController extends Controller
                 ];
             }
 
+            $product = $detail->product;
+            $printer = $product && $product->print ? $product->print : null;
+
+            $item['print_id'] = $product ? ($product->print_id ?: 0) : 0;
+            $item['printer_type'] = $printer ? $printer->printer_type : 'kitchen';
+            $item['paper_size'] = $printer ? $printer->paper_size : 80;
             $item['diff_quantity'] = $printCount;
             $item['printed_quantity'] = (int) $detail->printed_quantity + $printCount;
             $item['print_status'] = ((int) $detail->printed_quantity + $printCount) >= (int) $detail->quantity;
+
+            if (!isset($item['title'])) {
+                $item['title'] = $product ? $product->name : '';
+            }
+            if (!isset($item['extra_product_list'])) {
+                $item['extra_product_list'] = json_decode($detail->product_extra, true) ?: [];
+            }
+            if (!isset($item['combo_products'])) {
+                $item['combo_products'] = [];
+            }
+            if (!isset($item['optional_products'])) {
+                $item['optional_products'] = json_decode($detail->optional_products, true) ?: [];
+            }
 
             $items[] = $item;
 
