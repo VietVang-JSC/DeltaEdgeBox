@@ -870,15 +870,25 @@ class MasterDataSyncService
                                 ->where('code', $code)
                                 ->first();
         if ($existingByCode && (int) $existingByCode->id !== (int) $product['id']) {
-            $existingByCode->update($payload);
+            // Reassign all local references to cloud ID to keep IDs in sync
+            $oldId = $existingByCode->id;
+            $cloudId = (int) $product['id'];
+            PaymentDetail::where('product_id', $oldId)->update(['product_id' => $cloudId]);
+            Inventory::where('product_id', $oldId)->update(['product_id' => $cloudId]);
+            InventoryHistory::where('product_id', $oldId)->update(['product_id' => $cloudId]);
+            ProductTimePrice::where('product_id', $oldId)->update(['product_id' => $cloudId]);
+            ProductExtra::where('main_product_id', $oldId)->update(['main_product_id' => $cloudId]);
+            ProductExtra::where('extra_product_id', $oldId)->update(['extra_product_id' => $cloudId]);
+            $existingByCode->delete();
+            $payload['created_at'] = $product['created_at'] ?? now();
+            $dbProduct = Product::updateOrCreate(['id' => $cloudId], $payload);
+            $dbProductId = $cloudId;
 
-            Log::warning('Master sync product id conflict resolved by code', [
-                'cloud_id' => $product['id'],
-                'edge_id' => $existingByCode->id,
+            Log::warning('Master sync product id reassigned to cloud id', [
+                'old_edge_id' => $oldId,
+                'cloud_id' => $cloudId,
                 'code' => $code,
             ]);
-
-            $dbProductId = $existingByCode->id;
         } else {
             $dbProduct = Product::updateOrCreate(
                 [

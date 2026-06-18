@@ -37,11 +37,17 @@ class PaymentDetailObserver
     protected function queueForSync(PaymentDetail $paymentDetail, string $operation): void
     {
         try {
+            $data = $paymentDetail->toArray();
+            // Include product_code so cloud can recover product_id if IDs differ
+            if (empty($data['product_code'])) {
+                $product = $paymentDetail->product;
+                $data['product_code'] = $product ? $product->code : null;
+            }
             $this->syncService->queueForSync(
                 table: 'payment_details',
                 operation: $operation,
                 recordId: $paymentDetail->id,
-                data: $paymentDetail->toArray(),
+                data: $data,
                 priority: $operation === 'delete' ? 2 : 1
             );
         } catch (\Exception $e) {
