@@ -368,24 +368,34 @@ class TableController extends Controller
             $payment = Payment::create($payload);
         }
 
-        $printedQuantities = $payment->details()
-            ->whereNull('deleted_at')
-            ->get()
-            ->mapWithKeys(function ($detail) {
-                $key = $detail->product_key ?: 'product:' . $detail->product_id;
+            $printedQuantities = $payment->details()
+                ->whereNull('deleted_at')
+                ->get()
+                ->mapWithKeys(function ($detail) {
+                    $key = $detail->product_key ?: 'product:' . $detail->product_id;
 
-                return [
-                    $key => [
-                        'printed_quantity' => (int) $detail->printed_quantity,
-                        'served' => (bool) $detail->served,
-                    ]
-                ];
-            });
+                    return [
+                        $key => [
+                            'printed_quantity' => (int) $detail->printed_quantity,
+                            'served' => (bool) $detail->served,
+                        ]
+                    ];
+                });
 
-        $payment->details()->delete();
-        foreach ($items as $item) {
-            $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
-            $previousData = $printedQuantities[$detailKey] ?? [];
+            $payment->details()->delete();
+            foreach ($items as $item) {
+                $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
+                $previousData = $printedQuantities[$detailKey] ?? [];
+                // Fallback: match by product_id if key not found (e.g. after re-order)
+                if (empty($previousData)) {
+                    foreach ($printedQuantities as $pk => $pd) {
+                        $fallbackKey = 'product:' . ($item['product_id'] ?? 0);
+                        if ($pk === $detailKey || $pk === $fallbackKey) {
+                            $previousData = $pd;
+                            break;
+                        }
+                    }
+                }
             $printedQuantity = min((int) ($previousData['printed_quantity'] ?? 0), (int) $item['quantity']);
             $served = $previousData['served'] ?? false;
 
@@ -506,7 +516,10 @@ class TableController extends Controller
         $payload['total_tax'] = $payload['tax'] ?? 0;
         $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
         $payload['items'] = optional(Table::find($payment->table_id))->listitem;
-        $payload['payment_details'] = $payload['details'] ?? [];
+        $payload['payment_details'] = array_map(function ($detail) {
+            $detail['total_price'] = $detail['total_price'] ?? ($detail['total'] ?? 0);
+            return $detail;
+        }, $payload['details'] ?? []);
 
         return $payload;
     }

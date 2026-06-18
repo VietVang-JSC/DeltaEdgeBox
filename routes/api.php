@@ -212,8 +212,8 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
     Route::post('/update_order_table', [TableController::class, 'updateOrder']);
     Route::post('/change-table', [TableController::class, 'changeTable']);
     Route::post('/check-payment-printed', [KitchenPrintController::class, 'checkPrintedStatus']);
-    Route::get('/kitchen/print-all', [KitchenPrintController::class, 'printAll']);
-    Route::get('/kitchen/print-next-web', [KitchenPrintController::class, 'printNextWeb']);
+    Route::match(['GET', 'POST'], '/kitchen/print-all', [KitchenPrintController::class, 'printAll']);
+    Route::match(['GET', 'POST'], '/kitchen/print-next-web', [KitchenPrintController::class, 'printNextWeb']);
     Route::match(['GET', 'POST'], '/kitchen/print-on-browser', [KitchenPrintController::class, 'printOnBrowser']);
     Route::match(['GET', 'POST'], '/kitchen/print-real-browser', [KitchenPrintController::class, 'printRealBrowser']);
     Route::post('/kitchen/update-print-all', [KitchenPrintController::class, 'updatePrintedQuantity']);

@@ -276,7 +276,7 @@ class PosWebFilterController extends Controller
             ->all();
     }
 
-    private function applyTimePrice(Product $product, string $timezone, &$availableFrames = []): Product
+    private function applyTimePrice(Product $product, string $timezone, &$availableFrames = []): array
     {
         $now = now()->setTimezone($timezone);
         $currentDay = $now->dayOfWeek;
@@ -295,7 +295,7 @@ class PosWebFilterController extends Controller
             }
         }
 
-        // Apply first matching time price (same as cloud: first-match-wins, no priority/date used)
+        // Find first matching time price (same as cloud: first-match-wins, no priority/date used)
         foreach ($timePrices as $tp) {
             if (empty($tp->is_active)) {
                 continue;
@@ -304,13 +304,12 @@ class PosWebFilterController extends Controller
             $days = $tp->days_of_week;
 
             if (is_array($days) && in_array($currentDay, $days) && $currentTime >= $tp->start_time && $currentTime <= $tp->end_time) {
-                $product->price = $tp->price ?? $product->price;
-                $product->price_after_tax = $tp->price_after_tax ?? $product->price_after_tax;
-                break;
+                $matchedPrice = $tp->price_after_tax ?? $tp->price ?? null;
+                return [$product, $matchedPrice];
             }
         }
 
-        return $product;
+        return [$product, null];
     }
 
     private function productPayload(Product $product, string $timezone = null, ?int $isTaxIncluded = null): array
@@ -321,14 +320,16 @@ class PosWebFilterController extends Controller
             $isTaxIncluded = $isTaxIncluded ?? ($store ? (int) ($store->is_tax_included ?? 0) : 0);
         }
         $availableFrames = [];
-        $product = $this->applyTimePrice($product, $timezone, $availableFrames);
+        [$product, $matchedPrice] = $this->applyTimePrice($product, $timezone, $availableFrames);
 
         $payload = $product->toArray();
         $payload['product_code'] = $payload['product_code'] ?? $payload['code'] ?? (string) $product->id;
         $payload['title'] = $payload['title'] ?? $payload['name'] ?? '';
         $payload['price_after_tax'] = $product->price_after_tax ?? $product->price ?? 0;
         $payload['unit_price'] = $product->price ?? 0;
-        $payload['price'] = $isTaxIncluded == 0 ? ($product->price ?? 0) : ($product->price_after_tax ?? 0);
+        $payload['price'] = $matchedPrice !== null
+            ? $matchedPrice
+            : ($isTaxIncluded == 0 ? ($product->price ?? 0) : ($product->price_after_tax ?? 0));
         $payload['vat'] = $payload['vat'] ?? 0;
         $payload['tax_name'] = $this->taxName($payload['vat']);
         $payload['original_tax'] = $payload['vat'] < 0 ? $payload['vat'] : null;
