@@ -200,6 +200,8 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
     Route::get('/kitchen/print-all', [KitchenPrintController::class, 'printAll']);
     Route::get('/kitchen/print-next-web', [KitchenPrintController::class, 'printNextWeb']);
     Route::match(['GET', 'POST'], '/kitchen/print-on-browser', [KitchenPrintController::class, 'printOnBrowser']);
+    Route::match(['GET', 'POST'], '/kitchen/print-real-browser', [KitchenPrintController::class, 'printRealBrowser']);
+    Route::post('/kitchen/update-print-all', [KitchenPrintController::class, 'updatePrintedQuantity']);
 });
 
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
@@ -232,6 +234,8 @@ Route::prefix('user/split-merge-invoice')->middleware('edge.api.key')->group(fun
 
 Route::prefix('payment')->middleware('edge.api.key')->group(function () {
     Route::get('/print-for-web', [PaymentPrintController::class, 'printForWeb']);
+    Route::get('/print', [PaymentPrintController::class, 'printPaymentPdf']);
+    Route::post('/print-temporary-split-bill', [PaymentPrintController::class, 'printTemporarySplitPayment']);
 });
 
 Route::prefix('admin/payment')->middleware('edge.api.key')->group(function () {

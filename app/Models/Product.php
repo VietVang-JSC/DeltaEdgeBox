@@ -114,4 +114,9 @@ class Product extends Model
     {
         return $this->hasMany(ComboProduct::class, 'product_id', 'id');
     }
+
+    public function print()
+    {
+        return $this->belongsTo(Printer::class, 'print_id', 'id');
+    }
 }
