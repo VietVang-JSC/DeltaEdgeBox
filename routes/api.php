@@ -203,7 +203,7 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
 });
 
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
-    Route::get('/filter', [PosWebFilterController::class, 'filter']);
+    Route::post('/filter', [PosWebFilterController::class, 'filter']);
 });
 
 Route::prefix('admin/product')->middleware('edge.api.key')->group(function () {
