@@ -565,12 +565,18 @@ class MasterDataSyncService
                 if (isset($data['product_extras'])) {
                     DB::beginTransaction();
                     foreach ($data['product_extras'] as $pe) {
+                        $localMainProductId = $productMap[$pe['main_product_id']] ?? $pe['main_product_id'];
+                        $localExtraProductId = $productMap[$pe['extra_product_id']] ?? $pe['extra_product_id'];
+                        if (!Product::where('id', $localMainProductId)->exists() || !Product::where('id', $localExtraProductId)->exists()) {
+                            Log::warning("Sync product_extras: main_product_id {$pe['main_product_id']} or extra_product_id {$pe['extra_product_id']} product not found locally. Skipped.");
+                            continue;
+                        }
                         ProductExtra::updateOrCreate(
                             ['id' => $pe['id']],
                             [
                                 'store_id'          => $pe['store_id'],
-                                'main_product_id'   => $pe['main_product_id'],
-                                'extra_product_id'  => $pe['extra_product_id'],
+                                'main_product_id'   => $localMainProductId,
+                                'extra_product_id'  => $localExtraProductId,
                                 'admin_id'          => $pe['admin_id'] ?? null,
                                 'created_at'        => $pe['created_at'] ?? now(),
                                 'updated_at'        => $pe['updated_at'] ?? now(),
