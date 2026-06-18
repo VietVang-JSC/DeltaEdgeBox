@@ -10,6 +10,9 @@ use App\Models\Product;
 use App\Models\Store;
 use App\Models\Table;
 use App\Models\User;
+use App\Models\customers;
+use App\Models\ComboProduct;
+use App\Models\PaymentDetail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Models\Agency;
@@ -515,18 +518,14 @@ class PosWebFilterController extends Controller
 
     public function apiEdgeFilterByCondition(Request $request)
     {
-         //dd($request->all(), $request->getContent());
         try {
-
             $params = $request->all();
-
             $response = [];
 
             /**
              * USERS
              */
             if (!empty($params['users'])) {
-
                 $userQuery = User::with('store');
 
                 if (!empty($params['users']['query']['id'])) {
@@ -539,25 +538,70 @@ class PosWebFilterController extends Controller
             /**
              * CUSTOMERS
              */
-            if (array_key_exists('customers', $params)) {
+            if (!empty($params['customers'])) {
+                $customerQuery = Customer::query();
 
-                $response['customer_list'] = Customer::query()
-                    ->orderBy('id')
-                    ->get()
-                    ->toArray();
+                $query = $params['customers']['query'] ?? [];
+
+                foreach ($query as $column => $value) {
+                    if ($value === null || $value === '') {
+                        continue;
+                    }
+
+                    if (is_array($value)) {
+                        $operator = $value['operator'] ?? '=';
+                        $val      = $value['value'] ?? null;
+
+                        if ($val !== null) {
+                            if (strtolower($operator) === 'like') {
+                                $customerQuery->where($column, 'like', "%{$val}%");
+                            } else {
+                                $customerQuery->where($column, $operator, $val);
+                            }
+                        }
+                    } else {
+                        $customerQuery->where($column, $value);
+                    }
+                }
+
+                // Optional relationships
+                $relationships = $params['customers']['relationship'] ?? [];
+                if (!empty($relationships)) {
+                    $customerQuery->with($relationships);
+                }
+
+                // Order by
+                if (!empty($params['customers']['clauses']['orderby'])) {
+                    $orderBy = $params['customers']['clauses']['orderby'];
+                    $customerQuery->orderBy(
+                        $orderBy['column'] ?? 'id',
+                        $orderBy['value']  ?? 'ASC'
+                    );
+                }
+
+                // Pagination
+                $pageSize    = $params['customers']['clauses']['pagination']['pageSize']    ?? 15;
+                $currentPage = $params['customers']['clauses']['pagination']['currentPage'] ?? 1;
+
+                $customers = $customerQuery->paginate($pageSize, ['*'], 'page', $currentPage);
+
+                $response['customer_list'] = [
+                    'data_list'   => $customers->items(),
+                    'total'       => $customers->total(),
+                    'currentPage' => $customers->currentPage(),
+                    'pageSize'    => $customers->perPage(),
+                ];
             }
 
             /**
              * PAYMENTS
              */
             if (!empty($params['payments'])) {
-
                 $paymentQuery = Payment::query();
 
                 $query = $params['payments']['query'] ?? [];
 
                 foreach ($query as $column => $value) {
-
                     if ($value === null || $value === '') {
                         continue;
                     }
@@ -569,40 +613,26 @@ class PosWebFilterController extends Controller
                     }
                 }
 
-                /**
-                 * Relationship
-                 */
+                // Relationship
                 $relationships = $params['payments']['relationship'] ?? [];
-
                 if (!empty($relationships)) {
                     $paymentQuery->with($relationships);
                 }
 
-                /**
-                 * Order By
-                 */
+                // Order by
                 if (!empty($params['payments']['clauses']['orderby'])) {
-
                     $orderBy = $params['payments']['clauses']['orderby'];
-
                     $paymentQuery->orderBy(
                         $orderBy['column'] ?? 'updated_at',
-                        $orderBy['value'] ?? 'DESC'
+                        $orderBy['value']  ?? 'DESC'
                     );
                 }
 
-                /**
-                 * Pagination
-                 */
-                $pageSize = $params['payments']['clauses']['pagination']['pageSize'] ?? 15;
+                // Pagination
+                $pageSize    = $params['payments']['clauses']['pagination']['pageSize']    ?? 15;
                 $currentPage = $params['payments']['clauses']['pagination']['currentPage'] ?? 1;
 
-                $payments = $paymentQuery->paginate(
-                    $pageSize,
-                    ['*'],
-                    'page',
-                    $currentPage
-                );
+                $payments = $paymentQuery->paginate($pageSize, ['*'], 'page', $currentPage);
 
                 $response['data_payment'] = [
                     'data_list'   => $payments->items(),
@@ -612,17 +642,143 @@ class PosWebFilterController extends Controller
                 ];
             }
 
+            /**
+             * DATA_PAYMENT (standalone key — client requests independently)
+             */
+            if (!empty($params['data_payment'])) {
+                $paymentQuery = Payment::query();
+
+                $query = $params['data_payment']['query'] ?? [];
+
+                foreach ($query as $column => $value) {
+                    if ($value === null || $value === '') {
+                        continue;
+                    }
+
+                    if (is_array($value)) {
+                        $operator = $value['operator'] ?? '=';
+                        $val      = $value['value'] ?? null;
+
+                        if ($val !== null) {
+                            if (strtolower($operator) === 'like') {
+                                $paymentQuery->where($column, 'like', "%{$val}%");
+                            } elseif (strtolower($operator) === 'in') {
+                                $paymentQuery->whereIn($column, (array) $val);
+                            } else {
+                                $paymentQuery->where($column, $operator, $val);
+                            }
+                        }
+                    } else {
+                        $paymentQuery->where($column, $value);
+                    }
+                }
+
+                // Optional relationships (e.g. ['details.product', 'customer', 'user'])
+                $relationships = $params['data_payment']['relationship'] ?? [];
+                if (!empty($relationships)) {
+                    $paymentQuery->with($relationships);
+                }
+
+                // Order by
+                if (!empty($params['data_payment']['clauses']['orderby'])) {
+                    $orderBy = $params['data_payment']['clauses']['orderby'];
+                    $paymentQuery->orderBy(
+                        $orderBy['column'] ?? 'updated_at',
+                        $orderBy['value']  ?? 'DESC'
+                    );
+                }
+
+                // Pagination
+                $pageSize    = $params['data_payment']['clauses']['pagination']['pageSize']    ?? 15;
+                $currentPage = $params['data_payment']['clauses']['pagination']['currentPage'] ?? 1;
+
+                $payments = $paymentQuery->paginate($pageSize, ['*'], 'page', $currentPage);
+
+                $response['data_payment'] = [
+                    'data_list'   => $payments->items(),
+                    'total'       => $payments->total(),
+                    'currentPage' => $payments->currentPage(),
+                    'pageSize'    => $payments->perPage(),
+                ];
+            }
+
+            /**
+             * COMBO_PRODUCTS
+             */
+            if (array_key_exists('combo_products', $params)) {
+                $comboQuery = ComboProduct::query();
+
+                $query = $params['combo_products']['query'] ?? [];
+
+                foreach ($query as $column => $value) {
+                    if ($value === null || $value === '') {
+                        continue;
+                    }
+
+                    if (is_array($value)) {
+                        $operator = $value['operator'] ?? '=';
+                        $val      = $value['value'] ?? null;
+
+                        if ($val !== null) {
+                            if (strtolower($operator) === 'like') {
+                                $comboQuery->where($column, 'like', "%{$val}%");
+                            } elseif (strtolower($operator) === 'in') {
+                                $comboQuery->whereIn($column, (array) $val);
+                            } else {
+                                $comboQuery->where($column, $operator, $val);
+                            }
+                        }
+                    } else {
+                        $comboQuery->where($column, $value);
+                    }
+                }
+
+                // Optional relationships (e.g. ['products', 'comboProductDetails'])
+                $relationships = $params['combo_products']['relationship'] ?? [];
+                if (!empty($relationships)) {
+                    $comboQuery->with($relationships);
+                }
+
+                // Order by
+                if (!empty($params['combo_products']['clauses']['orderby'])) {
+                    $orderBy = $params['combo_products']['clauses']['orderby'];
+                    $comboQuery->orderBy(
+                        $orderBy['column'] ?? 'id',
+                        $orderBy['value']  ?? 'ASC'
+                    );
+                }
+
+                // Pagination (optional — falls back to get() khi không truyền)
+                $pagination = $params['combo_products']['clauses']['pagination'] ?? null;
+
+                if ($pagination) {
+                    $pageSize    = (int) ($pagination['pageSize']    ?? 15);
+                    $currentPage = (int) ($pagination['currentPage'] ?? 1);
+
+                    $combos = $comboQuery->paginate($pageSize, ['*'], 'page', $currentPage);
+
+                    $response['combo_products'] = [
+                        'data_list'   => $combos->items(),
+                        'total'       => $combos->total(),
+                        'currentPage' => $combos->currentPage(),
+                        'pageSize'    => $combos->perPage(),
+                    ];
+                } else {
+                    $response['combo_products'] = $comboQuery->get()->toArray();
+                }
+            }
+
             return response()->json([
                 'status' => true,
-                'data'   => $response
+                'data'   => $response,
             ]);
-        } catch (\Throwable $e) {
 
+        } catch (\Throwable $e) {
             Log::error($e);
 
             return response()->json([
-                'status' => false,
-                'message' => $e->getMessage()
+                'status'  => false,
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
