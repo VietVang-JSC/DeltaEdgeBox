@@ -15,6 +15,7 @@ use App\Models\InventoryHistory;
 use App\Models\Agency;
 use App\Models\Types;
 use App\Models\ProductType;
+use App\Models\ProductExtra;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\Customer;
@@ -507,6 +508,11 @@ class MasterDataSyncService
                 if (isset($data['types'])) {
                     DB::beginTransaction();
                     foreach ($data['types'] as $type) {
+                        // Delete outdated type with same name but different ID to prevent duplicates
+                        Types::where('store_id', $type['store_id'])
+                            ->where('product_type_name', $type['product_type_name'])
+                            ->where('id', '!=', $type['id'])
+                            ->delete();
                         Types::updateOrCreate(
                             ['id' => $type['id']],
                             [
@@ -552,6 +558,32 @@ class MasterDataSyncService
                 $this->rollbackIfNeeded();
                 Log::error('Sync product_types failed: ' . $e->getMessage());
                 $syncErrors['product_types'] = $e->getMessage();
+            }
+
+            // Sync PRODUCT_EXTRAS
+            try {
+                if (isset($data['product_extras'])) {
+                    DB::beginTransaction();
+                    foreach ($data['product_extras'] as $pe) {
+                        ProductExtra::updateOrCreate(
+                            ['id' => $pe['id']],
+                            [
+                                'store_id'          => $pe['store_id'],
+                                'main_product_id'   => $pe['main_product_id'],
+                                'extra_product_id'  => $pe['extra_product_id'],
+                                'admin_id'          => $pe['admin_id'] ?? null,
+                                'created_at'        => $pe['created_at'] ?? now(),
+                                'updated_at'        => $pe['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['product_extras'] = count($data['product_extras']);
+                }
+            } catch (\Exception $e) {
+                $this->rollbackIfNeeded();
+                Log::error('Sync product_extras failed: ' . $e->getMessage());
+                $syncErrors['product_extras'] = $e->getMessage();
             }
 
             // Sync CUSTOMERS
@@ -754,6 +786,7 @@ class MasterDataSyncService
             'agencies' => $this->formatSyncTime(Agency::where('store_id', $this->storeId)->max('updated_at')),
             'types' => $this->formatSyncTime(Types::where('store_id', $this->storeId)->max('updated_at')),
             'product_types' => $this->formatSyncTime(ProductType::where('store_id', $this->storeId)->max('updated_at')),
+            'product_extras' => $this->formatSyncTime(ProductExtra::where('store_id', $this->storeId)->max('updated_at')),
             'customers' => $this->formatSyncTime(Customer::where('store_id', $this->storeId)->max('updated_at')),
             'payments' => $this->formatSyncTime(Payment::where('store_id', $this->storeId)->max('updated_at')),
         ];
