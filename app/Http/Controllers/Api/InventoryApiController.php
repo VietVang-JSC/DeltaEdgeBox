@@ -246,7 +246,7 @@ class InventoryApiController extends Controller
         try {
             $store_id = (int) $request->input('store_id', $request->query('store_id', config('app.store_id')));
             
-            $qb = CheckInventory::with(['check_inventory_items', 'user_init', 'user_upd'])
+            $qb = CheckInventory::with(['check_inventory_items.products.inventory', 'user_init', 'user_upd'])
                 ->where('store_id', $store_id);
 
             if ($id) {
