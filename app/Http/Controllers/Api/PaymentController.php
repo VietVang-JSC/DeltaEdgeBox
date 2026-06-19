@@ -20,6 +20,7 @@ class PaymentController extends Controller
 {
     private const STATUS_TABLE_ACTIVE = 1;
     private const STATUS_PAYMENT_ACTIVE = 1;
+    private const STATUS_PAYMENT_PENDING = 0;
 
     public function createPayment(Request $request)
     {
@@ -43,7 +44,7 @@ class PaymentController extends Controller
                 // If no table_id and no payment_method, this is a temp invoice — force pending
                 $tableId = $request->input('table_id', $request->input('tableID'));
                 if ($status === self::STATUS_PAYMENT_ACTIVE && empty($tableId) && empty($request->input('payment_method'))) {
-                    $status = 0;
+                    $status = self::STATUS_PAYMENT_PENDING;
                 }
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
                 $userId = (int) $request->input('user_id', 1);
