@@ -220,6 +220,12 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
     Route::post('/kitchen/update-print-all', [KitchenPrintController::class, 'updatePrintedQuantity']);
 });
 
+Route::prefix('user/booking')->group(function () {
+    Route::get('/list', [\App\Http\Controllers\Api\BookingController::class, 'index']);
+    Route::post('/creat-booking', [\App\Http\Controllers\Api\BookingController::class, 'create']);
+    Route::post('/update-booking', [\App\Http\Controllers\Api\BookingController::class, 'update']);
+});
+
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
     Route::post('/filter', [PosWebFilterController::class, 'filter']);
 });

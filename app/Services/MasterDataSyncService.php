@@ -19,6 +19,7 @@ use App\Models\ProductExtra;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\Customer;
+use App\Models\Booking;
 use App\Models\SyncMetadata;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -624,6 +625,40 @@ class MasterDataSyncService
                 $syncErrors['customers'] = $e->getMessage();
             }
 
+            // Sync BOOKINGS
+            try {
+                if (isset($data['bookings'])) {
+                    DB::beginTransaction();
+                    foreach ($data['bookings'] as $bk) {
+                        Booking::updateOrCreate(
+                            ['id' => $bk['id']],
+                            [
+                                'store_id'       => $bk['store_id'],
+                                'booking_code'   => $bk['booking_code'] ?? ('BK-' . $bk['id']),
+                                'user_id'        => $bk['user_id'] ?? 0,
+                                'admin_id'       => $bk['admin_id'] ?? 0,
+                                'time_arrival'   => $bk['time_arrival'],
+                                'status'         => $bk['status'] ?? 0,
+                                'customer_id'    => $bk['customer_id'] ?? 0,
+                                'table_id'       => $bk['table_id'] ?? null,
+                                'note'           => $bk['note'] ?? '',
+                                'total_customer' => $bk['total_customer'] ?? 0,
+                                'use_time'       => $bk['use_time'] ?? 0,
+                                'item_list'      => $bk['item_list'] ?? null,
+                                'created_at'     => $bk['created_at'] ?? now(),
+                                'updated_at'     => $bk['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['bookings'] = count($data['bookings']);
+                }
+            } catch (\Exception $e) {
+                $this->rollbackIfNeeded();
+                Log::error('Sync bookings failed: ' . $e->getMessage());
+                $syncErrors['bookings'] = $e->getMessage();
+            }
+
             // Sync PAYMENTS
             // Build product ID map (cloud ID → local ID) for payment_details FK
             $paymentProductCodes = [];
@@ -793,6 +828,7 @@ class MasterDataSyncService
             'types' => $this->formatSyncTime(Types::where('store_id', $this->storeId)->max('updated_at')),
             'product_types' => $this->formatSyncTime(ProductType::where('store_id', $this->storeId)->max('updated_at')),
             'product_extras' => $this->formatSyncTime(ProductExtra::where('store_id', $this->storeId)->max('updated_at')),
+            'bookings' => $this->formatSyncTime(Booking::where('store_id', $this->storeId)->max('updated_at')),
             'customers' => $this->formatSyncTime(Customer::where('store_id', $this->storeId)->max('updated_at')),
             'payments' => $this->formatSyncTime(Payment::where('store_id', $this->storeId)->max('updated_at')),
         ];
