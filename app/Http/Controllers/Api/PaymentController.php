@@ -40,7 +40,11 @@ class PaymentController extends Controller
         try {
             $payment = DB::transaction(function () use ($request) {
                 $status = (int) $request->input('status', self::STATUS_PAYMENT_ACTIVE);
+                // If no table_id and no payment_method, this is a temp invoice — force pending
                 $tableId = $request->input('table_id', $request->input('tableID'));
+                if ($status === self::STATUS_PAYMENT_ACTIVE && empty($tableId) && empty($request->input('payment_method'))) {
+                    $status = 0;
+                }
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
                 $userId = (int) $request->input('user_id', 1);
                 $paymentTime = $this->storeNow($storeId);
