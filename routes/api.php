@@ -226,6 +226,8 @@ Route::prefix('user/booking')->group(function () {
     Route::post('/update-booking', [\App\Http\Controllers\Api\BookingController::class, 'update']);
 });
 
+Route::get('/user/cash-drawer/edit-user', [\App\Http\Controllers\Api\PosWebFilterController::class, 'getCashDrawer']);
+
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
     Route::post('/filter', [PosWebFilterController::class, 'filter']);
 });

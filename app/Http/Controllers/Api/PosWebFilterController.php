@@ -558,6 +558,40 @@ class PosWebFilterController extends Controller
         return $query->get()->toArray();
     }
 
+    public function getCashDrawer(Request $request)
+    {
+        try {
+            $storeId = $this->storeId($request);
+            $today = now()->format('Y-m-d');
+            $cashDrawer = \App\Models\CashDrawer::where('store_id', $storeId)
+                ->where('status', 'open')
+                ->whereRaw("started_at LIKE '%{$today}%'")
+                ->orderBy('started_at', 'desc')
+                ->first();
+
+            if ($cashDrawer) {
+                return response()->json(['status' => true, 'cashDrawer' => $cashDrawer->toArray()], 200);
+            }
+
+            // Fallback: find last closed drawer today
+            $closedDrawer = \App\Models\CashDrawer::where('store_id', $storeId)
+                ->where('status', 'closed')
+                ->where('end_user_id', $request->input('user_id', 0))
+                ->whereRaw("ended_at LIKE '%{$today}%'")
+                ->orderBy('ended_at', 'desc')
+                ->first();
+
+            if ($closedDrawer) {
+                return response()->json(['status' => true, 'cashDrawer' => $closedDrawer->toArray()], 200);
+            }
+
+            return response()->json(['status' => false, 'cashDrawer' => null], 200);
+        } catch (\Throwable $th) {
+            \Log::error('Edge getCashDrawer failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'cashDrawer' => null], 500);
+        }
+    }
+
     public function apiEdgeFilterByCondition(Request $request)
     {
         try {
