@@ -19,6 +19,7 @@ use App\Models\ProductExtra;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\Customer;
+use App\Models\CashDrawer;
 use App\Models\Booking;
 use App\Models\SyncMetadata;
 use Illuminate\Support\Facades\DB;
@@ -625,6 +626,39 @@ class MasterDataSyncService
                 $syncErrors['customers'] = $e->getMessage();
             }
 
+            // Sync CASH DRAWERS
+            try {
+                if (isset($data['cash_drawers'])) {
+                    DB::beginTransaction();
+                    foreach ($data['cash_drawers'] as $cd) {
+                        CashDrawer::updateOrCreate(
+                            ['id' => $cd['id']],
+                            [
+                                'store_id'             => $cd['store_id'],
+                                'start_user_id'        => $cd['start_user_id'],
+                                'end_user_id'          => $cd['end_user_id'] ?? null,
+                                'start_amount'         => $cd['start_amount'] ?? 0,
+                                'end_amount'           => $cd['end_amount'] ?? null,
+                                'owner_withdraw_amount'=> $cd['owner_withdraw_amount'] ?? null,
+                                'currency_code'        => $cd['currency_code'] ?? 'VND',
+                                'status'               => $cd['status'] ?? 'open',
+                                'note'                 => $cd['note'] ?? '',
+                                'started_at'           => $cd['started_at'],
+                                'ended_at'             => $cd['ended_at'] ?? null,
+                                'created_at'           => $cd['created_at'] ?? now(),
+                                'updated_at'           => $cd['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['cash_drawers'] = count($data['cash_drawers']);
+                }
+            } catch (\Exception $e) {
+                $this->rollbackIfNeeded();
+                Log::error('Sync cash_drawers failed: ' . $e->getMessage());
+                $syncErrors['cash_drawers'] = $e->getMessage();
+            }
+
             // Sync BOOKINGS
             try {
                 if (isset($data['bookings'])) {
@@ -829,6 +863,7 @@ class MasterDataSyncService
             'product_types' => $this->formatSyncTime(ProductType::where('store_id', $this->storeId)->max('updated_at')),
             'product_extras' => $this->formatSyncTime(ProductExtra::where('store_id', $this->storeId)->max('updated_at')),
             'bookings' => $this->formatSyncTime(Booking::where('store_id', $this->storeId)->max('updated_at')),
+            'cash_drawers' => $this->formatSyncTime(CashDrawer::where('store_id', $this->storeId)->max('updated_at')),
             'customers' => $this->formatSyncTime(Customer::where('store_id', $this->storeId)->max('updated_at')),
             'payments' => $this->formatSyncTime(Payment::where('store_id', $this->storeId)->max('updated_at')),
         ];

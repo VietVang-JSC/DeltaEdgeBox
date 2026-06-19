@@ -99,6 +99,11 @@ class PosWebFilterController extends Controller
                 $dataAgencies = $this->agencies($storeId, $request);
             }
 
+            $dataCashDrawer = [];
+            if ($request->has('cash_drawer')) {
+                $dataCashDrawer = $this->cashDrawers($storeId, $request);
+            }
+
             // Check if pagination is requested
             $pagination = $request->input('products.clauses.pagination');
             $dataProduct = $products;
@@ -135,6 +140,7 @@ class PosWebFilterController extends Controller
                     'data_bank_payment' => [$bankPayment],
                     'total_records_product' => count($products),
                     'data_agencies' => $dataAgencies,
+                    'dataCashDrawer' => $dataCashDrawer,
                 ],
             ]);
         } catch (\Throwable $exception) {
@@ -511,6 +517,42 @@ class PosWebFilterController extends Controller
         $select = data_get($agenciesParam, 'select');
         if ($select && is_array($select)) {
             $query->select($select);
+        }
+
+        return $query->get()->toArray();
+    }
+
+    private function cashDrawers(int $storeId, Request $request): array
+    {
+        $query = \App\Models\CashDrawer::where('store_id', $storeId);
+
+        $cdParam = $request->input('cash_drawer');
+        if ($cdParam) {
+            $whereQuery = data_get($cdParam, 'query');
+            if ($whereQuery) {
+                foreach ($whereQuery as $column => $cond) {
+                    if (is_array($cond)) {
+                        $operator = data_get($cond, 'operator', '=');
+                        $value = data_get($cond, 'value');
+                        if (strtolower($operator) === 'like') {
+                            $value = '%' . $value . '%';
+                        }
+                        $query->where($column, $operator, $value);
+                    } elseif ($column === 'WhereRaw' && is_string($cond)) {
+                        $query->whereRaw($cond);
+                    } elseif ($column !== 'store_id') {
+                        $query->where($column, $cond);
+                    }
+                }
+            }
+
+            $clauses = data_get($cdParam, 'clauses');
+            if ($clauses) {
+                $orderBy = data_get($clauses, 'orderby');
+                if ($orderBy && isset($orderBy['column'])) {
+                    $query->orderBy($orderBy['column'], $orderBy['value'] ?? 'asc');
+                }
+            }
         }
 
         return $query->get()->toArray();
