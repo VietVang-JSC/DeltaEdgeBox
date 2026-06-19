@@ -162,11 +162,16 @@ class PaymentController extends Controller
         try {
             $payment = DB::transaction(function () use ($request) {
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
-                $payment = Payment::whereKey($request->input('id'))
-                    ->where('store_id', $storeId)
-                    ->lockForUpdate()
-                    ->first();
+                $paymentId = $request->input('id', $request->input('payment_id'));
 
+                if (!$paymentId) {
+                    return $this->createPayment($request);
+                }
+
+                $payment = Payment::whereKey($paymentId)->where('store_id', $storeId)->lockForUpdate()->first();
+                if (!$payment) {
+                    $payment = Payment::whereKey($paymentId)->lockForUpdate()->first();
+                }
                 if (!$payment) {
                     throw new \RuntimeException('Payment not found');
                 }
@@ -1187,11 +1192,7 @@ class PaymentController extends Controller
     public function getPayment($id)
     {
         try {
-            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
-            $payment = Payment::with('details')->where('store_id', $storeId)->where('id', $id)->first();
-            if (!$payment) {
-                $payment = Payment::with('details')->where('id', $id)->withTrashed()->first();
-            }
+            $payment = Payment::with('details')->where('id', $id)->withTrashed()->first();
             if (!$payment) {
                 return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
             }
