@@ -759,6 +759,13 @@ class PaymentController extends Controller
             }
 
             $payment = Payment::whereKey($paymentId)->where('store_id', $storeId)->first();
+            // Fallback: try without store_id (for order-new page where no table_id is sent)
+            if (!$payment) {
+                $payment = Payment::whereKey($paymentId)->first();
+                if ($payment) {
+                    $storeId = (int) $payment->store_id;
+                }
+            }
             if (!$payment && !empty($tableId)) {
                 if ($table && !empty($table->payment_id)) {
                     $payment = Payment::whereKey($table->payment_id)->where('store_id', $storeId)->first();
