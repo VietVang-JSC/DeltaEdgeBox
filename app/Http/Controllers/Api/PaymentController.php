@@ -1190,6 +1190,9 @@ class PaymentController extends Controller
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
             $payment = Payment::with('details')->where('store_id', $storeId)->where('id', $id)->first();
             if (!$payment) {
+                $payment = Payment::with('details')->where('id', $id)->first();
+            }
+            if (!$payment) {
                 return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
             }
             return response()->json(['status' => true, 'data' => $payment], 200);
@@ -1204,6 +1207,9 @@ class PaymentController extends Controller
         try {
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
             $payment = Payment::with(['details.product', 'user', 'customer', 'table'])->where('store_id', $storeId)->where('id', $id)->first();
+            if (!$payment) {
+                $payment = Payment::with(['details.product', 'user', 'customer', 'table'])->where('id', $id)->first();
+            }
             if (!$payment) {
                 return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
             }
