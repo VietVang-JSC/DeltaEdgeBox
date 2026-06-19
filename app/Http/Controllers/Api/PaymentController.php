@@ -172,9 +172,9 @@ class PaymentController extends Controller
                 }
 
                 $oldStatus = (int) $payment->status;
-                // Only allow status=1 (paid) if payment has a table_id (real POS payment)
+                // Only allow status=1 (paid) if it's a real payment (has payment_method or amount_received)
                 $requestedStatus = (int) $request->input('status', $oldStatus);
-                if ($requestedStatus === self::STATUS_PAYMENT_ACTIVE && $payment->table_id === null && !$request->has('table_id')) {
+                if ($requestedStatus === self::STATUS_PAYMENT_ACTIVE && $payment->table_id === null && !$request->has('table_id') && !$request->has('payment_method') && $request->input('amount_received', 0) == 0) {
                     $status = $oldStatus; // Temp invoice — preserve existing status
                 } else {
                     $status = $requestedStatus;
