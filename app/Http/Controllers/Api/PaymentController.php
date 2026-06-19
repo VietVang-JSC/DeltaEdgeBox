@@ -167,13 +167,25 @@ class PaymentController extends Controller
                 }
 
                 $oldStatus = (int) $payment->status;
-                $status = (int) $request->input('status', $oldStatus);
+                // Only allow status=1 (paid) if payment has a table_id (real POS payment)
+                $requestedStatus = (int) $request->input('status', $oldStatus);
+                if ($requestedStatus === self::STATUS_PAYMENT_ACTIVE && $payment->table_id === null && !$request->has('table_id')) {
+                    $status = $oldStatus; // Temp invoice — preserve existing status
+                } else {
+                    $status = $requestedStatus;
+                }
                 $userId = (int) $request->input('user_id', $payment->user_id ?: 1);
                 $paymentTime = $this->storeNow($storeId);
                 $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
 
+                // Preserve table_id if payment was associated with a table and request doesn't explicitly change it
+                $tableId = $request->input('table_id');
+                if ($tableId === null && $payment->table_id !== null) {
+                    $tableId = $payment->table_id; // Keep existing table association
+                }
+
                 $payment->fill([
-                    'table_id' => $request->input('table_id', $payment->table_id),
+                    'table_id' => $tableId,
                     'customer_id' => $request->input('customer_id', $payment->customer_id),
                     'items' => $calculation['items_payload'],
                     'paid_date' => $status === self::STATUS_PAYMENT_ACTIVE ? $paymentTime : $payment->paid_date,
