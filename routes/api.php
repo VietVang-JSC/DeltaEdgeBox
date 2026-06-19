@@ -219,16 +219,16 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
     Route::post('/kitchen/update-print-all', [KitchenPrintController::class, 'updatePrintedQuantity']);
 });
 
-Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
+Route::prefix('posWeb')->group(function () {
     Route::post('/filter', [PosWebFilterController::class, 'filter']);
 });
 
-Route::prefix('admin/product')->middleware('edge.api.key')->group(function () {
+Route::prefix('admin/product')->group(function () {
     Route::post('/search', [PosWebFilterController::class, 'searchProducts']);
 });
 
-Route::post('/user/product/search_products', [PosWebFilterController::class, 'searchProducts'])->middleware('edge.api.key');
-Route::post('/user/product/get_product_list', [PosWebFilterController::class, 'getProductList'])->middleware('edge.api.key');
+Route::post('/user/product/search_products', [PosWebFilterController::class, 'searchProducts']);
+Route::post('/user/product/get_product_list', [PosWebFilterController::class, 'getProductList']);
 Route::post('/user/category/get_category', [PosWebFilterController::class, 'getCategory'])->middleware('edge.api.key');
 Route::post('/user/customer/get_all_customer', [PosWebFilterController::class, 'getAllCustomer'])->middleware('edge.api.key');
 
