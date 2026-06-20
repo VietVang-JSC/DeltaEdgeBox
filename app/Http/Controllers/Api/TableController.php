@@ -615,6 +615,13 @@ class TableController extends Controller
             $details = PaymentDetail::where('payment_id', $table->payment_id)->get();
 
             if ($details->isEmpty()) {
+                // Fallback: find details by table_id across all payments
+                $details = PaymentDetail::whereHas('payment', function ($q) use ($table) {
+                    $q->where('table_id', $table->id)->whereNull('deleted_at');
+                })->get();
+            }
+
+            if ($details->isEmpty()) {
                 return response()->json([
                     'status' => false,
                     'message' => 'Không tìm thấy sản phẩm trong payment detail',
