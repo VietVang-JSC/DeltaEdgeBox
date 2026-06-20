@@ -261,6 +261,32 @@ Route::prefix('user/payment_detail')->group(function () {
 
 Route::post('/api/update_number_of_people', [TableController::class, 'updateNumberOfPeople'])->middleware('edge.api.key');
 
+// POS supporting endpoints
+Route::post('/user/customer/add', [\App\Http\Controllers\Api\PosWebFilterController::class, 'createCustomer']);
+Route::get('/user/banking-information', function () {
+    return response()->json(['status' => true, 'data' => []]);
+});
+Route::post('/user/table/generate-qr', function (\Illuminate\Http\Request $request) {
+    $tableId = $request->input('table_id');
+    $table = \App\Models\Table::find($tableId);
+    if (!$table) {
+        return response()->json(['status' => false, 'message' => 'Table not found'], 404);
+    }
+    $token = \Illuminate\Support\Str::random(32);
+    $table->qr_token = $token;
+    $table->save();
+    return response()->json(['status' => true, 'data' => ['token' => $token]]);
+});
+Route::get('/user/orders/log', function (\Illuminate\Http\Request $request) {
+    $storeId = $request->input('store_id', config('edge_box.store_id'));
+    $logs = \App\Models\Payment::where('store_id', $storeId)
+        ->whereNotNull('items')
+        ->latest()
+        ->take(20)
+        ->get(['id', 'payment_code', 'total', 'status', 'created_at', 'updated_at']);
+    return response()->json(['status' => true, 'data' => $logs]);
+});
+
 Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {
     Route::get('/get-all', [TableController::class, 'getPaymentMethods']);
 });

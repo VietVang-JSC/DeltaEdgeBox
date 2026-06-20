@@ -592,6 +592,34 @@ class PosWebFilterController extends Controller
         }
     }
 
+    public function createCustomer(Request $request)
+    {
+        try {
+            $storeId = $this->storeId($request);
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'name' => ['required'],
+                'phone' => ['required'],
+            ]);
+            if ($validator->fails()) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => $validator->errors()], 400);
+            }
+            $customer = \App\Models\Customer::create([
+                'store_id' => $storeId,
+                'name' => $request->input('name'),
+                'phone' => $request->input('phone'),
+                'address' => $request->input('address', ''),
+                'email' => $request->input('email', ''),
+                'birthday' => $request->input('birthday'),
+                'note' => $request->input('note', ''),
+                'admin_id' => $request->input('admin_id', 0),
+            ]);
+            return response()->json(['status' => true, 'message' => 'api.customer_created', 'customer' => $customer], 200);
+        } catch (\Throwable $th) {
+            \Log::error('Edge createCustomer failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => __('api.ISError')], 500);
+        }
+    }
+
     public function apiEdgeFilterByCondition(Request $request)
     {
         try {
