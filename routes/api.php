@@ -264,10 +264,12 @@ Route::post('/api/update_number_of_people', [TableController::class, 'updateNumb
 // POS supporting endpoints
 Route::post('/user/customer/add', [\App\Http\Controllers\Api\PosWebFilterController::class, 'createCustomer']);
 Route::get('/user/banking-information', function () {
+    $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id;
+    $bank = \App\Models\BankPayment::where('store_id', $storeId)->first();
     return response()->json([
         'status' => true,
         'message' => 'success',
-        'bank_payment' => '',
+        'bank_payment' => $bank ? $bank->toArray() : '',
     ]);
 });
 Route::post('/user/table/generate-qr', function (\Illuminate\Http\Request $request) {

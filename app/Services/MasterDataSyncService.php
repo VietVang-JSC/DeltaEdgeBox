@@ -22,6 +22,7 @@ use App\Models\Customer;
 use App\Models\CashDrawer;
 use App\Models\Booking;
 use App\Models\SyncMetadata;
+use App\Models\BankPayment;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -659,6 +660,33 @@ class MasterDataSyncService
                 $syncErrors['cash_drawers'] = $e->getMessage();
             }
 
+            // Sync BANK PAYMENTS
+            try {
+                if (isset($data['bank_payments'])) {
+                    DB::beginTransaction();
+                    foreach ($data['bank_payments'] as $bp) {
+                        BankPayment::updateOrCreate(
+                            ['id' => $bp['id']],
+                            [
+                                'store_id'       => $bp['store_id'],
+                                'bank_code'      => $bp['bank_code'],
+                                'account_number' => $bp['account_number'],
+                                'account_owner'  => $bp['account_owner'],
+                                'admin_id'       => $bp['admin_id'],
+                                'created_at'     => $bp['created_at'] ?? now(),
+                                'updated_at'     => $bp['updated_at'] ?? now(),
+                            ]
+                        );
+                    }
+                    DB::commit();
+                    $syncResults['bank_payments'] = count($data['bank_payments']);
+                }
+            } catch (\Exception $e) {
+                $this->rollbackIfNeeded();
+                Log::error('Sync bank_payments failed: ' . $e->getMessage());
+                $syncErrors['bank_payments'] = $e->getMessage();
+            }
+
             // Sync BOOKINGS
             try {
                 if (isset($data['bookings'])) {
@@ -863,6 +891,7 @@ class MasterDataSyncService
             'product_types' => $this->formatSyncTime(ProductType::where('store_id', $this->storeId)->max('updated_at')),
             'product_extras' => $this->formatSyncTime(ProductExtra::where('store_id', $this->storeId)->max('updated_at')),
             'bookings' => $this->formatSyncTime(Booking::where('store_id', $this->storeId)->max('updated_at')),
+            'bank_payments' => $this->formatSyncTime(BankPayment::where('store_id', $this->storeId)->max('updated_at')),
             'cash_drawers' => $this->formatSyncTime(CashDrawer::where('store_id', $this->storeId)->max('updated_at')),
             'customers' => $this->formatSyncTime(Customer::where('store_id', $this->storeId)->max('updated_at')),
             'payments' => $this->formatSyncTime(Payment::where('store_id', $this->storeId)->max('updated_at')),

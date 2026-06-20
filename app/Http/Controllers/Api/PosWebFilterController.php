@@ -226,7 +226,9 @@ class PosWebFilterController extends Controller
 
     private function bankPaymentPayload(): array
     {
-        return [
+        $storeId = $this->storeId(request());
+        $bank = \App\Models\BankPayment::where('store_id', $storeId)->first();
+        return $bank ? $bank->toArray() : [
             'bank_code' => '',
             'account_number' => '',
             'account_owner' => '',
