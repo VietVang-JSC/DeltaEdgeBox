@@ -510,8 +510,23 @@ class TableController extends Controller
         if ($table->relationLoaded('payment') && $table->payment) {
             $payload['payment'] = $this->paymentPayload($table->payment);
         } elseif ($table->payment_id) {
-            $payment = Payment::with('details')->find($table->payment_id);
-            $payload['payment'] = $payment ? $this->paymentPayload($payment) : null;
+            $payment = Payment::withTrashed()->with('details')->find($table->payment_id);
+            if ($payment && $payment->details->whereNull('deleted_at')->count() > 0) {
+                $payload['payment'] = $this->paymentPayload($payment);
+            } else {
+                // Fallback: find latest active payment for this table
+                $latestPayment = Payment::where('table_id', $table->id)
+                    ->whereNull('deleted_at')
+                    ->where('status', 0)
+                    ->latest('id')
+                    ->with('details')
+                    ->first();
+                if ($latestPayment) {
+                    $payload['payment'] = $this->paymentPayload($latestPayment);
+                } else {
+                    $payload['payment'] = $payment ? $this->paymentPayload($payment) : null;
+                }
+            }
         }
 
         return $payload;
