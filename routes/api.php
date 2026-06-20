@@ -39,12 +39,16 @@ Route::get('/health', [HealthController::class, 'index']);
 Route::get('/health/detailed', [HealthController::class, 'detailed'])->middleware('edge.api.key');
 
 Route::get('/edge/cleanup', function () {
-    \Illuminate\Support\Facades\DB::statement('DELETE FROM payment_details');
-    \Illuminate\Support\Facades\DB::statement('DELETE FROM payments');
-    \Illuminate\Support\Facades\DB::statement('DELETE FROM sync_queue');
-    \Illuminate\Support\Facades\DB::statement('DELETE FROM sync_logs');
-    \Illuminate\Support\Facades\DB::statement('DELETE FROM sync_metadata');
-    return response()->json(['status' => true, 'message' => 'All payments, sync queue and logs cleared']);
+    try {
+        DB::statement('DELETE FROM payment_details');
+        DB::statement('DELETE FROM payments');
+        DB::statement('DELETE FROM sync_queue');
+        DB::statement('DELETE FROM sync_logs');
+        DB::statement('DELETE FROM sync_metadata');
+        return response()->json(['status' => true, 'message' => 'Cleared']);
+    } catch (\Throwable $e) {
+        return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+    }
 });
 
 //get all master data for edge sync
