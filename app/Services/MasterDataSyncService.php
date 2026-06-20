@@ -962,6 +962,7 @@ class MasterDataSyncService
             'sort_rank'           => $product['sort_rank'] ?? 0,
             'is_show'             => $product['is_show'] ?? 1,
             'title_vi'            => $product['title_vi'] ?? null,
+            'image'               => $product['image'] ?? null,
             
             'updated_at'  => $product['updated_at'] ?? now(),
         ];
@@ -1002,27 +1003,28 @@ class MasterDataSyncService
         }
 
         // Download and cache product image locally
-        if (!empty($product['image']) && !str_contains($product['image'], '/storage/product-images/')) {
-            try {
-                $imageUrl = $product['image'];
-                $imageContent = @file_get_contents($imageUrl);
-                if ($imageContent !== false) {
-                    $dir = storage_path('app/public/product-images');
-                    if (!is_dir($dir)) {
-                        mkdir($dir, 0755, true);
-                    }
-                    $ext = pathinfo(parse_url($imageUrl, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
-                    $filename = $code . '.' . $ext;
-                    file_put_contents($dir . '/' . $filename, $imageContent);
-                    $localPath = '/storage/product-images/' . $filename;
-                    // Update product with local image path (skip if already set)
-                    if (\App\Models\Product::where('id', $dbProductId)->where('image', $imageUrl)->exists()) {
+        $cloudImageUrl = $product['image'] ?? '';
+        if (!empty($cloudImageUrl) && filter_var($cloudImageUrl, FILTER_VALIDATE_URL) && !str_contains($cloudImageUrl, '/storage/product-images/')) {
+            // Check if already cached locally
+            $productModel = \App\Models\Product::find($dbProductId);
+            if ($productModel && $productModel->image === $cloudImageUrl) {
+                try {
+                    $imageContent = @file_get_contents($cloudImageUrl);
+                    if ($imageContent !== false) {
+                        $dir = storage_path('app/public/product-images');
+                        if (!is_dir($dir)) {
+                            mkdir($dir, 0755, true);
+                        }
+                        $ext = pathinfo(parse_url($cloudImageUrl, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
+                        $filename = $code . '.' . $ext;
+                        file_put_contents($dir . '/' . $filename, $imageContent);
+                        $localPath = '/storage/product-images/' . $filename;
                         \App\Models\Product::where('id', $dbProductId)->update(['image' => $localPath]);
+                        Log::info('Product image cached locally', ['code' => $code]);
                     }
-                    Log::info('Product image cached locally', ['code' => $code, 'url' => $localPath]);
+                } catch (\Throwable $th) {
+                    Log::warning('Failed to download product image', ['code' => $code, 'error' => $th->getMessage()]);
                 }
-            } catch (\Throwable $th) {
-                Log::warning('Failed to download product image', ['code' => $code, 'error' => $th->getMessage()]);
             }
         }
 
