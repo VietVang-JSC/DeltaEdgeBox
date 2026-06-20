@@ -264,7 +264,11 @@ Route::post('/api/update_number_of_people', [TableController::class, 'updateNumb
 // POS supporting endpoints
 Route::post('/user/customer/add', [\App\Http\Controllers\Api\PosWebFilterController::class, 'createCustomer']);
 Route::get('/user/banking-information', function () {
-    return response()->json(['status' => true, 'data' => []]);
+    return response()->json([
+        'status' => true,
+        'message' => 'success',
+        'bank_payment' => '',
+    ]);
 });
 Route::post('/user/table/generate-qr', function (\Illuminate\Http\Request $request) {
     $tableId = $request->input('table_id');
