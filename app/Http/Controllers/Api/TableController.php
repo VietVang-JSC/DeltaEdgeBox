@@ -368,7 +368,15 @@ class TableController extends Controller
             $payment = Payment::create($payload);
         }
 
-            $printedQuantities = $payment->details()
+        // Clear table_id on other payments for the same table to prevent duplicates
+        if ($table->id) {
+            Payment::where('table_id', $table->id)
+                ->where('id', '!=', $payment->id)
+                ->whereNull('deleted_at')
+                ->update(['table_id' => null]);
+        }
+
+        $printedQuantities = $payment->details()
                 ->whereNull('deleted_at')
                 ->get()
                 ->mapWithKeys(function ($detail) {
