@@ -538,7 +538,6 @@ class TableController extends Controller
         $payload['valuetotal'] = $payload['final_total'] ?? 0;
         $payload['total_tax'] = $payload['tax'] ?? 0;
         $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
-        $payload['items'] = optional(Table::find($payment->table_id))->listitem;
         $payload['payment_details'] = array_map(function ($detail) {
             $detail['total_price'] = $detail['total_price'] ?? ($detail['total'] ?? 0);
             return $detail;
