@@ -510,23 +510,8 @@ class TableController extends Controller
         if ($table->relationLoaded('payment') && $table->payment) {
             $payload['payment'] = $this->paymentPayload($table->payment);
         } elseif ($table->payment_id) {
-            $payment = Payment::withTrashed()->with('details')->find($table->payment_id);
-            if ($payment && $payment->details->whereNull('deleted_at')->count() > 0) {
-                $payload['payment'] = $this->paymentPayload($payment);
-            } else {
-                // Fallback: find latest active payment for this table
-                $latestPayment = Payment::where('table_id', $table->id)
-                    ->whereNull('deleted_at')
-                    ->where('status', 0)
-                    ->latest('id')
-                    ->with('details')
-                    ->first();
-                if ($latestPayment) {
-                    $payload['payment'] = $this->paymentPayload($latestPayment);
-                } else {
-                    $payload['payment'] = $payment ? $this->paymentPayload($payment) : null;
-                }
-            }
+            $payment = Payment::with('details')->find($table->payment_id);
+            $payload['payment'] = $payment ? $this->paymentPayload($payment) : null;
         }
 
         return $payload;
@@ -618,35 +603,15 @@ class TableController extends Controller
             }
 
             $table = Table::find($request->input('table_id'));
-            if (!$table) {
+            if (!$table || !$table->payment_id) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'Không tìm thấy bàn',
+                    'message' => 'Không tìm thấy bàn hoặc payment_id',
                     'status_code' => 404,
                 ], 404);
             }
 
-            // Use the latest active payment for the table, not just table->payment_id
-            $payment = null;
-            if ($table->payment_id) {
-                $payment = Payment::whereKey($table->payment_id)->whereNull('deleted_at')->first();
-            }
-            if (!$payment || $payment->status != 0) {
-                $payment = Payment::where('table_id', $table->id)
-                    ->whereNull('deleted_at')
-                    ->where('status', 0)
-                    ->latest('id')
-                    ->first();
-            }
-            if (!$payment) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Không tìm thấy payment cho bàn này',
-                    'status_code' => 404,
-                ], 404);
-            }
-
-            $details = PaymentDetail::where('payment_id', $payment->id)->get();
+            $details = PaymentDetail::where('payment_id', $table->payment_id)->get();
 
             if ($details->isEmpty()) {
                 return response()->json([
@@ -694,37 +659,17 @@ class TableController extends Controller
 
             $table = Table::find($request->input('table_id'));
 
-            if (!$table) {
+            if (!$table || !$table->payment_id) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'Không tìm thấy bàn',
-                    'status_code' => 404,
-                ], 404);
-            }
-
-            // Use the latest active payment for the table
-            $payment = null;
-            if ($table->payment_id) {
-                $payment = Payment::whereKey($table->payment_id)->whereNull('deleted_at')->first();
-            }
-            if (!$payment || $payment->status != 0) {
-                $payment = Payment::where('table_id', $table->id)
-                    ->whereNull('deleted_at')
-                    ->where('status', 0)
-                    ->latest('id')
-                    ->first();
-            }
-            if (!$payment) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Không tìm thấy payment cho bàn này',
+                    'message' => 'Không tìm thấy bàn hoặc payment_id',
                     'status_code' => 404,
                 ], 404);
             }
 
             $served = $request->has('served') ? (bool) $request->input('served') : true;
 
-            $updated = PaymentDetail::where('payment_id', $payment->id)
+            $updated = PaymentDetail::where('payment_id', $table->payment_id)
                 ->where('product_id', $request->input('product_id'))
                 ->where('product_key', $request->input('product_key'))
                 ->update(['served' => $served ? 1 : 0]);

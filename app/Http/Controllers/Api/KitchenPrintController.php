@@ -20,7 +20,30 @@ class KitchenPrintController extends Controller
             return $this->error('Table not found', 404);
         }
 
-        return $this->success($this->tablePrintPayload($table));
+        $payload = $this->tablePrintPayload($table);
+
+        // Include browser HTML for master kitchen print (matching cloud behavior)
+        $storeId = $table->store_id;
+        $store = $storeId ? Store::find($storeId) : null;
+        $paperSize = 80;
+        $settingPrintKitchen = $store ? $store->setting_print_kitchen : null;
+        if ($settingPrintKitchen && is_string($settingPrintKitchen)) {
+            $settingPrintKitchen = json_decode($settingPrintKitchen, true);
+        }
+
+        $payload['browser'] = [
+            'view' => [
+                'default' => view('kitchen.cook_template_print_all_80', [
+                    'payment' => $payload['payment'] ?? $payload,
+                    'setting_print_kitchen' => $settingPrintKitchen,
+                    'data' => $payload,
+                    'bill_setting' => [],
+                    'timeZone' => $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone'),
+                ])->render()
+            ]
+        ];
+
+        return $this->success($payload);
     }
 
     public function printNextWeb(Request $request)

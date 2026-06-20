@@ -42,7 +42,7 @@ Route::get('/edge/cleanup', function () {
     try {
         DB::statement('DELETE FROM payment_details');
         DB::statement('DELETE FROM payments');
-        DB::statement('DELETE FROM sync_queue');
+        DB::statement('DELETE FROM sync_queues');
         DB::statement('DELETE FROM sync_logs');
         DB::statement('DELETE FROM sync_metadata');
         return response()->json(['status' => true, 'message' => 'Cleared']);
