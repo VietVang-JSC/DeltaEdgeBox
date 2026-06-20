@@ -38,6 +38,15 @@ Route::post('/edge/login', [UserController::class, 'loginWeb']);
 Route::get('/health', [HealthController::class, 'index']);
 Route::get('/health/detailed', [HealthController::class, 'detailed'])->middleware('edge.api.key');
 
+Route::get('/edge/cleanup', function () {
+    \Illuminate\Support\Facades\DB::statement('DELETE FROM payment_details');
+    \Illuminate\Support\Facades\DB::statement('DELETE FROM payments');
+    \Illuminate\Support\Facades\DB::statement('DELETE FROM sync_queue');
+    \Illuminate\Support\Facades\DB::statement('DELETE FROM sync_logs');
+    \Illuminate\Support\Facades\DB::statement('DELETE FROM sync_metadata');
+    return response()->json(['status' => true, 'message' => 'All payments, sync queue and logs cleared']);
+});
+
 //get all master data for edge sync
 Route::get('/edge/filter', [ApiEdgeController::class, 'filter'])->middleware('edge.api.key');
 
