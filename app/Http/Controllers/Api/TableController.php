@@ -604,22 +604,35 @@ class TableController extends Controller
             }
 
             $table = Table::find($request->input('table_id'));
-            if (!$table || !$table->payment_id) {
+            if (!$table) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'Không tìm thấy bàn hoặc payment_id',
+                    'message' => 'Không tìm thấy bàn',
                     'status_code' => 404,
                 ], 404);
             }
 
-            $details = PaymentDetail::where('payment_id', $table->payment_id)->get();
-
-            if ($details->isEmpty()) {
-                // Fallback: find details by table_id across all payments
-                $details = PaymentDetail::whereHas('payment', function ($q) use ($table) {
-                    $q->where('table_id', $table->id)->whereNull('deleted_at');
-                })->get();
+            // Use the latest active payment for the table, not just table->payment_id
+            $payment = null;
+            if ($table->payment_id) {
+                $payment = Payment::whereKey($table->payment_id)->whereNull('deleted_at')->first();
             }
+            if (!$payment || $payment->status != 0) {
+                $payment = Payment::where('table_id', $table->id)
+                    ->whereNull('deleted_at')
+                    ->where('status', 0)
+                    ->latest('id')
+                    ->first();
+            }
+            if (!$payment) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Không tìm thấy payment cho bàn này',
+                    'status_code' => 404,
+                ], 404);
+            }
+
+            $details = PaymentDetail::where('payment_id', $payment->id)->get();
 
             if ($details->isEmpty()) {
                 return response()->json([
