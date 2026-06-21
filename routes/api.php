@@ -121,6 +121,7 @@ Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
 Route::post('/user/payment/list_open', [PaymentController::class, 'listOpen']);
 Route::get('/user/payment/get/{id}', [PaymentController::class, 'getPayment']);
 Route::get('/user/payment/get-payment-new/{id}', [PaymentController::class, 'getPaymentDetail']);
+Route::post('/user/payment/get-payment-new', [PaymentController::class, 'getPaymentDetailByRequest']);
 // View payment details for POS web
 Route::prefix('edge')->middleware('edge.api.key')->group(function () {
     Route::post('/list-order-new', [PosWebFilterController::class, 'apiEdgeFilterByCondition']);
@@ -217,6 +218,10 @@ Route::get('/user/customer/list', function (\Illuminate\Http\Request $req) {
     $sid = config('edge_box.store_id');
     return \App\Models\Customer::where('store_id', $sid)->orderBy('name')->get();
 });
+Route::get('/user/list', function (\Illuminate\Http\Request $req) {
+    $sid = config('edge_box.store_id');
+    return \App\Models\User::where('store_id', $sid)->select('id', 'name', 'email', 'phone')->orderBy('name')->get();
+});
 // Legacy POS table compatibility endpoints
 Route::get('/user/table/list', [TableController::class, 'index']);
 Route::match(['GET', 'POST'], '/user/table/get_table/{id?}', [TableController::class, 'show']);
@@ -312,16 +317,6 @@ Route::prefix('payment')->middleware('edge.api.key')->group(function () {
 Route::prefix('admin/payment')->middleware('edge.api.key')->group(function () {
     Route::get('/print_payment', [PaymentPrintController::class, 'printPayment']);
     Route::post('/delete-payment-detail', [PaymentController::class, 'deletePaymentDetail']);
-});
-
-Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {
-    Route::get('/get-all', [TableController::class, 'getPaymentMethods']);
-});
-
-Route::prefix('user/split-merge-invoice')->middleware('edge.api.key')->group(function () {
-    Route::any('/get-list-invoice', [SplitMergeInvoiceController::class, 'getListInvoice']);
-    Route::post('/split-invoice', [SplitMergeInvoiceController::class, 'splitInvoice']);
-    Route::post('/merge-invoice', [SplitMergeInvoiceController::class, 'mergeInvoice']);
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {

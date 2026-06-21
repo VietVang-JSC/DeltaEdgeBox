@@ -1,55 +1,29 @@
 <?php
 
-use Illuminate\Contracts\Http\Kernel;
-use Illuminate\Http\Request;
+$pharPath = __DIR__ . '/../edge-box.phar';
+$basePath = realpath(__DIR__ . '/..');
 
-define('LARAVEL_START', microtime(true));
-
-/*
-|--------------------------------------------------------------------------
-| Check If The Application Is Under Maintenance
-|--------------------------------------------------------------------------
-|
-| If the application is in maintenance / demo mode via the "down" command
-| we will load this file so that any pre-rendered content can be shown
-| instead of starting the framework, which could cause an exception.
-|
-*/
-
-if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php')) {
-    require $maintenance;
+if (file_exists($pharPath)) {
+    require 'phar://' . $pharPath . '/vendor/autoload.php';
+} else {
+    require $basePath . '/vendor/autoload.php';
 }
 
-/*
-|--------------------------------------------------------------------------
-| Register The Auto Loader
-|--------------------------------------------------------------------------
-|
-| Composer provides a convenient, automatically generated class loader for
-| this application. We just need to utilize it! We'll simply require it
-| into the script here so we don't need to manually load our classes.
-|
-*/
+$app = require_once $basePath . '/bootstrap/app.php';
 
-require __DIR__.'/../vendor/autoload.php';
+// Override paths to load from PHAR when available
+if (file_exists($pharPath)) {
+    $app->useAppPath('phar://' . $pharPath . '/app');
+    $app->useConfigPath('phar://' . $pharPath . '/config');
+    $app->useDatabasePath('phar://' . $pharPath . '/database');
+    $app->useLangPath('phar://' . $pharPath . '/resources/lang');
+    $app->instance('path.resources', 'phar://' . $pharPath . '/resources');
+    $app->usePublicPath($basePath . '/public');
+    $app->useStoragePath($basePath . '/storage');
+}
 
-/*
-|--------------------------------------------------------------------------
-| Run The Application
-|--------------------------------------------------------------------------
-|
-| Once we have the application, we can handle the incoming request using
-| the application's HTTP kernel. Then, we will send the response back
-| to this client's browser, allowing them to enjoy our application.
-|
-*/
-
-$app = require_once __DIR__.'/../bootstrap/app.php';
-
-$kernel = $app->make(Kernel::class);
-
+$kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
 $response = $kernel->handle(
-    $request = Request::capture()
+    $request = Illuminate\Http\Request::capture()
 )->send();
-
 $kernel->terminate($request, $response);

@@ -128,11 +128,12 @@ class PaymentController extends Controller
                 'error' => $th->getMessage(),
             ]);
 
+            $isStock = str_contains($th->getMessage(), 'Inventory insufficient');
             return response()->json([
                 'status' => false,
-                'status_code' => 500,
-                'message' => __('api.ISError'),
-            ], 500);
+                'status_code' => $isStock ? 409 : 500,
+                'message' => $isStock ? 'Insufficient stock for one or more items' : __('api.ISError'),
+            ], $isStock ? 409 : 500);
         }
     }
 
@@ -270,11 +271,12 @@ class PaymentController extends Controller
                 ],
             ]);
         } catch (\RuntimeException $th) {
+            $isStock = str_contains($th->getMessage(), 'Inventory insufficient');
             return response()->json([
                 'status' => false,
-                'status_code' => 404,
-                'message' => $th->getMessage(),
-            ], 404);
+                'status_code' => $isStock ? 409 : 404,
+                'message' => $isStock ? 'Insufficient stock for one or more items' : $th->getMessage(),
+            ], $isStock ? 409 : 404);
         } catch (\Throwable $th) {
             Log::error('Edge payment update failed', [
                 'error' => $th->getMessage(),
@@ -1201,6 +1203,13 @@ class PaymentController extends Controller
             Log::error('Edge getPayment failed', ['error' => $th->getMessage()]);
             return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
         }
+    }
+
+    public function getPaymentDetailByRequest(Request $request)
+    {
+        $id = $request->input('id');
+        if (!$id) return response()->json(['status' => false, 'message' => 'id is required'], 400);
+        return $this->getPaymentDetail($id);
     }
 
     public function getPaymentDetail($id)

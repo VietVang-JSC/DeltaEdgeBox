@@ -108,14 +108,14 @@ class PosWebFilterController extends Controller
             $pagination = $request->input('products.clauses.pagination');
             $dataProduct = $products;
             if ($pagination) {
-                $pageSize = (int)data_get($pagination, 'pageSize', 15);
+                $pageSize = (int)data_get($pagination, 'pageSize', 50);
                 $currentPage = (int)data_get($pagination, 'currentPage', 1);
-                $offset = ($currentPage - 1) * $pageSize;
-                
-                $paginatedList = array_slice($products, $offset, $pageSize);
+                $totalProducts = \App\Models\Product::where(function ($q) use ($storeId) {
+                    $q->whereNull('store_id')->orWhere('store_id', $storeId);
+                })->where('status', 1)->count();
                 $dataProduct = [
-                    'data_list' => $paginatedList,
-                    'total' => (int) ceil(count($products) / $pageSize),
+                    'data_list' => $products,
+                    'total' => (int) ceil($totalProducts / $pageSize),
                     'pageSize' => $pageSize,
                     'currentPage' => $currentPage,
                 ];
@@ -253,9 +253,7 @@ class PosWebFilterController extends Controller
             if (is_array($queryParam)) {
                 foreach ($queryParam as $column => $value) {
                     if ($column === 'WhereRaw') {
-                        if (!empty($value)) {
-                            $query->whereRaw($value);
-                        }
+                        continue; // Blocked: security risk (SQL injection)
                     } else {
                         if (is_array($value)) {
                             $operator = $value['operator'] ?? '=';
@@ -277,8 +275,17 @@ class PosWebFilterController extends Controller
             }
         }
 
-        return $query->limit(500)
-            ->get()
+        // Apply pagination at DB level if requested
+        $pagination = $request ? $request->input('products.clauses.pagination') : null;
+        if ($pagination) {
+            $pageSize = (int)data_get($pagination, 'pageSize', 50);
+            $currentPage = (int)data_get($pagination, 'currentPage', 1);
+            $query->limit($pageSize)->offset(($currentPage - 1) * $pageSize);
+        } else {
+            $query->limit(500);
+        }
+
+        return $query->get()
             ->map(fn (Product $product) => $this->productPayload($product, $timezone, $isTaxIncluded))
             ->values()
             ->all();
@@ -540,8 +547,8 @@ class PosWebFilterController extends Controller
                             $value = '%' . $value . '%';
                         }
                         $query->where($column, $operator, $value);
-                    } elseif ($column === 'WhereRaw' && is_string($cond)) {
-                        $query->whereRaw($cond);
+                    } elseif ($column === 'WhereRaw') {
+                        continue; // Blocked: security risk (SQL injection)
                     } elseif ($column !== 'store_id') {
                         $query->where($column, $cond);
                     }

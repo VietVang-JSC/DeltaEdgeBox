@@ -4,8 +4,12 @@ namespace App\Providers;
 
 use App\Models\Payment;
 use App\Models\PaymentDetail;
+use App\Models\Booking;
+use App\Models\CashDrawer;
 use App\Observers\PaymentObserver;
 use App\Observers\PaymentDetailObserver;
+use App\Observers\BookingObserver;
+use App\Observers\CashDrawerObserver;
 use Illuminate\Support\ServiceProvider;
 use App\Observers\CustomerObserver;
 use App\Observers\TableObserver;
@@ -31,7 +35,8 @@ class AppServiceProvider extends ServiceProvider
         try {
             Payment::observe(PaymentObserver::class);
             PaymentDetail::observe(PaymentDetailObserver::class);
-            // Order::observe(OrderObserver::class);
+            Booking::observe(BookingObserver::class);
+            CashDrawer::observe(CashDrawerObserver::class);
             Customer::observe(CustomerObserver::class);
             Table::observe(TableObserver::class);
         } catch (\Throwable $exception) {

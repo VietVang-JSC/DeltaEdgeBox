@@ -5,4 +5,5 @@ return [
     'cloud_api_url' => env('CLOUD_API_URL'),
     'store_id' => env('STORE_ID'),
     'sqlite_lock_ttl' => 600,
+    'sync_interval' => env('SYNC_INTERVAL', '1m'),
 ];
