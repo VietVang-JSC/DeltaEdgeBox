@@ -196,14 +196,16 @@ class MasterDataSyncService
             }
 
             /*
-            | PRODUCTS â€” sync Ä‘á»™c láº­p
+            | PRODUCTS — sync độc lập
             */
             try {
+                DB::statement('PRAGMA foreign_keys = OFF');
                 DB::beginTransaction();
                 foreach ($data['products'] ?? [] as $product) {
                     $this->upsertProduct($product);
                 }
                 DB::commit();
+                DB::statement('PRAGMA foreign_keys = ON');
                 $syncResults['products'] = count($data['products'] ?? []);
             } catch (\Exception $e) {
                 $this->rollbackIfNeeded();
@@ -1030,9 +1032,7 @@ class MasterDataSyncService
             ProductTimePrice::where('product_id', $oldId)->update(['product_id' => $cloudId]);
             ProductExtra::where('main_product_id', $oldId)->update(['main_product_id' => $cloudId]);
             ProductExtra::where('extra_product_id', $oldId)->update(['extra_product_id' => $cloudId]);
-            DB::statement('PRAGMA foreign_keys = OFF');
             $existingByCode->delete();
-            DB::statement('PRAGMA foreign_keys = ON');
             $payload['created_at'] = $product['created_at'] ?? now();
             $dbProduct = Product::updateOrCreate(['id' => $cloudId], $payload);
             $dbProductId = $cloudId;
