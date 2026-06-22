@@ -1420,7 +1420,15 @@ class PaymentController extends Controller
                 ->take($pageSize)
                 ->get();
 
-            $payments = $payments->map(function ($p) {
+            $paymentMethodNames = [
+                'cash' => 'Tiền mặt',
+                'transfer' => 'Chuyển khoản',
+                'ewallet' => 'Ví điện tử',
+                'credit_card' => 'Thẻ tín dụng',
+                'debit_card' => 'Thẻ ghi nợ',
+                'other' => 'Khác',
+            ];
+            $payments = $payments->map(function ($p) use ($paymentMethodNames) {
                 $data = $p->toArray();
                 $data['valuetotal'] = $data['final_total'] ?? ($data['total'] ?? 0);
                 $data['reasonSurcharge'] = $data['surcharge_reason'] ?? '';
@@ -1431,6 +1439,9 @@ class PaymentController extends Controller
                 $data['total_incl_vat_before_discount'] = $data['total_incl_vat_before_discount'] ?? 0;
                 $data['total_tax'] = $data['tax'] ?? 0;
                 $data['service_charge_amount'] = $data['service_charge_amount'] ?? 0;
+                $data['payment_method'] = $paymentMethodNames[$data['payment_method']] ?? $data['payment_method'];
+                $data['created_at'] = date("Y-m-d H:i:s", strtotime($data['created_at']));
+                $data['updated_at'] = date("Y-m-d H:i:s", strtotime($data['updated_at']));
                 if (!empty($data['details'])) {
                     foreach ($data['details'] as &$detail) {
                         if (empty($detail['products']) && !empty($detail['product_id'])) {
