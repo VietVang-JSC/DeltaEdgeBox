@@ -836,25 +836,37 @@ class PaymentController extends Controller
                     ->first();
 
                 if (!$detail) {
-                    // No payment_detail — remove from items JSON directly
+                    // No payment_detail — remove from items JSON, recalculate via buildCalculatedPaymentData
                     $currentItems = json_decode($payment->items, true) ?: [];
                     if (!isset($currentItems['item'][$productKey])) {
                         throw new \RuntimeException('payment_detail_not_found');
                     }
                     unset($currentItems['item'][$productKey]);
-                    $payment->items = json_encode($currentItems);
-                    $total = 0; $tax = 0;
-                    foreach ($currentItems['item'] ?? [] as $it) {
-                        $p = (float)($it['price'] ?? 0);
-                        $q = (int)($it['quantity'] ?? 1);
-                        $v = (float)($it['vat'] ?? 0);
-                        $t = $p * $q;
-                        $total += $t;
-                        $tax += round($t * $v / 100);
+                    if (!empty($currentItems['item'])) {
+                        $calculation = $this->buildCalculatedPaymentData($currentItems['item'], $storeId, $calculationInput);
+                        $payment->items = $calculation['items_payload'];
+                        $payment->discount = $calculation['discount'];
+                        $payment->surcharge = $calculation['surcharge'];
+                        $payment->surcharge_reason = $calculation['surcharge_reason'];
+                        $payment->tax = $calculation['tax'];
+                        $payment->total = $calculation['total'];
+                        $payment->final_total = $calculation['final_total'];
+                        $payment->service_charge = $calculation['service_charge'];
+                        $payment->service_charge_amount = $calculation['service_charge_amount'];
+                        $payment->sub_total_before_discount = $calculation['sub_total_before_discount'];
+                        $payment->total_incl_vat_before_discount = $calculation['total_incl_vat_before_discount'];
+                    } else {
+                        $payment->items = json_encode($currentItems);
+                        $payment->total = 0;
+                        $payment->final_total = 0;
+                        $payment->tax = 0;
+                        $payment->discount = 0;
+                        $payment->surcharge = 0;
+                        $payment->surcharge_reason = null;
+                        $payment->service_charge_amount = 0;
+                        $payment->sub_total_before_discount = 0;
+                        $payment->total_incl_vat_before_discount = 0;
                     }
-                    $payment->total = $total;
-                    $payment->final_total = $total;
-                    $payment->tax = $tax;
                     $payment->save();
                     Log::info('Edge delete: removed from items JSON', [
                         'payment_id' => $payment->id, 'product_key' => $productKey,
