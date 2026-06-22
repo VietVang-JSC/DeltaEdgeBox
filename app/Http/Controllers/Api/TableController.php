@@ -185,7 +185,7 @@ class TableController extends Controller
                     'first_item' => $items[0] ?? null,
                 ]);
 
-                $payment = $this->upsertPendingPayment($request, $table, $items, $summary);
+                $payment = $this->upsertPendingPayment($request, $table, $items, $summary, $listitem);
 
                 $table->fill([
                     'status' => self::STATUS_ORDERED,
@@ -304,7 +304,7 @@ class TableController extends Controller
         }
     }
 
-    private function upsertPendingPayment(Request $request, Table $table, array $items, array $summary): Payment
+    private function upsertPendingPayment(Request $request, Table $table, array $items, array $summary, ?string $rawListitem = null): Payment
     {
         $payment = $request->filled('payment_id')
             ? Payment::find($request->input('payment_id'))
@@ -360,6 +360,7 @@ class TableController extends Controller
             'sub_total_before_discount' => $calcResult['sub_total_before_discount'],
             'total_incl_vat_before_discount' => $calcResult['total_incl_vat_before_discount'],
             'amount_received' => $calcResult['amount_received'],
+            'items' => $this->buildItemsPayload($rawListitem, $calcResult, $request),
         ];
 
         if ($payment) {
@@ -500,6 +501,32 @@ class TableController extends Controller
         }
 
         return ['total' => $total];
+    }
+
+    private function buildItemsPayload(?string $rawListitem, array $calcResult, Request $request): string
+    {
+        // Decode raw listitem preserving all original fields (title, product_code, image, etc.)
+        $rawItems = [];
+        if ($rawListitem) {
+            $decoded = json_decode($rawListitem, true) ?: [];
+            $rawItems = $decoded['item'] ?? $decoded ?? [];
+        }
+
+        // Merge original fields with calculated fields
+        $mergedItems = [];
+        foreach ($calcResult['items'] ?? [] as $key => $calcItem) {
+            $rawItem = $rawItems[$key] ?? [];
+            $mergedItems[$key] = array_merge($rawItem, $calcItem);
+            $mergedItems[$key]['id'] = (int) ($rawItem['id'] ?? $calcItem['product_id'] ?? 0);
+        }
+
+        return json_encode([
+            'item' => $mergedItems,
+            'discountPayment' => $calcResult['discount'] ?? 0,
+            'reasonSurcharge' => $request->input('surcharge_reason'),
+            'surcharge' => $calcResult['surcharge'] ?? 0,
+            'total_tax' => $calcResult['total_tax'] ?? 0,
+        ]);
     }
 
     private function tablePayload(Table $table): array
@@ -846,6 +873,7 @@ class TableController extends Controller
                 }
 
                 $params['valuetotal'] = $basePositive + $params['service_charge_amount'] + ($params['surcharge'] ?? 0);
+                $params['amount_received'] = $params['valuetotal'];
             }
         }
 

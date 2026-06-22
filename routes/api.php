@@ -290,12 +290,35 @@ Route::post('/user/table/generate-qr', function (\Illuminate\Http\Request $reque
 });
 Route::get('/user/orders/log', function (\Illuminate\Http\Request $request) {
     $storeId = $request->input('store_id', config('edge_box.store_id'));
-    $logs = \App\Models\Payment::where('store_id', $storeId)
-        ->whereNotNull('items')
-        ->latest()
-        ->take(20)
-        ->get(['id', 'payment_code', 'total', 'status', 'created_at', 'updated_at']);
-    return response()->json(['status' => true, 'data' => $logs]);
+    $tableId = $request->input('table_id');
+    $query = \App\Models\Payment::with(['table', 'user', 'details'])
+        ->where('store_id', $storeId)
+        ->whereNotNull('items');
+    if ($tableId) {
+        $query->where('table_id', $tableId);
+    }
+    $logs = $query->latest()->take(20)->get();
+    $data = $logs->map(function ($payment) {
+        $items = json_decode($payment->items, true);
+        $itemList = $items['item'] ?? [];
+        $contentParts = [];
+        foreach ($itemList as $key => $item) {
+            $title = $item['title'] ?? $item['product_code'] ?? $key;
+            $qty = $item['quantity'] ?? 0;
+            $contentParts[] = $title . ' SL:' . $qty;
+        }
+        $content = implode('&&', $contentParts);
+        return [
+            'id' => $payment->id,
+            'payment_id' => $payment->id,
+            'content' => $content,
+            'table' => $payment->table ? ['tablename' => $payment->table->tablename ?? $payment->table->name ?? ''] : null,
+            'user' => $payment->user ? ['name' => $payment->user->name] : null,
+            'user_type' => 'staff',
+            'created_at' => $payment->created_at,
+        ];
+    });
+    return response()->json(['status' => true, 'data_log' => $data]);
 });
 
 Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {

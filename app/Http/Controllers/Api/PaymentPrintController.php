@@ -575,6 +575,7 @@ class PaymentPrintController extends Controller
                 }
 
                 $params['valuetotal'] = $basePositive + $params['service_charge_amount'] + ($params['surcharge'] ?? 0);
+                $params['amount_received'] = $params['valuetotal'];
             }
         }
 
