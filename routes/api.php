@@ -317,6 +317,7 @@ Route::prefix('payment')->middleware('edge.api.key')->group(function () {
 Route::prefix('admin/payment')->middleware('edge.api.key')->group(function () {
     Route::get('/print_payment', [PaymentPrintController::class, 'printPayment']);
     Route::post('/delete-payment-detail', [PaymentController::class, 'deletePaymentDetail']);
+    Route::get('/delete-payment-for-user', [PaymentController::class, 'deletePaymentForUser']);
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {

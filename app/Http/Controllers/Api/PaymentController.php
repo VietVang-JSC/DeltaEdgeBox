@@ -719,6 +719,26 @@ class PaymentController extends Controller
         ];
     }
 
+    public function deletePaymentForUser(Request $request)
+    {
+        $paymentId = $request->input('data.id');
+        $reason = $request->input('data.reason', '');
+        if (!$paymentId) {
+            return response()->json(['status' => false, 'message' => 'Missing payment id'], 400);
+        }
+        $payment = Payment::find($paymentId);
+        if (!$payment) {
+            return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+        }
+        $payment->status = -1;
+        $payment->reason = $reason;
+        $payment->save();
+        $payment->details()->update(['delete_note' => $reason]);
+        $payment->details()->delete();
+        $payment->delete();
+        return response()->json(['status' => true, 'message' => 'Payment deleted']);
+    }
+
     public function deletePaymentDetail(Request $request)
     {
         $validator = Validator::make($request->all(), [
