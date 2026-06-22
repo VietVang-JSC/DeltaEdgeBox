@@ -1231,11 +1231,16 @@ class PaymentController extends Controller
         app()->setLocale($request->input('isCheckLanguage', 'vi'));
         try {
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
-            $payments = Payment::with('details')
+            $query = Payment::with('details')
                 ->where('store_id', $storeId)
-                ->where('status', 0)
-                ->orderBy('created_at', 'desc')
-                ->get();
+                ->where('status', 0);
+            $type = $request->input('type');
+            if ($type === 'new') {
+                $query->whereNull('table_id');
+            } elseif ($type === 'table') {
+                $query->whereNotNull('table_id');
+            }
+            $payments = $query->orderBy('created_at', 'desc')->get();
             return response()->json([
                 'status' => true,
                 'data' => $payments,
