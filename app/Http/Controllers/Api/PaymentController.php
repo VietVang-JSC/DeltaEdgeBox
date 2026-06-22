@@ -836,56 +836,28 @@ class PaymentController extends Controller
                     ->first();
 
                 if (!$detail) {
-                    // No payment_detail record found — try updating items JSON directly
+                    // No payment_detail — remove from items JSON directly
                     $currentItems = json_decode($payment->items, true) ?: [];
-                    $itemFound = isset($currentItems['item'][$productKey]);
-
-                    if (!$itemFound && !empty($productList) && is_array($productList)) {
-                        // FE already removed the item locally and sent updated product_list
-                        // Use the product_list to recalculate items
-                        $calculation = $this->buildCalculatedPaymentData($productList, $storeId, $calculationInput);
-                        $payment->items = $calculation['items_payload'];
-                        $payment->discount = $calculation['discount'];
-                        $payment->surcharge = $calculation['surcharge'];
-                        $payment->surcharge_reason = $calculation['surcharge_reason'];
-                        $payment->tax = $calculation['tax'];
-                        $payment->total = $calculation['total'];
-                        $payment->final_total = $calculation['final_total'];
-                        $payment->service_charge = $calculation['service_charge'];
-                        $payment->service_charge_amount = $calculation['service_charge_amount'];
-                        $payment->sub_total_before_discount = $calculation['sub_total_before_discount'];
-                        $payment->total_incl_vat_before_discount = $calculation['total_incl_vat_before_discount'];
-                        $payment->save();
-                        Log::info('Edge delete: item removed (local-only), updated items from product_list', [
-                            'payment_id' => $payment->id,
-                            'product_key' => $productKey,
-                        ]);
-                        return $payment;
-                    }
-
-                    if (!$itemFound) {
+                    if (!isset($currentItems['item'][$productKey])) {
                         throw new \RuntimeException('payment_detail_not_found');
                     }
                     unset($currentItems['item'][$productKey]);
                     $payment->items = json_encode($currentItems);
-                    // Recalculate totals from remaining items
-                    $remainingTotal = 0;
-                    $remainingTax = 0;
-                    foreach ($currentItems['item'] ?? [] as $item) {
-                        $price = (float)($item['price'] ?? 0);
-                        $qty = (int)($item['quantity'] ?? 1);
-                        $vat = (float)($item['vat'] ?? 0);
-                        $total = $price * $qty;
-                        $remainingTotal += $total;
-                        $remainingTax += round($total * $vat / 100);
+                    $total = 0; $tax = 0;
+                    foreach ($currentItems['item'] ?? [] as $it) {
+                        $p = (float)($it['price'] ?? 0);
+                        $q = (int)($it['quantity'] ?? 1);
+                        $v = (float)($it['vat'] ?? 0);
+                        $t = $p * $q;
+                        $total += $t;
+                        $tax += round($t * $v / 100);
                     }
-                    $payment->total = $remainingTotal;
-                    $payment->final_total = $remainingTotal;
-                    $payment->tax = $remainingTax;
+                    $payment->total = $total;
+                    $payment->final_total = $total;
+                    $payment->tax = $tax;
                     $payment->save();
-                    Log::info('Edge delete: item removed from items JSON (no payment_detail)', [
-                        'payment_id' => $payment->id,
-                        'product_key' => $productKey,
+                    Log::info('Edge delete: removed from items JSON', [
+                        'payment_id' => $payment->id, 'product_key' => $productKey,
                     ]);
                     return $payment;
                 }
