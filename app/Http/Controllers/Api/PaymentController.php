@@ -839,6 +839,30 @@ class PaymentController extends Controller
                     // No payment_detail record found — try updating items JSON directly
                     $currentItems = json_decode($payment->items, true) ?: [];
                     $itemFound = isset($currentItems['item'][$productKey]);
+
+                    if (!$itemFound && !empty($productList) && is_array($productList)) {
+                        // FE already removed the item locally and sent updated product_list
+                        // Use the product_list to recalculate items
+                        $calculation = $this->buildCalculatedPaymentData($productList, $storeId, $calculationInput);
+                        $payment->items = $calculation['items_payload'];
+                        $payment->discount = $calculation['discount'];
+                        $payment->surcharge = $calculation['surcharge'];
+                        $payment->surcharge_reason = $calculation['surcharge_reason'];
+                        $payment->tax = $calculation['tax'];
+                        $payment->total = $calculation['total'];
+                        $payment->final_total = $calculation['final_total'];
+                        $payment->service_charge = $calculation['service_charge'];
+                        $payment->service_charge_amount = $calculation['service_charge_amount'];
+                        $payment->sub_total_before_discount = $calculation['sub_total_before_discount'];
+                        $payment->total_incl_vat_before_discount = $calculation['total_incl_vat_before_discount'];
+                        $payment->save();
+                        Log::info('Edge delete: item removed (local-only), updated items from product_list', [
+                            'payment_id' => $payment->id,
+                            'product_key' => $productKey,
+                        ]);
+                        return $payment;
+                    }
+
                     if (!$itemFound) {
                         throw new \RuntimeException('payment_detail_not_found');
                     }
