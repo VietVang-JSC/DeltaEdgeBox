@@ -622,7 +622,16 @@ class PosWebFilterController extends Controller
                 'note' => $request->input('note', ''),
                 'admin_id' => $request->input('admin_id', 0),
             ]);
-            return response()->json(['status' => true, 'message' => 'api.customer_created', 'customer' => $customer], 200);
+            return response()->json([
+                'status' => true,
+                'message' => __('api.customer_created'),
+                'data' => [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'phone' => $customer->phone,
+                ],
+                'customer' => $customer,
+            ], 200);
         } catch (\Throwable $th) {
             \Log::error('Edge createCustomer failed', ['error' => $th->getMessage()]);
             return response()->json(['status' => false, 'message' => __('api.ISError')], 500);
