@@ -836,7 +836,34 @@ class PaymentController extends Controller
                     ->first();
 
                 if (!$detail) {
-                    throw new \RuntimeException('payment_detail_not_found');
+                    // No payment_detail record found — try updating items JSON directly
+                    $currentItems = json_decode($payment->items, true) ?: [];
+                    $itemFound = isset($currentItems['item'][$productKey]);
+                    if (!$itemFound) {
+                        throw new \RuntimeException('payment_detail_not_found');
+                    }
+                    unset($currentItems['item'][$productKey]);
+                    $payment->items = json_encode($currentItems);
+                    // Recalculate totals from remaining items
+                    $remainingTotal = 0;
+                    $remainingTax = 0;
+                    foreach ($currentItems['item'] ?? [] as $item) {
+                        $price = (float)($item['price'] ?? 0);
+                        $qty = (int)($item['quantity'] ?? 1);
+                        $vat = (float)($item['vat'] ?? 0);
+                        $total = $price * $qty;
+                        $remainingTotal += $total;
+                        $remainingTax += round($total * $vat / 100);
+                    }
+                    $payment->total = $remainingTotal;
+                    $payment->final_total = $remainingTotal;
+                    $payment->tax = $remainingTax;
+                    $payment->save();
+                    Log::info('Edge delete: item removed from items JSON (no payment_detail)', [
+                        'payment_id' => $payment->id,
+                        'product_key' => $productKey,
+                    ]);
+                    return $payment;
                 }
 
                 if ($deleteQuantity > (int) $detail->quantity) {
