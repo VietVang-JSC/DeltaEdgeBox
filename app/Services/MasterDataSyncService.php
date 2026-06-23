@@ -257,7 +257,7 @@ class MasterDataSyncService
                 foreach ($data['payment_methods'] ?? [] as $paymentMethod) {
                     PaymentMethod::withTrashed()->updateOrCreate(
                         [
-                            'store_id' => $paymentMethod['store_id'] ?? $this->storeId,
+                            'store_id' => !empty($paymentMethod['store_id']) ? $paymentMethod['store_id'] : $this->storeId,
                             'value' => $paymentMethod['value'],
                         ],
                         [
