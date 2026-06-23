@@ -33,8 +33,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         try {
-            Payment::observe(PaymentObserver::class);
-            PaymentDetail::observe(PaymentDetailObserver::class);
+            // Payment observers disabled — sync only via explicit cloud button or CLI command
+            // Payment::observe(PaymentObserver::class);
+            // PaymentDetail::observe(PaymentDetailObserver::class);
             Booking::observe(BookingObserver::class);
             CashDrawer::observe(CashDrawerObserver::class);
             Customer::observe(CustomerObserver::class);
