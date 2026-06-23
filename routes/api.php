@@ -264,7 +264,7 @@ Route::prefix('user/payment_detail')->group(function () {
     Route::post('/served', [TableController::class, 'served']);
 });
 
-Route::post('/api/update_number_of_people', [TableController::class, 'updateNumberOfPeople'])->middleware('edge.api.key');
+Route::post('/update_number_of_people', [TableController::class, 'updateNumberOfPeople'])->middleware('edge.api.key');
 
 // POS supporting endpoints
 Route::post('/user/customer/add', [\App\Http\Controllers\Api\PosWebFilterController::class, 'createCustomer']);
