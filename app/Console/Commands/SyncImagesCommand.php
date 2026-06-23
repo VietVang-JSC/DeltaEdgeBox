@@ -59,11 +59,18 @@ class SyncImagesCommand extends Command
                 }
             }
 
-            // For URL-based images: validate
+            // For URL-based images: validate or prepend cloud base URL
             if (!filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-                $failed++;
-                $this->warn("  [SKIP] {$product->code} - invalid URL: {$imageUrl}");
-                continue;
+                // Relative path like "product/xxx.jpg" → prepend cloud base URL
+                if (!empty($cloudBaseUrl) && !str_contains($imageUrl, '/')) {
+                    $imageUrl = $cloudBaseUrl . '/storage/' . $imageUrl;
+                } elseif (!empty($cloudBaseUrl) && str_starts_with($imageUrl, 'product/')) {
+                    $imageUrl = $cloudBaseUrl . '/storage/' . $imageUrl;
+                } else {
+                    $failed++;
+                    $this->warn("  [SKIP] {$product->code} - invalid URL: {$imageUrl}");
+                    continue;
+                }
             }
 
             $ext = pathinfo(parse_url($imageUrl, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';

@@ -1056,6 +1056,13 @@ class MasterDataSyncService
 
         // Download and cache product image locally
         $cloudImageUrl = $product['image'] ?? '';
+        // Normalize relative paths (e.g. "product/xxx.jpg") to full URL
+        if (!empty($cloudImageUrl) && !filter_var($cloudImageUrl, FILTER_VALIDATE_URL) && !str_contains($cloudImageUrl, '/storage/product-images/')) {
+            $cloudBaseUrl = rtrim(config('app.cloud_api_url', env('CLOUD_API_URL', '')), '/');
+            if (!empty($cloudBaseUrl)) {
+                $cloudImageUrl = $cloudBaseUrl . '/storage/' . ltrim($cloudImageUrl, '/');
+            }
+        }
         if (!empty($cloudImageUrl) && filter_var($cloudImageUrl, FILTER_VALIDATE_URL) && !str_contains($cloudImageUrl, '/storage/product-images/')) {
             // Check if already cached locally
             $productModel = \App\Models\Product::find($dbProductId);
