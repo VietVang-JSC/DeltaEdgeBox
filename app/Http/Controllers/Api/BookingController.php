@@ -54,7 +54,7 @@ class BookingController extends Controller
                 'time_arrival' => $request->input('time_arrival'),
                 'status' => $request->input('status', 0),
                 'customer_id' => $request->input('customer_id'),
-                'table_id' => $request->input('table_id'),
+                'table_id' => is_array($request->input('table_id')) ? json_encode($request->input('table_id')) : $request->input('table_id'),
                 'note' => $request->input('note', ''),
                 'total_customer' => $request->input('total_customer', 0),
                 'use_time' => $request->input('use_time', 0),
@@ -87,10 +87,14 @@ class BookingController extends Controller
                 return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Booking not found'], 404);
             }
 
-            $booking->update($request->only([
+            $updateData = $request->only([
                 'time_arrival', 'status', 'customer_id', 'table_id',
                 'note', 'total_customer', 'use_time', 'item_list',
-            ]));
+            ]);
+            if (isset($updateData['table_id']) && is_array($updateData['table_id'])) {
+                $updateData['table_id'] = json_encode($updateData['table_id']);
+            }
+            $booking->update($updateData);
 
             return response()->json([
                 'status' => true,
