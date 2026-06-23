@@ -34,6 +34,9 @@ class CustomerObserver
 
     protected function queueForSync(Customer $customer, string $operation): void
     {
+        // Auto-sync disabled — sync only via cloud button or CLI command
+        return;
+
         try {
             $priority = ($operation === 'delete') ? 2 : 1;
 
