@@ -46,12 +46,17 @@ class BookingController extends Controller
             }
 
             $bookingCode = 'BK-' . $storeId . '-' . time() . '-' . random_int(100, 999);
+            $timeArrival = $request->input('time_arrival');
+            // Convert DD/MM/YYYY HH:mm to YYYY-MM-DD HH:mm:ss
+            if (preg_match('/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/', $timeArrival)) {
+                $timeArrival = \Carbon\Carbon::createFromFormat('d/m/Y H:i', $timeArrival)->format('Y-m-d H:i:s');
+            }
             $data = [
                 'store_id' => $storeId,
                 'booking_code' => $bookingCode,
                 'user_id' => $request->input('user_id', 0),
                 'admin_id' => $request->input('admin_id', 0),
-                'time_arrival' => $request->input('time_arrival'),
+                'time_arrival' => $timeArrival,
                 'status' => $request->input('status', 0),
                 'customer_id' => $request->input('customer_id'),
                 'table_id' => is_array($request->input('table_id')) ? json_encode($request->input('table_id')) : $request->input('table_id'),
@@ -91,6 +96,9 @@ class BookingController extends Controller
                 'time_arrival', 'status', 'customer_id', 'table_id',
                 'note', 'total_customer', 'use_time', 'item_list',
             ]);
+            if (isset($updateData['time_arrival']) && preg_match('/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/', $updateData['time_arrival'])) {
+                $updateData['time_arrival'] = \Carbon\Carbon::createFromFormat('d/m/Y H:i', $updateData['time_arrival'])->format('Y-m-d H:i:s');
+            }
             if (isset($updateData['table_id']) && is_array($updateData['table_id'])) {
                 $updateData['table_id'] = json_encode($updateData['table_id']);
             }
