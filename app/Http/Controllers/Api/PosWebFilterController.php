@@ -339,8 +339,12 @@ class PosWebFilterController extends Controller
 
         $payload = $product->toArray();
         // Make image a full URL the browser can load from edge box
-        if (!empty($payload['image']) && str_starts_with($payload['image'], '/storage/')) {
-            $payload['image'] = url($payload['image']);
+        if (!empty($payload['image'])) {
+            if (str_starts_with($payload['image'], '/storage/')) {
+                $payload['image'] = url($payload['image']);
+            } elseif (!str_starts_with($payload['image'], 'http')) {
+                $payload['image'] = url('storage/' . ltrim($payload['image'], '/'));
+            }
         }
         $payload['product_code'] = $payload['product_code'] ?? $payload['code'] ?? (string) $product->id;
         $payload['title'] = $payload['title'] ?? $payload['name'] ?? '';
