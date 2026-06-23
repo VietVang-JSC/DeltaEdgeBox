@@ -36,6 +36,9 @@ class PaymentDetailObserver
 
     protected function queueForSync(PaymentDetail $paymentDetail, string $operation): void
     {
+        // Auto-sync disabled — sync only via cloud button or CLI command
+        return;
+
         try {
             $data = $paymentDetail->toArray();
             // Include product_code so cloud can recover product_id if IDs differ
