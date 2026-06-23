@@ -344,7 +344,7 @@ class TableController extends Controller
             'discount' => $calcResult['discount'],
             'tax' => $calcResult['total_tax'],
             'final_total' => $calcResult['valuetotal'],
-            'payment_method' => (string) $request->input('payment_method', 'cash'),
+            'payment_method' => (int) ($request->input('payment_method', 1) ?: 1),
             'note' => $request->input('reason'),
             'status' => (int) $request->input('status', self::PAYMENT_PENDING),
             'user_id' => $this->userId($request),

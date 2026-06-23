@@ -65,7 +65,7 @@ class PaymentController extends Controller
                     'amount_received' => $request->input('amount_received') !== null && $request->input('amount_received') !== ''
                         ? round((float) $request->input('amount_received'))
                         : null,
-                    'payment_method' => $request->input('payment_method', 'cash') ?: 'cash',
+                    'payment_method' => (int) ($request->input('payment_method', 1) ?: 1),
                     'note' => $request->input('reason'),
                     'reason' => $request->input('reason'),
                     'status' => $status,
@@ -212,7 +212,7 @@ class PaymentController extends Controller
                     'amount_received' => $request->input('amount_received') !== null && $request->input('amount_received') !== ''
                         ? round((float) $request->input('amount_received'))
                         : $payment->amount_received,
-                    'payment_method' => $request->input('payment_method', $payment->payment_method ?: 'cash'),
+                    'payment_method' => (int) ($request->input('payment_method', $payment->payment_method ?: 1)),
                     'note' => $request->input('reason'),
                     'reason' => $request->input('reason'),
                     'status' => $status,
@@ -1421,12 +1421,16 @@ class PaymentController extends Controller
                 ->get();
 
             $paymentMethodNames = [
+                1 => 'Tiền mặt',
+                2 => 'Chuyển khoản',
+                3 => 'Thẻ tín dụng',
+                4 => 'Thẻ ghi nợ',
+                5 => 'Ví điện tử',
+                6 => 'Khác',
                 'cash' => 'Tiền mặt',
                 'transfer' => 'Chuyển khoản',
                 'ewallet' => 'Ví điện tử',
                 'credit_card' => 'Thẻ tín dụng',
-                'debit_card' => 'Thẻ ghi nợ',
-                'other' => 'Khác',
             ];
             $payments = $payments->map(function ($p) use ($paymentMethodNames) {
                 $data = $p->toArray();
