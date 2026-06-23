@@ -10,7 +10,7 @@
     }
     
     body {
-        font-family: Meiryo !important;
+        font-family: DejaVu Sans !important;
         padding: 10px;
         background-color: #f9f9f9;
         width: 58mm;

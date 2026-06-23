@@ -107,11 +107,15 @@ class BookingController extends Controller
                 $updateData['table_id'] = json_encode($updateData['table_id']);
             }
             $booking->update($updateData);
+            $booking->load('customer');
+            $bookingData = $booking->toArray();
+            $bookingData['statusname'] = ['Chờ', 'Xác nhận', 'Đã đến', 'Hoàn thành', 'Hủy'][$booking->status] ?? $booking->status;
+            $bookingData['time_arrival'] = date("d/m/Y H:i", strtotime($booking->time_arrival));
 
             return response()->json([
                 'status' => true,
                 'message' => __('api.booking_updated'),
-                'booking' => $booking->fresh(),
+                'bookingData' => $bookingData,
             ], 200);
         } catch (\Throwable $th) {
             Log::error('Edge booking update failed', ['error' => $th->getMessage()]);

@@ -6,7 +6,7 @@
     <style>
         @page { size: auto;  margin: 0; }
         body {
-            font-family: Meiryo !important;
+            font-family: DejaVu Sans !important;
             background-color: #f9f9f9;
         }
 
