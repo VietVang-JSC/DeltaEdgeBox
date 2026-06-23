@@ -755,6 +755,9 @@ class TableController extends Controller
         try {
             $storeId = $this->storeId($request);
             $methods = \App\Models\PaymentMethod::where('store_id', $storeId)->get();
+            if ($methods->isEmpty()) {
+                $methods = \App\Models\PaymentMethod::where('store_id', 0)->orWhereNull('store_id')->get();
+            }
 
             $data = $methods->map(function ($method) {
                 return [
