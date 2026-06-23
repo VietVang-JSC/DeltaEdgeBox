@@ -28,4 +28,9 @@ class Booking extends Model
         'time_arrival' => 'datetime',
         'use_time'     => 'float',
     ];
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class);
+    }
 }

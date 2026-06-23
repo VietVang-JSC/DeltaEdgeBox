@@ -67,10 +67,14 @@ class BookingController extends Controller
             ];
 
             $booking = Booking::create($data);
+            $booking->load('customer');
+            $bookingData = $booking->toArray();
+            $bookingData['statusname'] = ['Chờ', 'Xác nhận', 'Đã đến', 'Hoàn thành', 'Hủy'][$booking->status] ?? $booking->status;
+            $bookingData['time_arrival'] = date("d/m/Y H:i", strtotime($booking->time_arrival));
             return response()->json([
                 'status' => true,
                 'message' => __('api.booking_created'),
-                'booking' => $booking,
+                'bookingData' => $bookingData,
             ], 200);
         } catch (\Throwable $th) {
             Log::error('Edge booking create failed', ['error' => $th->getMessage()]);
