@@ -57,9 +57,6 @@ class TableObserver
 
     protected function queueForSync(Table $table, string $operation, int $priority = 1): void
     {
-        // Auto-sync disabled — sync only via cloud button or CLI command
-        return;
-
         try {
             $this->syncService->queueForSync(
                 table: 'table',

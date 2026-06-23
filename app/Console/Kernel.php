@@ -26,9 +26,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('backup:database --type=daily --max=30')
                  ->dailyAt('23:59');
 
-        // Sync Box → Cloud — frequency controlled by sync_interval setting (e.g. 1m, 5m, 10m, 1h, 2h, 12h)
-        $cron = $this->intervalToCron(config('edge_box.sync_interval', '1m'));
-        $schedule->command('sync:worker --batch=50')->cron($cron)->withoutOverlapping();
+        // Sync Box → Cloud — disabled by default, run manually via php artisan sync:worker
+        // $cron = $this->intervalToCron(config('edge_box.sync_interval', '1m'));
+        // $schedule->command('sync:worker --batch=50')->cron($cron)->withoutOverlapping();
 
         // No auto master sync — Cloud → Box is manual only (click Sync Data button in Edge Manager)
     }

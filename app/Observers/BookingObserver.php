@@ -36,9 +36,6 @@ class BookingObserver
 
     protected function queueForSync(Booking $booking, string $operation): void
     {
-        // Auto-sync disabled — sync only via cloud button or CLI command
-        return;
-
         try {
             $this->syncService->queueForSync(
                 table: 'bookings',

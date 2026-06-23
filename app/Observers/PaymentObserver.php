@@ -49,9 +49,6 @@ class PaymentObserver
      */
     protected function queueForSync(Payment $payment, string $operation): void
     {
-        // Auto-sync disabled — sync only via cloud button or CLI command
-        return;
-
         try {
             $priority = ($operation === 'delete') ? 2 : 1; // Urgent for deletions
 
