@@ -21,7 +21,11 @@ class SyncImagesCommand extends Command
             ->where('image', '!=', '');
 
         if (!$force) {
-            $query->where('image', 'LIKE', 'http%');
+            $query->where(function ($q) {
+                $q->where('image', 'LIKE', 'http%')
+                  ->orWhere('image', 'LIKE', 'product/%')
+                  ->orWhere('image', 'LIKE', 'image/%');
+            });
         }
 
         $products = $query->get();
@@ -64,7 +68,7 @@ class SyncImagesCommand extends Command
                 // Relative path like "product/xxx.jpg" → prepend cloud base URL
                 if (!empty($cloudBaseUrl) && !str_contains($imageUrl, '/')) {
                     $imageUrl = $cloudBaseUrl . '/storage/' . $imageUrl;
-                } elseif (!empty($cloudBaseUrl) && str_starts_with($imageUrl, 'product/')) {
+                } elseif (!empty($cloudBaseUrl) && (str_starts_with($imageUrl, 'product/') || str_starts_with($imageUrl, 'image/'))) {
                     $imageUrl = $cloudBaseUrl . '/storage/' . $imageUrl;
                 } else {
                     $failed++;
