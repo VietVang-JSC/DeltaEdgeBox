@@ -366,6 +366,7 @@ class TableController extends Controller
         if ($payment) {
             $payment->update($payload);
         } else {
+            $payload['payment_code'] = 'EDGE-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
             $payment = Payment::create($payload);
         }
 
