@@ -321,9 +321,7 @@ Route::get('/user/orders/log', function (\Illuminate\Http\Request $request) {
     return response()->json(['status' => true, 'data_log' => $data]);
 });
 
-Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {
-    Route::get('/get-all', [TableController::class, 'getPaymentMethods']);
-});
+Route::get('/common/payment-status/get-all', [TableController::class, 'getPaymentMethods']);
 
 Route::prefix('user/split-merge-invoice')->middleware('edge.api.key')->group(function () {
     Route::any('/get-list-invoice', [SplitMergeInvoiceController::class, 'getListInvoice']);
