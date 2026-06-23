@@ -832,7 +832,7 @@ class PaymentController extends Controller
                 'type_discount' => $payment->type_discount ?? 'amount',
                 'discount_percent' => $payment->discount_percent ?? 0,
                 'surcharge' => $surcharge,
-                'surcharge_reason' => $surchargeReason,
+                'surcharge_reason' => $payment->surcharge_reason ?? $surchargeReason,
                 'surcharge_percent' => $payment->surcharge_percent ?? null,
                 'service_charge' => $payment->service_charge ?? 0,
                 'service_charge_amount' => $payment->service_charge_amount ?? 0,
