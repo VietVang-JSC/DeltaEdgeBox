@@ -338,6 +338,10 @@ class PosWebFilterController extends Controller
         [$product, $matchedPrice] = $this->applyTimePrice($product, $timezone, $availableFrames);
 
         $payload = $product->toArray();
+        // Make image a full URL the browser can load from edge box
+        if (!empty($payload['image']) && str_starts_with($payload['image'], '/storage/')) {
+            $payload['image'] = url($payload['image']);
+        }
         $payload['product_code'] = $payload['product_code'] ?? $payload['code'] ?? (string) $product->id;
         $payload['title'] = $payload['title'] ?? $payload['name'] ?? '';
         $payload['price_after_tax'] = $product->price_after_tax ?? $product->price ?? 0;
