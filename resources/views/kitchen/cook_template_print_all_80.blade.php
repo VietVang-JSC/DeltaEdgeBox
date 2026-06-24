@@ -6,7 +6,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <style>
         body {
-            font-family: Meiryo !important;
+            font-family: DejaVu Sans !important;
             width: 80mm;
             margin: 0 auto;
         }
