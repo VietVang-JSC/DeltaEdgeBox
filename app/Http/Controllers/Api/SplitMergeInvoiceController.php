@@ -245,9 +245,10 @@ class SplitMergeInvoiceController extends Controller
         $store = Store::find($filters['store_id']);
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
         $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false);
-        $seniorAmount = (float) ($filters['senior_discount_amount'] ?? ($originalInvoice->senior_discount_amount ?? 0));
         $isTaxInc = $store->is_tax_included ?? 0;
-        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+        $scBaseTotal = $total_value - $total_tax;
+        // Recalculate senior discount based on split items subtotal, not original invoice
+        $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
 
         $isSeniorActive = $isSenior && $seniorAmount > 0;
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
@@ -439,9 +440,9 @@ class SplitMergeInvoiceController extends Controller
         $serviceChargePercent = (float) ($original_invoice->service_charge ?? 0);
         $storeOrig = Store::find($original_invoice->store_id);
         $isTaxInc = $storeOrig->is_tax_included ?? 0;
-        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+        $scBaseTotal = $total_value - $total_tax;
 
-        $seniorAmount = (float) ($original_invoice->senior_discount_amount ?? 0);
+        $seniorAmount = (float) round($scBaseTotal * 20 / 100);
         $isSeniorActive = $original_invoice->is_senior_discount && $seniorAmount > 0;
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
@@ -505,9 +506,9 @@ class SplitMergeInvoiceController extends Controller
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
         $typeDiscount = $filters['type_discount'] ?? 'amount';
         $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false);
-        $seniorAmount = (float) ($filters['senior_discount_amount'] ?? ($originalInvoice ? ($originalInvoice->senior_discount_amount ?? 0) : 0));
         $isTaxInc = $store->is_tax_included ?? 0;
-        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+        $scBaseTotal = $total_value - $total_tax;
+        $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
 
         $isSeniorActive = $isSenior && $seniorAmount > 0;
 
@@ -675,10 +676,9 @@ class SplitMergeInvoiceController extends Controller
         $discountAmount = (float) ($targetInvoice['discount'] ?? 0);
         $surchargeAmount = (float) ($targetInvoice['surcharge'] ?? 0);
         $serviceChargePercent = (float) ($targetInvoice['service_charge'] ?? 0);
-        $seniorAmount = (float) ($targetInvoice['senior_discount_amount'] ?? 0);
         $storeTarget = Store::find($targetInvoice['store_id']);
-        $isTaxInc = $storeTarget->is_tax_included ?? 0;
-        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+        $scBaseTotal = $total_value - $total_tax;
+        $seniorAmount = (float) ($targetInvoice['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
 
         $isSeniorActive = !empty($targetInvoice['is_senior_discount']) && $seniorAmount > 0;
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
@@ -747,10 +747,9 @@ class SplitMergeInvoiceController extends Controller
         $discountAmount = (float) ($target_invoice->discount ?? 0);
         $surchargeAmount = (float) ($target_invoice->surcharge ?? 0);
         $serviceChargePercent = (float) ($target_invoice->service_charge ?? 0);
-        $seniorAmount = (float) ($target_invoice->senior_discount_amount ?? 0);
         $storeMerge = Store::find($target_invoice->store_id);
-        $isTaxInc = $storeMerge->is_tax_included ?? 0;
-        $scBaseTotal = $isTaxInc ? $total_value : ($total_value - $total_tax);
+        $scBaseTotal = $total_value - $total_tax;
+        $seniorAmount = (float) ($target_invoice->senior_discount_amount ?? round($scBaseTotal * 20 / 100));
 
         $isSeniorActive = !empty($target_invoice->is_senior_discount) && $seniorAmount > 0;
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
