@@ -189,7 +189,7 @@ Route::prefix('admin/output')->middleware('edge.api.key')->group(function () {
 // Legacy POS master data endpoints (public read-only)
 Route::get('/user/product/list', function (\Illuminate\Http\Request $req) {
     $sid = config('edge_box.store_id');
-    $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory')
+    $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory', 'combo_products')
         ->where('store_id', $sid)->where('status', 1)->where('is_show', 1)->orderBy('sort_rank')->get();
     $ctl = app(\App\Http\Controllers\Api\PosWebFilterController::class);
     return $products->map(function ($p) use ($ctl) {
