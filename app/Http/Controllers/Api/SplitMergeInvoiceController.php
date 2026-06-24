@@ -233,19 +233,16 @@ class SplitMergeInvoiceController extends Controller
         $dataItem['surcharge'] = $filters['surcharge'] ?? null;
         $items = json_encode($dataItem);
 
-        $total_tax = 0;
-        $total_value = 0;
-        foreach ($filters['split_merge_item'] as $key => $value) {
-            $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
-            $total_value += $this->calculateTotalAfterTax($value)['total'];
-        }
+        $store = Store::find($filters['store_id']);
+        $isTaxInc = $store->is_tax_included ?? 0;
+        $totals = $this->computeTotalsFromItems($filters['split_merge_item'], $isTaxInc);
+        $total_tax = $totals['total_tax'];
+        $total_value = $totals['total_value'];
 
         $discountAmount = (float) ($filters['discount'] ?? 0);
         $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
-        $store = Store::find($filters['store_id']);
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
         $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false);
-        $isTaxInc = $store->is_tax_included ?? 0;
         $scBaseTotal = $total_value - $total_tax;
         // Recalculate senior discount based on split items subtotal, not original invoice
         $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
@@ -407,14 +404,19 @@ class SplitMergeInvoiceController extends Controller
         }
     }
 
-    private function calculateTotalAfterTax(array $item): array
+    private function calculateTotalAfterTax(array $item, bool $isTaxIncluded = false): array
     {
         $quantity = intval($item['quantity']);
         $price = floatval($item['price']);
         $vatPercent = floatval($item['vat'] ?? 0);
         $subtotal = $quantity * $price;
-        $vatAmount = round($subtotal * ($vatPercent / 100));
-        $totalAfterTax = $subtotal + $vatAmount;
+        if ($isTaxIncluded) {
+            $vatAmount = $vatPercent > 0 ? round($subtotal * $vatPercent / (100 + $vatPercent)) : 0;
+            $totalAfterTax = $subtotal;
+        } else {
+            $vatAmount = round($subtotal * ($vatPercent / 100));
+            $totalAfterTax = $subtotal + $vatAmount;
+        }
         return [
             'quantity' => $quantity,
             'price' => $price,
@@ -425,21 +427,37 @@ class SplitMergeInvoiceController extends Controller
         ];
     }
 
+    private function computeTotalsFromItems(array $items, bool $isTaxInc): array
+    {
+        $total_value = 0;
+        $total_tax = 0;
+        foreach ($items as $value) {
+            if ($isTaxInc) {
+                $itemTotal = (float) ($value['TotalPrice'] ?? ($value['price'] * $value['quantity']));
+                $total_value += $itemTotal;
+                $vatPct = (float) ($value['vat'] ?? 0);
+                $total_tax += $vatPct > 0 ? round($itemTotal * $vatPct / (100 + $vatPct)) : 0;
+            } else {
+                $calc = $this->calculateTotalAfterTax($value, false);
+                $total_tax += $calc['vatAmount'];
+                $total_value += $calc['total'];
+            }
+        }
+        return ['total_value' => $total_value, 'total_tax' => $total_tax];
+    }
+
     private function handleUpdateOriginalInvoice($itemOriginalInvoice, $original_invoice)
     {
-        $total_tax = 0;
-        $total_value = 0;
-        foreach ($itemOriginalInvoice['item'] as $key => $value) {
-            $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
-            $total_value += $this->calculateTotalAfterTax($value)['total'];
-        }
+        $storeOrig = Store::find($original_invoice->store_id);
+        $isTaxInc = $storeOrig->is_tax_included ?? 0;
+        $totals = $this->computeTotalsFromItems($itemOriginalInvoice['item'], $isTaxInc);
+        $total_tax = $totals['total_tax'];
+        $total_value = $totals['total_value'];
         $itemOriginalInvoice['total_tax'] = $total_tax;
 
         $discountAmount = (float) ($original_invoice->discount ?? 0);
         $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
         $serviceChargePercent = (float) ($original_invoice->service_charge ?? 0);
-        $storeOrig = Store::find($original_invoice->store_id);
-        $isTaxInc = $storeOrig->is_tax_included ?? 0;
         $scBaseTotal = $total_value - $total_tax;
 
         $seniorAmount = (float) round($scBaseTotal * 20 / 100);
@@ -470,7 +488,7 @@ class SplitMergeInvoiceController extends Controller
             'store_id' => $original_invoice->store_id,
             'admin_id' => $original_invoice->admin_id,
             'is_senior_discount' => $original_invoice->is_senior_discount ?? false,
-            'senior_discount_amount' => $original_invoice->senior_discount_amount ?? 0,
+            'senior_discount_amount' => $seniorAmount,
             'service_charge' => $serviceChargePercent,
             'service_charge_amount' => $serviceChargeAmount,
         ];
@@ -493,20 +511,17 @@ class SplitMergeInvoiceController extends Controller
         $dataItem['surcharge'] = $filters['surcharge'] ?? null;
         $items = json_encode($dataItem);
 
-        $total_tax = 0;
-        $total_value = 0;
-        foreach ($filters['split_merge_item'] as $key => $value) {
-            $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
-            $total_value += $this->calculateTotalAfterTax($value)['total'];
-        }
+        $store = Store::find($filters['store_id']);
+        $isTaxInc = $store->is_tax_included ?? 0;
+        $totals = $this->computeTotalsFromItems($filters['split_merge_item'], $isTaxInc);
+        $total_tax = $totals['total_tax'];
+        $total_value = $totals['total_value'];
 
         $discountAmount = (float) ($filters['discount'] ?? 0);
         $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
-        $store = Store::find($filters['store_id']);
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
         $typeDiscount = $filters['type_discount'] ?? 'amount';
         $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false);
-        $isTaxInc = $store->is_tax_included ?? 0;
         $scBaseTotal = $total_value - $total_tax;
         $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
 
@@ -657,26 +672,26 @@ class SplitMergeInvoiceController extends Controller
     {
         $itemsOftargetInvoice = $this->getPaymentItems($targetInvoice);
         $item = $itemsOftargetInvoice['item'] ?? [];
+        $storeTarget = Store::find($targetInvoice['store_id']);
+        $isTaxInc = $storeTarget->is_tax_included ?? 0;
         foreach ($filters['split_merge_item'] as $key => $value) {
             if (empty($item[$key])) {
                 $item[$key] = $value;
             } else {
                 $item[$key]['quantity'] += $value['quantity'];
             }
-            $item[$key]['TotalPrice'] = $this->calculateTotalAfterTax($item[$key])['total'];
+            $item[$key]['TotalPrice'] = $isTaxInc
+                ? intval($item[$key]['quantity']) * floatval($item[$key]['price'])
+                : $this->calculateTotalAfterTax($item[$key], false)['total'];
         }
 
-        $total_tax = 0;
-        $total_value = 0;
-        foreach ($item as $key => $value) {
-            $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
-            $total_value += $this->calculateTotalAfterTax($value)['total'];
-        }
+        $totals = $this->computeTotalsFromItems($item, $isTaxInc);
+        $total_tax = $totals['total_tax'];
+        $total_value = $totals['total_value'];
 
         $discountAmount = (float) ($targetInvoice['discount'] ?? 0);
         $surchargeAmount = (float) ($targetInvoice['surcharge'] ?? 0);
         $serviceChargePercent = (float) ($targetInvoice['service_charge'] ?? 0);
-        $storeTarget = Store::find($targetInvoice['store_id']);
         $scBaseTotal = $total_value - $total_tax;
         $seniorAmount = (float) ($targetInvoice['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
 
@@ -727,6 +742,8 @@ class SplitMergeInvoiceController extends Controller
         
         $originalItems = $originalDecoded['item'] ?? [];
         $targetItems = $targetDecoded['item'] ?? [];
+        $storeMerge = Store::find($target_invoice->store_id);
+        $isTaxInc = $storeMerge->is_tax_included ?? 0;
 
         foreach ($originalItems as $key => $value) {
             if (empty($targetItems[$key])) {
@@ -734,20 +751,18 @@ class SplitMergeInvoiceController extends Controller
             } else {
                 $targetItems[$key]['quantity'] += $value['quantity'];
             }
-            $targetItems[$key]['TotalPrice'] = $this->calculateTotalAfterTax($targetItems[$key])['total'];
+            $targetItems[$key]['TotalPrice'] = $isTaxInc
+                ? intval($targetItems[$key]['quantity']) * floatval($targetItems[$key]['price'])
+                : $this->calculateTotalAfterTax($targetItems[$key], false)['total'];
         }
 
-        $total_tax = 0;
-        $total_value = 0;
-        foreach ($targetItems as $key => $value) {
-            $total_tax += $this->calculateTotalAfterTax($value)['vatAmount'];
-            $total_value += $this->calculateTotalAfterTax($value)['total'];
-        }
+        $totals = $this->computeTotalsFromItems($targetItems, $isTaxInc);
+        $total_tax = $totals['total_tax'];
+        $total_value = $totals['total_value'];
 
         $discountAmount = (float) ($target_invoice->discount ?? 0);
         $surchargeAmount = (float) ($target_invoice->surcharge ?? 0);
         $serviceChargePercent = (float) ($target_invoice->service_charge ?? 0);
-        $storeMerge = Store::find($target_invoice->store_id);
         $scBaseTotal = $total_value - $total_tax;
         $seniorAmount = (float) ($target_invoice->senior_discount_amount ?? round($scBaseTotal * 20 / 100));
 
