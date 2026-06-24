@@ -271,14 +271,15 @@
 
                     @php
                         $productExtra = [];
-                        $itemVat = $item['products']['vat']/100;
+                        $products = $item['products'] ?? [];
+                        $itemVat = ($products['vat'] ?? 0) / 100;
                         $totalItemPrice = ($is_tax_included == 1 && ($seniorDiscount ?? 0) > 0) ? round($item['total_price']/(1+$itemVat)) : $item['total_price'];
                         $itemQuantity = $item['quantity'];
                         $itemPrice = $itemQuantity > 0 ? $totalItemPrice / $itemQuantity : 0;
                         if(!empty($item['product_extra'])){
                             $productExtra = json_decode($item['product_extra'], true);
                         }
-                        $productTile = $item['products']['title'] ?? '';
+                        $productTile = $products['title'] ?? '';
                         $subTotal += $totalItemPrice;
                     @endphp
 
