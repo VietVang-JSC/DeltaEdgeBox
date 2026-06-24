@@ -337,10 +337,10 @@
                     <td class="Info_Total_Sub_number">{{ number_format($seniorDiscount) }}</td>
                 </tr>
                 @endif
-                @if(isset($subTotalAfterDiscount))
+                @if (($seniorDiscount ?? 0) > 0 || !empty($discount))
                     <tr>
                         <td class="Info_Total_Sub_name">{{ __('front/pos_order.content.Tổng tiền hàng sau giảm giá') }}:</td>
-                        <td class="Info_Total_Sub_number">{{ isset($subTotalAfterDiscount) ? number_format($subTotalAfterDiscount) : '' }}</td>
+                        <td class="Info_Total_Sub_number">{{ number_format($subTotalAfterDiscount) }}</td>
                     </tr>
                 @endif
                 @if (!empty($totalTax))
