@@ -6,7 +6,7 @@
     <style>
         @page { size: auto;  margin: 0; }
         body {
-            font-family: Meiryo !important;
+            font-family: DejaVu Sans !important;
             background-color: #f9f9f9;
         }
 
@@ -221,7 +221,7 @@
                 <table class="info-table" aria-label="Thông tin hóa đơn">
                     <tr>
                         <th class="info_label">{{ __('front/pos_order.invoices.Ngày') }}:</th>
-                        <td class="Info_staff_input current_date">{{date('Y-m-d H:i:s')}}</td>
+                        <td class="Info_staff_input current_date">{{ $payment['created_at'] ?? now($timeZone ?? config('app.timezone'))->format('Y-m-d H:i:s') }}</td>
                     </tr>
                     <tr>
                         <th class="info_label">{{ __('front/pos_order.invoices.Nhân viên') }}:</th>
@@ -277,9 +277,13 @@
                     $totalTax = $payment['total_tax'] ?? 0;
                     $valueTotal = $payment['valuetotal'] ?? 0;
                     $amount_received = $payment['amount_received'] ?? 0;
-                    $subTotal = $is_tax_included == 1 ? $payment['total_incl_vat_before_discount'] : $payment['sub_total_before_discount'];
-                    if($discount > 0 ){
-                        $subTotalAfterDiscount = $subTotal - $discount;
+                    $subTotal = 0;
+                    foreach ($payment['payment_details'] as $item) {
+                        $itemVat = ($item['products']['vat'] ?? 0) / 100;
+                        $subTotal += $is_tax_included == 1 ? $item['total_price'] : round($item['total_price'] / (1 + $itemVat));
+                    }
+                    if($discount > 0 || $seniorDiscount > 0){
+                        $subTotalAfterDiscount = $subTotal - $discount - $seniorDiscount;
                     }
                 @endphp
                 @foreach ($payment['payment_details'] as $item)
@@ -289,7 +293,7 @@
                         $itemVat = $item['products']['vat']/100;
                         $totalItemPrice = $is_tax_included == 1 ? $item['total_price'] : round($item['total_price']/(1+$itemVat));
                         $itemQuantity = $item['quantity'];
-                        $itemPrice = $totalItemPrice/$itemQuantity;
+                        $itemPrice = $item['total_price'] / $itemQuantity;
                         if(!empty($item['product_extra'])){
                             $productExtra = json_decode($item['product_extra'], true);
                         }
@@ -348,7 +352,7 @@
                     <td class="Info_Total_Sub_number">{{ number_format($totalTax) }}</td>
                 </tr>
                 @endif
-                @if(($payment['service_charge_amount'] ?? 0) > 0 || (Session::get('user')['store']['time_zone'] ?? '') == 'Asia/Manila')
+                @if(($payment['service_charge_amount'] ?? 0) > 0 || ($timeZone ?? '') == 'Asia/Manila')
                 <tr>
                     <td class="Info_Total_Sub_name">{{ __('front/pos_order.content.Phí dịch vụ') }}:</td>
                     <td class="Info_Total_Sub_number">{{ number_format($payment['service_charge_amount'] ?? 0) }}</td>

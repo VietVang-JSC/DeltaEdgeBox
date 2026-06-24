@@ -20,17 +20,36 @@ class Kernel extends ConsoleKernel
 
         // Database backup - Intraday (every 4 hours, overwrite latest.sqlite)
         $schedule->command('backup:database --type=intraday')
-                 ->cron('0 */4 * * *'); // 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
+                 ->cron('0 */4 * * *');
 
         // Database backup - Daily (at 23:59, keep last 30 files)
         $schedule->command('backup:database --type=daily --max=30')
                  ->dailyAt('23:59');
 
-        // Optional: Run sync worker via scheduler (alternative to daemon mode)
-        $schedule->command('sync:worker --batch=50')->everyTenSeconds()->withoutOverlapping();
+        // Sync Box → Cloud — disabled by default, run manually via php artisan sync:worker
+        // $cron = $this->intervalToCron(config('edge_box.sync_interval', '1m'));
+        // $schedule->command('sync:worker --batch=50')->cron($cron)->withoutOverlapping();
 
-        // Run master data sync from Cloud every minute in background
-        $schedule->command('edge:sync-master')->everyMinute()->withoutOverlapping();
+        // No auto master sync — Cloud → Box is manual only (click Sync Data button in Edge Manager)
+    }
+
+    /**
+     * Convert interval string (e.g. 1m, 5m, 10m, 1h, 2h, 12h, 30s) to cron expression.
+     */
+    private function intervalToCron(string $interval): string
+    {
+        if (preg_match('/^(\d+)\s*(m|min|h|d|s)$/i', trim($interval), $m)) {
+            $num = max(1, (int)$m[1]);
+            $unit = strtolower($m[2][0]);
+            return match ($unit) {
+                'm' => $num === 1 ? '* * * * *' : "*/$num * * * *",
+                'h' => $num === 1 ? '0 * * * *' : "0 */$num * * *",
+                'd' => $num === 1 ? '0 0 * * *' : "0 0 */$num * *",
+                's' => $num < 60 ? '* * * * *' : $this->intervalToCron(($num / 60) . 'm'),
+                default => '* * * * *',
+            };
+        }
+        return '* * * * *';
     }
 
     /**

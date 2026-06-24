@@ -185,7 +185,7 @@ class TableController extends Controller
                     'first_item' => $items[0] ?? null,
                 ]);
 
-                $payment = $this->upsertPendingPayment($request, $table, $items, $summary);
+                $payment = $this->upsertPendingPayment($request, $table, $items, $summary, $listitem);
 
                 $table->fill([
                     'status' => self::STATUS_ORDERED,
@@ -304,7 +304,7 @@ class TableController extends Controller
         }
     }
 
-    private function upsertPendingPayment(Request $request, Table $table, array $items, array $summary): Payment
+    private function upsertPendingPayment(Request $request, Table $table, array $items, array $summary, ?string $rawListitem = null): Payment
     {
         $payment = $request->filled('payment_id')
             ? Payment::find($request->input('payment_id'))
@@ -344,7 +344,7 @@ class TableController extends Controller
             'discount' => $calcResult['discount'],
             'tax' => $calcResult['total_tax'],
             'final_total' => $calcResult['valuetotal'],
-            'payment_method' => (string) $request->input('payment_method', 'cash'),
+            'payment_method' => (int) ($request->input('payment_method', 1) ?: 1),
             'note' => $request->input('reason'),
             'status' => (int) $request->input('status', self::PAYMENT_PENDING),
             'user_id' => $this->userId($request),
@@ -360,32 +360,52 @@ class TableController extends Controller
             'sub_total_before_discount' => $calcResult['sub_total_before_discount'],
             'total_incl_vat_before_discount' => $calcResult['total_incl_vat_before_discount'],
             'amount_received' => $calcResult['amount_received'],
+            'items' => $this->buildItemsPayload($rawListitem, $calcResult, $request),
         ];
 
         if ($payment) {
             $payment->update($payload);
         } else {
+            $payload['payment_code'] = 'EDGE-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
             $payment = Payment::create($payload);
         }
 
+        // Clear table_id on other payments for the same table to prevent duplicates
+        if ($table->id) {
+            Payment::where('table_id', $table->id)
+                ->where('id', '!=', $payment->id)
+                ->whereNull('deleted_at')
+                ->update(['table_id' => null]);
+        }
+
         $printedQuantities = $payment->details()
-            ->whereNull('deleted_at')
-            ->get()
-            ->mapWithKeys(function ($detail) {
-                $key = $detail->product_key ?: 'product:' . $detail->product_id;
+                ->whereNull('deleted_at')
+                ->get()
+                ->mapWithKeys(function ($detail) {
+                    $key = $detail->product_key ?: 'product:' . $detail->product_id;
 
-                return [
-                    $key => [
-                        'printed_quantity' => (int) $detail->printed_quantity,
-                        'served' => (bool) $detail->served,
-                    ]
-                ];
-            });
+                    return [
+                        $key => [
+                            'printed_quantity' => (int) $detail->printed_quantity,
+                            'served' => (bool) $detail->served,
+                        ]
+                    ];
+                });
 
-        $payment->details()->delete();
-        foreach ($items as $item) {
-            $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
-            $previousData = $printedQuantities[$detailKey] ?? [];
+            $payment->details()->delete();
+            foreach ($items as $item) {
+                $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
+                $previousData = $printedQuantities[$detailKey] ?? [];
+                // Fallback: match by product_id if key not found (e.g. after re-order)
+                if (empty($previousData)) {
+                    foreach ($printedQuantities as $pk => $pd) {
+                        $fallbackKey = 'product:' . ($item['product_id'] ?? 0);
+                        if ($pk === $detailKey || $pk === $fallbackKey) {
+                            $previousData = $pd;
+                            break;
+                        }
+                    }
+                }
             $printedQuantity = min((int) ($previousData['printed_quantity'] ?? 0), (int) $item['quantity']);
             $served = $previousData['served'] ?? false;
 
@@ -484,6 +504,32 @@ class TableController extends Controller
         return ['total' => $total];
     }
 
+    private function buildItemsPayload(?string $rawListitem, array $calcResult, Request $request): string
+    {
+        // Decode raw listitem preserving all original fields (title, product_code, image, etc.)
+        $rawItems = [];
+        if ($rawListitem) {
+            $decoded = json_decode($rawListitem, true) ?: [];
+            $rawItems = $decoded['item'] ?? $decoded ?? [];
+        }
+
+        // Merge original fields with calculated fields
+        $mergedItems = [];
+        foreach ($calcResult['items'] ?? [] as $key => $calcItem) {
+            $rawItem = $rawItems[$key] ?? [];
+            $mergedItems[$key] = array_merge($rawItem, $calcItem);
+            $mergedItems[$key]['id'] = (int) ($rawItem['id'] ?? $calcItem['product_id'] ?? 0);
+        }
+
+        return json_encode([
+            'item' => $mergedItems,
+            'discountPayment' => $calcResult['discount'] ?? 0,
+            'reasonSurcharge' => $request->input('surcharge_reason'),
+            'surcharge' => $calcResult['surcharge'] ?? 0,
+            'total_tax' => $calcResult['total_tax'] ?? 0,
+        ]);
+    }
+
     private function tablePayload(Table $table): array
     {
         $payload = $table->toArray();
@@ -505,8 +551,10 @@ class TableController extends Controller
         $payload['valuetotal'] = $payload['final_total'] ?? 0;
         $payload['total_tax'] = $payload['tax'] ?? 0;
         $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
-        $payload['items'] = optional(Table::find($payment->table_id))->listitem;
-        $payload['payment_details'] = $payload['details'] ?? [];
+        $payload['payment_details'] = array_map(function ($detail) {
+            $detail['total_price'] = $detail['total_price'] ?? ($detail['total'] ?? 0);
+            return $detail;
+        }, $payload['details'] ?? []);
 
         return $payload;
     }
@@ -564,11 +612,7 @@ class TableController extends Controller
 
     private function processSyncAfterResponse(): void
     {
-        try {
-            app(SyncService::class)->processQueue(10);
-        } catch (\Throwable $th) {
-            Log::warning('Edge table sync failed', ['error' => $th->getMessage()]);
-        }
+        // Sync runs via background SyncWorker — no blocking needed
     }
 
     public function getServedStatus(Request $request)
@@ -671,11 +715,49 @@ class TableController extends Controller
         }
     }
 
+    public function updateNumberOfPeople(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'data' => ['required', 'array'],
+                'number_of_people' => ['required', 'integer', 'min:1'],
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => $validator->errors()], 400);
+            }
+
+            $data = $request->input('data');
+            $tableId = $data['table_id'] ?? null;
+            $numberOfPeople = (int) $request->input('number_of_people');
+
+            if (!$tableId) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'table_id is required'], 400);
+            }
+
+            $table = Table::find($tableId);
+            if (!$table) {
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Table not found'], 404);
+            }
+
+            $table->number_of_people = $numberOfPeople;
+            $table->save();
+
+            return response()->json(['status' => true, 'status_code' => 200, 'message' => 'Cập nhật số lượng khách thành công']);
+        } catch (\Throwable $th) {
+            Log::error('Edge updateNumberOfPeople failed: ' . $th->getMessage());
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => 'Cập nhật số lượng khách không thành công'], 500);
+        }
+    }
+
     public function getPaymentMethods(Request $request)
     {
         try {
             $storeId = $this->storeId($request);
             $methods = \App\Models\PaymentMethod::where('store_id', $storeId)->get();
+            if ($methods->isEmpty()) {
+                $methods = \App\Models\PaymentMethod::where('store_id', 0)->orWhereNull('store_id')->get();
+            }
 
             $data = $methods->map(function ($method) {
                 return [
@@ -795,6 +877,7 @@ class TableController extends Controller
                 }
 
                 $params['valuetotal'] = $basePositive + $params['service_charge_amount'] + ($params['surcharge'] ?? 0);
+                $params['amount_received'] = $params['valuetotal'];
             }
         }
 

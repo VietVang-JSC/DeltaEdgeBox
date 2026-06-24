@@ -53,11 +53,12 @@ class PaymentPrintController extends Controller
         $store = $payment->store;
         $language = $request->input('language', 'vi');
         app()->setLocale($language);
+        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
 
         // Use paymentPayload() for 100% consistent format with cloud API
         $paymentData = $this->paymentPayload($payment);
-        $paymentData['created_at'] = date('d-m-Y H:i:s', strtotime($payment->created_at));
-        $paymentData['updated_at'] = date('d-m-Y H:i:s', strtotime($payment->updated_at));
+        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->created_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->updated_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
         // Generate QR image if needed (use blank for now)
         $qrImagePath = '';
@@ -75,6 +76,7 @@ class PaymentPrintController extends Controller
                 'data_bank_payment' => [],
                 'is_tax_included' => $store ? ($store->is_tax_included ?? false) : false,
                 'qrImagePath' => $qrImagePath,
+                'timeZone' => $timeZone,
             ])->render();
         } catch (\Throwable $th) {
             Log::error('Edge print template render failed', ['error' => $th->getMessage()]);
@@ -97,8 +99,10 @@ class PaymentPrintController extends Controller
         $payload['valuetotal'] = $payload['final_total'] ?? 0;
         $payload['total_tax'] = $payload['tax'] ?? 0;
         $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
-        $payload['sub_total_before_discount'] = !empty($payload['sub_total_before_discount']) ? $payload['sub_total_before_discount'] : ($payload['total'] ?? 0);
-        $payload['total_incl_vat_before_discount'] = !empty($payload['total_incl_vat_before_discount']) ? $payload['total_incl_vat_before_discount'] : ($payload['total'] ?? 0);
+        // Calculate subtotal from payment_details for accuracy
+        $subtotalFromDetails = $details ? array_sum(array_map(fn($d) => (float)($d['total_price'] ?? $d['total'] ?? 0), $details->toArray())) : 0;
+        $payload['sub_total_before_discount'] = !empty($payload['sub_total_before_discount']) ? (float)$payload['sub_total_before_discount'] : ($subtotalFromDetails ?: ($payload['total'] ?? 0));
+        $payload['total_incl_vat_before_discount'] = !empty($payload['total_incl_vat_before_discount']) ? (float)$payload['total_incl_vat_before_discount'] : ($subtotalFromDetails ?: ($payload['total'] ?? 0));
         $payload['payment_code'] = $payload['payment_code'] ?: ('EDGE-' . $payment->id);
         $payload['is_senior_discount'] = $payload['is_senior_discount'] ?? false;
         $payload['senior_discount_amount'] = $payload['senior_discount_amount'] ?? 0;
@@ -115,6 +119,9 @@ class PaymentPrintController extends Controller
         }
         if (!$user && !empty($payment->user_id)) {
             $user = User::find($payment->user_id);
+        }
+        if (!$user) {
+            $user = User::where('store_id', $payment->store_id)->first();
         }
         $payload['user'] = $user ? $user->toArray() : [
             'id' => $payment->user_id,
@@ -200,8 +207,12 @@ class PaymentPrintController extends Controller
 
         // Use paymentPayload() for 100% consistent format with cloud API
         $paymentData = $this->paymentPayload($payment);
-        $paymentData['created_at'] = date('d-m-Y H:i:s', strtotime($payment->created_at));
-        $paymentData['updated_at'] = date('d-m-Y H:i:s', strtotime($payment->updated_at));
+        $timeZone = $store ? $store->time_zone : null;
+        if (!$timeZone || $timeZone === 'UTC') {
+            $timeZone = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+        }
+        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->created_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->updated_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
         $qrImagePath = '';
 
@@ -228,6 +239,7 @@ class PaymentPrintController extends Controller
                 'data_bank_payment' => [],
                 'is_tax_included' => $store ? ($store->is_tax_included ?? false) : false,
                 'qrImagePath' => $qrImagePath,
+                'timeZone' => $timeZone,
             ];
 
             // Localized Japanese date formatting to match Cloud BE
@@ -297,6 +309,7 @@ class PaymentPrintController extends Controller
         $storeId = config('edge_box.store_id', 1);
         $store = Store::find($storeId);
         $isTaxIncluded = $store ? ($store->is_tax_included ?? false) : false;
+        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
 
         // Re-allocate discounts/taxes among split items using local buildSimplePayment
         $itemsInput = $filters['split_merge_item'];
@@ -319,14 +332,20 @@ class PaymentPrintController extends Controller
         if (!$user && $payment && !empty($payment->admin_id)) {
             $user = User::find($payment->admin_id);
         }
+        if (!$user && $payment && !empty($payment->user_id)) {
+            $user = User::find($payment->user_id);
+        }
+        if (!$user) {
+            $user = User::where('store_id', $storeId)->first();
+        }
         $temporaryPayment['user'] = $user ? $user->toArray() : [
             'id' => $payment ? $payment->user_id : null,
             'name' => '',
         ];
 
         // Format times and payment code to match Cloud
-        $temporaryPayment['created_at'] = date('d-m-Y H:i:s');
-        $temporaryPayment['updated_at'] = date('d-m-Y H:i:s');
+        $temporaryPayment['created_at'] = now($timeZone)->format('d-m-Y H:i:s');
+        $temporaryPayment['updated_at'] = now($timeZone)->format('d-m-Y H:i:s');
         $temporaryPayment['payment_code'] = $payment ? ($payment->payment_code ?: 'EDGE-' . $payment->id) : 'EDGE-TEMP';
 
         // Fetch printer details
@@ -365,6 +384,7 @@ class PaymentPrintController extends Controller
                 'data_bank_payment' => [],
                 'is_tax_included' => $isTaxIncluded,
                 'qrImagePath' => $qrImagePath,
+                'timeZone' => $timeZone,
             ];
 
             // Localized Japanese date formatting to match Cloud BE
@@ -558,6 +578,7 @@ class PaymentPrintController extends Controller
                 }
 
                 $params['valuetotal'] = $basePositive + $params['service_charge_amount'] + ($params['surcharge'] ?? 0);
+                $params['amount_received'] = $params['valuetotal'];
             }
         }
 

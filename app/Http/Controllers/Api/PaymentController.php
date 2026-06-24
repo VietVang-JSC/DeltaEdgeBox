@@ -20,6 +20,7 @@ class PaymentController extends Controller
 {
     private const STATUS_TABLE_ACTIVE = 1;
     private const STATUS_PAYMENT_ACTIVE = 1;
+    private const STATUS_PAYMENT_PENDING = 0;
 
     public function createPayment(Request $request)
     {
@@ -40,7 +41,11 @@ class PaymentController extends Controller
         try {
             $payment = DB::transaction(function () use ($request) {
                 $status = (int) $request->input('status', self::STATUS_PAYMENT_ACTIVE);
+                // If no table_id and no payment_method, this is a temp invoice — force pending
                 $tableId = $request->input('table_id', $request->input('tableID'));
+                if ($status === self::STATUS_PAYMENT_ACTIVE && empty($tableId) && empty($request->input('payment_method'))) {
+                    $status = self::STATUS_PAYMENT_PENDING;
+                }
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
                 $userId = (int) $request->input('user_id', 1);
                 $paymentTime = $this->storeNow($storeId);
@@ -60,7 +65,7 @@ class PaymentController extends Controller
                     'amount_received' => $request->input('amount_received') !== null && $request->input('amount_received') !== ''
                         ? round((float) $request->input('amount_received'))
                         : null,
-                    'payment_method' => $request->input('payment_method', 'cash') ?: 'cash',
+                    'payment_method' => (int) ($request->input('payment_method', 1) ?: 1),
                     'note' => $request->input('reason'),
                     'reason' => $request->input('reason'),
                     'status' => $status,
@@ -99,11 +104,7 @@ class PaymentController extends Controller
                 return $payment->load('details');
             });
 
-            try {
-                app(SyncService::class)->processQueue(10);
-            } catch (\Throwable $th) {
-                Log::warning('Edge payment sync failed', ['error' => $th->getMessage()]);
-            }
+            // Sync runs via background SyncWorker — no blocking needed
 
             Log::info('EDGE BOX: Payment created successfully', [
                 'payment_id' => $payment->id,
@@ -127,11 +128,12 @@ class PaymentController extends Controller
                 'error' => $th->getMessage(),
             ]);
 
+            $isStock = str_contains($th->getMessage(), 'Inventory insufficient');
             return response()->json([
                 'status' => false,
-                'status_code' => 500,
-                'message' => __('api.ISError'),
-            ], 500);
+                'status_code' => $isStock ? 409 : 500,
+                'message' => $isStock ? 'Insufficient stock for one or more items' : __('api.ISError'),
+            ], $isStock ? 409 : 500);
         }
     }
 
@@ -161,23 +163,40 @@ class PaymentController extends Controller
         try {
             $payment = DB::transaction(function () use ($request) {
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
-                $payment = Payment::whereKey($request->input('id'))
-                    ->where('store_id', $storeId)
-                    ->lockForUpdate()
-                    ->first();
+                $paymentId = $request->input('id', $request->input('payment_id'));
 
+                if (!$paymentId) {
+                    return $this->createPayment($request);
+                }
+
+                $payment = Payment::whereKey($paymentId)->where('store_id', $storeId)->lockForUpdate()->first();
+                if (!$payment) {
+                    $payment = Payment::whereKey($paymentId)->lockForUpdate()->first();
+                }
                 if (!$payment) {
                     throw new \RuntimeException('Payment not found');
                 }
 
                 $oldStatus = (int) $payment->status;
-                $status = (int) $request->input('status', $oldStatus);
+                // Only allow status=1 (paid) if it's a real payment (has payment_method or amount_received)
+                $requestedStatus = (int) $request->input('status', $oldStatus);
+                if ($requestedStatus === self::STATUS_PAYMENT_ACTIVE && $payment->table_id === null && !$request->has('table_id') && !$request->has('payment_method') && $request->input('amount_received', 0) == 0) {
+                    $status = $oldStatus; // Temp invoice — preserve existing status
+                } else {
+                    $status = $requestedStatus;
+                }
                 $userId = (int) $request->input('user_id', $payment->user_id ?: 1);
                 $paymentTime = $this->storeNow($storeId);
                 $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
 
+                // Preserve table_id if payment was associated with a table and request doesn't explicitly change it
+                $tableId = $request->input('table_id');
+                if ($tableId === null && $payment->table_id !== null) {
+                    $tableId = $payment->table_id; // Keep existing table association
+                }
+
                 $payment->fill([
-                    'table_id' => $request->input('table_id', $payment->table_id),
+                    'table_id' => $tableId,
                     'customer_id' => $request->input('customer_id', $payment->customer_id),
                     'items' => $calculation['items_payload'],
                     'paid_date' => $status === self::STATUS_PAYMENT_ACTIVE ? $paymentTime : $payment->paid_date,
@@ -193,7 +212,7 @@ class PaymentController extends Controller
                     'amount_received' => $request->input('amount_received') !== null && $request->input('amount_received') !== ''
                         ? round((float) $request->input('amount_received'))
                         : $payment->amount_received,
-                    'payment_method' => $request->input('payment_method', $payment->payment_method ?: 'cash'),
+                    'payment_method' => (int) ($request->input('payment_method', $payment->payment_method ?: 1)),
                     'note' => $request->input('reason'),
                     'reason' => $request->input('reason'),
                     'status' => $status,
@@ -252,11 +271,12 @@ class PaymentController extends Controller
                 ],
             ]);
         } catch (\RuntimeException $th) {
+            $isStock = str_contains($th->getMessage(), 'Inventory insufficient');
             return response()->json([
                 'status' => false,
-                'status_code' => 404,
-                'message' => $th->getMessage(),
-            ], 404);
+                'status_code' => $isStock ? 409 : 404,
+                'message' => $isStock ? 'Insufficient stock for one or more items' : $th->getMessage(),
+            ], $isStock ? 409 : 404);
         } catch (\Throwable $th) {
             Log::error('Edge payment update failed', [
                 'error' => $th->getMessage(),
@@ -303,15 +323,18 @@ class PaymentController extends Controller
         $seniorDiscount = filter_var($input['is_senior_discount'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $seniorDiscountAmount = (float) ($input['senior_discount_amount'] ?? 0);
         $total = (float) ($summary['total_with_vat'] ?? 0) + $surcharge;
+        $baseForCharge = $isTaxIncluded
+            ? (float) ($summary['total_with_vat'] ?? 0)
+            : (float) ($summary['subtotal_after'] ?? $summary['total_with_vat'] ?? 0);
+        if ($serviceCharge > 0 && $serviceChargeAmount == 0) {
+            $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
+        }
 
         if (($store->time_zone ?? null) === 'Asia/Manila') {
             if (!array_key_exists('service_charge', $input) && isset($store->service_charge)) {
                 $serviceCharge = (int) $store->service_charge;
+                $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
             }
-
-            $baseForCharge = $isTaxIncluded
-                ? (float) ($summary['total_with_vat'] ?? 0)
-                : (float) ($summary['subtotal_after'] ?? $summary['total_with_vat'] ?? 0);
 
             if ($surchargePercent !== null) {
                 $surcharge = $baseForCharge * $surchargePercent / 100;
@@ -696,6 +719,26 @@ class PaymentController extends Controller
         ];
     }
 
+    public function deletePaymentForUser(Request $request)
+    {
+        $paymentId = $request->input('data.id');
+        $reason = $request->input('data.reason', '');
+        if (!$paymentId) {
+            return response()->json(['status' => false, 'message' => 'Missing payment id'], 400);
+        }
+        $payment = Payment::find($paymentId);
+        if (!$payment) {
+            return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+        }
+        $payment->status = -1;
+        $payment->reason = $reason;
+        $payment->save();
+        $payment->details()->update(['delete_note' => $reason]);
+        $payment->details()->delete();
+        $payment->delete();
+        return response()->json(['status' => true, 'message' => 'Payment deleted']);
+    }
+
     public function deletePaymentDetail(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -743,6 +786,13 @@ class PaymentController extends Controller
             }
 
             $payment = Payment::whereKey($paymentId)->where('store_id', $storeId)->first();
+            // Fallback: try without store_id (for order-new page where no table_id is sent)
+            if (!$payment) {
+                $payment = Payment::whereKey($paymentId)->first();
+                if ($payment) {
+                    $storeId = (int) $payment->store_id;
+                }
+            }
             if (!$payment && !empty($tableId)) {
                 if ($table && !empty($table->payment_id)) {
                     $payment = Payment::whereKey($table->payment_id)->where('store_id', $storeId)->first();
@@ -782,7 +832,7 @@ class PaymentController extends Controller
                 'type_discount' => $payment->type_discount ?? 'amount',
                 'discount_percent' => $payment->discount_percent ?? 0,
                 'surcharge' => $surcharge,
-                'surcharge_reason' => $surchargeReason,
+                'surcharge_reason' => $payment->surcharge_reason ?? $surchargeReason,
                 'surcharge_percent' => $payment->surcharge_percent ?? null,
                 'service_charge' => $payment->service_charge ?? 0,
                 'service_charge_amount' => $payment->service_charge_amount ?? 0,
@@ -806,7 +856,42 @@ class PaymentController extends Controller
                     ->first();
 
                 if (!$detail) {
-                    throw new \RuntimeException('payment_detail_not_found');
+                    // No payment_detail — remove from items JSON, recalculate via buildCalculatedPaymentData
+                    $currentItems = json_decode($payment->items, true) ?: [];
+                    if (!isset($currentItems['item'][$productKey])) {
+                        throw new \RuntimeException('payment_detail_not_found');
+                    }
+                    unset($currentItems['item'][$productKey]);
+                    if (!empty($currentItems['item'])) {
+                        $calculation = $this->buildCalculatedPaymentData($currentItems['item'], $storeId, $calculationInput);
+                        $payment->items = $calculation['items_payload'];
+                        $payment->discount = $calculation['discount'];
+                        $payment->surcharge = $calculation['surcharge'];
+                        $payment->surcharge_reason = $calculation['surcharge_reason'];
+                        $payment->tax = $calculation['tax'];
+                        $payment->total = $calculation['total'];
+                        $payment->final_total = $calculation['final_total'];
+                        $payment->service_charge = $calculation['service_charge'];
+                        $payment->service_charge_amount = $calculation['service_charge_amount'];
+                        $payment->sub_total_before_discount = $calculation['sub_total_before_discount'];
+                        $payment->total_incl_vat_before_discount = $calculation['total_incl_vat_before_discount'];
+                    } else {
+                        $payment->items = json_encode($currentItems);
+                        $payment->total = 0;
+                        $payment->final_total = 0;
+                        $payment->tax = 0;
+                        $payment->discount = 0;
+                        $payment->surcharge = 0;
+                        $payment->surcharge_reason = null;
+                        $payment->service_charge_amount = 0;
+                        $payment->sub_total_before_discount = 0;
+                        $payment->total_incl_vat_before_discount = 0;
+                    }
+                    $payment->save();
+                    Log::info('Edge delete: removed from items JSON', [
+                        'payment_id' => $payment->id, 'product_key' => $productKey,
+                    ]);
+                    return $payment;
                 }
 
                 if ($deleteQuantity > (int) $detail->quantity) {
@@ -1146,11 +1231,16 @@ class PaymentController extends Controller
         app()->setLocale($request->input('isCheckLanguage', 'vi'));
         try {
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
-            $payments = Payment::with('details')
+            $query = Payment::with('details')
                 ->where('store_id', $storeId)
-                ->where('status', 0)
-                ->orderBy('created_at', 'desc')
-                ->get();
+                ->where('status', 0);
+            $type = $request->input('type');
+            if ($type === 'new') {
+                $query->whereNull('table_id');
+            } elseif ($type === 'table') {
+                $query->whereNotNull('table_id');
+            }
+            $payments = $query->orderBy('created_at', 'desc')->get();
             return response()->json([
                 'status' => true,
                 'data' => $payments,
@@ -1164,14 +1254,53 @@ class PaymentController extends Controller
     public function getPayment($id)
     {
         try {
-            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
-            $payment = Payment::with('details')->where('store_id', $storeId)->where('id', $id)->first();
+            $payment = Payment::with('details')->where('id', $id)->withTrashed()->first();
             if (!$payment) {
                 return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
             }
             return response()->json(['status' => true, 'data' => $payment], 200);
         } catch (\Throwable $th) {
             Log::error('Edge getPayment failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
+        }
+    }
+
+    public function getPaymentDetailByRequest(Request $request)
+    {
+        $id = $request->input('id');
+        if (!$id) return response()->json(['status' => false, 'message' => 'id is required'], 400);
+        return $this->getPaymentDetail($id);
+    }
+
+    public function getPaymentDetail($id)
+    {
+        try {
+            $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
+            $payment = Payment::with(['details.product', 'user', 'customer', 'table'])->where('store_id', $storeId)->where('id', $id)->first();
+            if (!$payment) {
+                $payment = Payment::with(['details.product', 'user', 'customer', 'table'])->where('id', $id)->withTrashed()->first();
+            }
+            if (!$payment) {
+                return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+            }
+            $data = $payment->toArray();
+            $data['unit_price_excluding_tax'] = 0;
+            $data['detail_discount_excluding_tax'] = 0;
+            $data['discounted_price_excluding_tax'] = 0;
+            if (!empty($data['details'])) {
+                foreach ($data['details'] as &$detail) {
+                    $detail['products'] = isset($detail['product']) ? $detail['product'] : [];
+                    unset($detail['product']);
+                    $detail['total_price'] = $detail['total'] ?? 0;
+                }
+                $data['payment_details'] = $data['details'];
+            } else {
+                $data['payment_details'] = [];
+            }
+            unset($data['details']);
+            return response()->json(['status' => true, 'data_payment' => [$data]], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge getPaymentDetail failed', ['error' => $th->getMessage()]);
             return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError')], 500);
         }
     }
@@ -1291,12 +1420,40 @@ class PaymentController extends Controller
                 ->take($pageSize)
                 ->get();
 
-            $payments = $payments->map(function ($p) {
+            $paymentMethodNames = [
+                1 => 'Tiền mặt',
+                2 => 'Chuyển khoản',
+                3 => 'Thẻ tín dụng',
+                4 => 'Thẻ ghi nợ',
+                5 => 'Ví điện tử',
+                6 => 'Khác',
+                'cash' => 'Tiền mặt',
+                'transfer' => 'Chuyển khoản',
+                'ewallet' => 'Ví điện tử',
+                'credit_card' => 'Thẻ tín dụng',
+            ];
+            $payments = $payments->map(function ($p) use ($paymentMethodNames) {
                 $data = $p->toArray();
-                $data['valuetotal'] = $data['total'] ?? 0;
+                $data['valuetotal'] = $data['final_total'] ?? ($data['total'] ?? 0);
                 $data['reasonSurcharge'] = $data['surcharge_reason'] ?? '';
                 $data['user'] = $data['user'] ?? ['id' => 0, 'name' => ''];
                 $data['customer'] = $data['customer'] ?? null;
+                $data['payment_details'] = $data['details'] ?? [];
+                $data['sub_total_before_discount'] = $data['sub_total_before_discount'] ?? 0;
+                $data['total_incl_vat_before_discount'] = $data['total_incl_vat_before_discount'] ?? 0;
+                $data['total_tax'] = $data['tax'] ?? 0;
+                $data['service_charge_amount'] = $data['service_charge_amount'] ?? 0;
+                $data['payment_method'] = $paymentMethodNames[$data['payment_method']] ?? $data['payment_method'];
+                $data['created_at'] = date("Y-m-d H:i:s", strtotime($data['created_at']));
+                $data['updated_at'] = date("Y-m-d H:i:s", strtotime($data['updated_at']));
+                if (!empty($data['details'])) {
+                    foreach ($data['details'] as &$detail) {
+                        if (empty($detail['products']) && !empty($detail['product_id'])) {
+                            $product = \App\Models\Product::find($detail['product_id']);
+                            $detail['products'] = $product ? $product->toArray() : [];
+                        }
+                    }
+                }
                 return $data;
             });
 

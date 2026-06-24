@@ -20,7 +20,30 @@ class KitchenPrintController extends Controller
             return $this->error('Table not found', 404);
         }
 
-        return $this->success($this->tablePrintPayload($table));
+        $payload = $this->tablePrintPayload($table);
+
+        // Include browser HTML for master kitchen print (matching cloud behavior)
+        $storeId = $table->store_id;
+        $store = $storeId ? Store::find($storeId) : null;
+        $paperSize = 80;
+        $settingPrintKitchen = $store ? $store->setting_print_kitchen : null;
+        if ($settingPrintKitchen && is_string($settingPrintKitchen)) {
+            $settingPrintKitchen = json_decode($settingPrintKitchen, true);
+        }
+
+        $payload['browser'] = [
+            'view' => [
+                'default' => view('kitchen.cook_template_print_all_80', [
+                    'payment' => $payload['payment'] ?? $payload,
+                    'setting_print_kitchen' => $settingPrintKitchen,
+                    'data' => $payload,
+                    'bill_setting' => [],
+                    'timeZone' => $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone'),
+                ])->render()
+            ]
+        ];
+
+        return $this->success($payload);
     }
 
     public function printNextWeb(Request $request)
@@ -55,6 +78,7 @@ class KitchenPrintController extends Controller
 
             $payload = $this->tablePrintPayload($table, $products);
             $store = Store::find($table->store_id);
+            $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             $paperSize = $request->input('paper_size', '80');
             $language = $request->input('language', 'vi');
             app()->setLocale($language);
@@ -69,6 +93,7 @@ class KitchenPrintController extends Controller
                 'payment' => $payload['payment'] ?? [],
                 'setting_print_kitchen' => $payload['setting_print_kitchen'] ?? null,
                 'bill_setting' => [],
+                'timeZone' => $timeZone,
             ])->render();
 
             return response()->json([
@@ -105,6 +130,7 @@ class KitchenPrintController extends Controller
             }
 
             $store = Store::find($table->store_id);
+            $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             $storeId = $table->store_id;
             $language = $request->input('language', 'vi');
             app()->setLocale($language);
@@ -188,6 +214,7 @@ class KitchenPrintController extends Controller
                     'payment' => $payload['payment'] ?? [],
                     'setting_print_kitchen' => $payload['setting_print_kitchen'] ?? null,
                     'bill_setting' => [],
+                    'timeZone' => $timeZone,
                 ])->render();
             }
             $browser['view'] = $view;
@@ -240,6 +267,7 @@ class KitchenPrintController extends Controller
             $heightExtra = 0;
             $store = Store::find($storeId);
             $setting_print_kitchen = [];
+            $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
 
             if ($store && !empty($store->setting_print_kitchen)) {
                 $setting_print_kitchen = is_string($store->setting_print_kitchen)
@@ -253,6 +281,7 @@ class KitchenPrintController extends Controller
                     'setting_print_kitchen' => $setting_print_kitchen,
                     'data' => $payload,
                     'bill_setting' => [],
+                    'timeZone' => $timeZone,
                 ]);
                 $contentHeight = $this->calculateKitchenContentHeight($payload, $heightExtra);
                 $pdf->setPaper([0, 0, $contentWidth, $contentHeight]);

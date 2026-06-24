@@ -38,6 +38,19 @@ Route::post('/edge/login', [UserController::class, 'loginWeb']);
 Route::get('/health', [HealthController::class, 'index']);
 Route::get('/health/detailed', [HealthController::class, 'detailed'])->middleware('edge.api.key');
 
+Route::get('/edge/cleanup', function () {
+    try {
+        DB::statement('DELETE FROM payment_details');
+        DB::statement('DELETE FROM payments');
+        DB::statement('DELETE FROM sync_queues');
+        DB::statement('DELETE FROM sync_logs');
+        DB::statement('DELETE FROM sync_metadata');
+        return response()->json(['status' => true, 'message' => 'Cleared']);
+    } catch (\Throwable $e) {
+        return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+    }
+});
+
 //get all master data for edge sync
 Route::get('/edge/filter', [ApiEdgeController::class, 'filter'])->middleware('edge.api.key');
 
@@ -102,10 +115,13 @@ Route::prefix('printers')->group(function () {
 Route::prefix('user/payment')->middleware('edge.api.key')->group(function () {
     Route::post('/create_payment', [PaymentController::class, 'createPayment']);
     Route::post('/update_payment', [PaymentController::class, 'updatePayment']);
+    Route::post('/hold_payment', [PaymentController::class, 'createPayment']);
     Route::match(['GET', 'POST'], '/get_sale_today', [PaymentController::class, 'getSaleToday']);
 });
 Route::post('/user/payment/list_open', [PaymentController::class, 'listOpen']);
 Route::get('/user/payment/get/{id}', [PaymentController::class, 'getPayment']);
+Route::get('/user/payment/get-payment-new/{id}', [PaymentController::class, 'getPaymentDetail']);
+Route::post('/user/payment/get-payment-new', [PaymentController::class, 'getPaymentDetailByRequest']);
 // View payment details for POS web
 Route::prefix('edge')->middleware('edge.api.key')->group(function () {
     Route::post('/list-order-new', [PosWebFilterController::class, 'apiEdgeFilterByCondition']);
@@ -173,12 +189,26 @@ Route::prefix('admin/output')->middleware('edge.api.key')->group(function () {
 // Legacy POS master data endpoints (public read-only)
 Route::get('/user/product/list', function (\Illuminate\Http\Request $req) {
     $sid = config('edge_box.store_id');
-    $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory')
+    $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory', 'combo_products')
         ->where('store_id', $sid)->where('status', 1)->where('is_show', 1)->orderBy('sort_rank')->get();
     $ctl = app(\App\Http\Controllers\Api\PosWebFilterController::class);
     return $products->map(function ($p) use ($ctl) {
         return $ctl->publicProductPayload($p);
     });
+});
+// Quick price check endpoint — returns current time-adjusted price for a product
+Route::get('/user/product/price/{id}', function (\Illuminate\Http\Request $req, $id) {
+    $sid = config('edge_box.store_id');
+    $product = \App\Models\Product::with('timePrices')->where('store_id', $sid)->find($id);
+    if (!$product) { return response()->json(['status' => false, 'message' => 'Product not found'], 404); }
+    $ctl = app(\App\Http\Controllers\Api\PosWebFilterController::class);
+    $payload = $ctl->publicProductPayload($product);
+    return response()->json([
+        'status' => true,
+        'price' => $payload['price'],
+        'price_after_tax' => $payload['price_after_tax'],
+        'unit_price' => $payload['unit_price'] ?? $payload['price'],
+    ]);
 });
 Route::get('/user/category/list', function (\Illuminate\Http\Request $req) {
     $sid = config('edge_box.store_id');
@@ -187,6 +217,10 @@ Route::get('/user/category/list', function (\Illuminate\Http\Request $req) {
 Route::get('/user/customer/list', function (\Illuminate\Http\Request $req) {
     $sid = config('edge_box.store_id');
     return \App\Models\Customer::where('store_id', $sid)->orderBy('name')->get();
+});
+Route::get('/user/list', function (\Illuminate\Http\Request $req) {
+    $sid = config('edge_box.store_id');
+    return \App\Models\User::where('store_id', $sid)->select('id', 'name', 'email', 'phone')->orderBy('name')->get();
 });
 // Legacy POS table compatibility endpoints
 Route::get('/user/table/list', [TableController::class, 'index']);
@@ -197,12 +231,20 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
     Route::post('/update_order_table', [TableController::class, 'updateOrder']);
     Route::post('/change-table', [TableController::class, 'changeTable']);
     Route::post('/check-payment-printed', [KitchenPrintController::class, 'checkPrintedStatus']);
-    Route::get('/kitchen/print-all', [KitchenPrintController::class, 'printAll']);
-    Route::get('/kitchen/print-next-web', [KitchenPrintController::class, 'printNextWeb']);
+    Route::match(['GET', 'POST'], '/kitchen/print-all', [KitchenPrintController::class, 'printAll']);
+    Route::match(['GET', 'POST'], '/kitchen/print-next-web', [KitchenPrintController::class, 'printNextWeb']);
     Route::match(['GET', 'POST'], '/kitchen/print-on-browser', [KitchenPrintController::class, 'printOnBrowser']);
     Route::match(['GET', 'POST'], '/kitchen/print-real-browser', [KitchenPrintController::class, 'printRealBrowser']);
     Route::post('/kitchen/update-print-all', [KitchenPrintController::class, 'updatePrintedQuantity']);
 });
+
+Route::prefix('user/booking')->group(function () {
+    Route::get('/list', [\App\Http\Controllers\Api\BookingController::class, 'index']);
+    Route::post('/creat-booking', [\App\Http\Controllers\Api\BookingController::class, 'create']);
+    Route::post('/update-booking', [\App\Http\Controllers\Api\BookingController::class, 'update']);
+});
+
+Route::get('/user/cash-drawer/edit-user', [\App\Http\Controllers\Api\PosWebFilterController::class, 'getCashDrawer']);
 
 Route::prefix('posWeb')->middleware('edge.api.key')->group(function () {
     Route::post('/filter', [PosWebFilterController::class, 'filter']);
@@ -217,14 +259,69 @@ Route::post('/user/product/get_product_list', [PosWebFilterController::class, 'g
 Route::post('/user/category/get_category', [PosWebFilterController::class, 'getCategory'])->middleware('edge.api.key');
 Route::post('/user/customer/get_all_customer', [PosWebFilterController::class, 'getAllCustomer'])->middleware('edge.api.key');
 
-Route::prefix('user/payment_detail')->middleware('edge.api.key')->group(function () {
+Route::prefix('user/payment_detail')->group(function () {
     Route::get('/getServedStatus', [TableController::class, 'getServedStatus']);
     Route::post('/served', [TableController::class, 'served']);
 });
 
-Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {
-    Route::get('/get-all', [TableController::class, 'getPaymentMethods']);
+Route::post('/update_number_of_people', [TableController::class, 'updateNumberOfPeople'])->middleware('edge.api.key');
+
+// POS supporting endpoints
+Route::post('/user/customer/add', [\App\Http\Controllers\Api\PosWebFilterController::class, 'createCustomer']);
+Route::get('/user/banking-information', function () {
+    $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id;
+    $bank = \App\Models\BankPayment::where('store_id', $storeId)->first();
+    return response()->json([
+        'status' => true,
+        'message' => 'success',
+        'bank_payment' => $bank ? $bank->toArray() : '',
+    ]);
 });
+Route::post('/user/table/generate-qr', function (\Illuminate\Http\Request $request) {
+    $tableId = $request->input('table_id');
+    $table = \App\Models\Table::find($tableId);
+    if (!$table) {
+        return response()->json(['status' => false, 'message' => 'Table not found'], 404);
+    }
+    $token = \Illuminate\Support\Str::random(32);
+    $table->qr_token = $token;
+    $table->save();
+    return response()->json(['status' => true, 'data' => ['token' => $token]]);
+});
+Route::get('/user/orders/log', function (\Illuminate\Http\Request $request) {
+    $storeId = $request->input('store_id', config('edge_box.store_id'));
+    $tableId = $request->input('table_id');
+    $query = \App\Models\Payment::with(['table', 'user', 'details'])
+        ->where('store_id', $storeId)
+        ->whereNotNull('items');
+    if ($tableId) {
+        $query->where('table_id', $tableId);
+    }
+    $logs = $query->latest()->take(20)->get();
+    $data = $logs->map(function ($payment) {
+        $items = json_decode($payment->items, true);
+        $itemList = $items['item'] ?? [];
+        $contentParts = [];
+        foreach ($itemList as $key => $item) {
+            $title = $item['title'] ?? $item['product_code'] ?? $key;
+            $qty = $item['quantity'] ?? 0;
+            $contentParts[] = $title . ' SL:' . $qty;
+        }
+        $content = implode('&&', $contentParts);
+        return [
+            'id' => $payment->id,
+            'payment_id' => $payment->id,
+            'content' => $content,
+            'table' => $payment->table ? ['tablename' => $payment->table->tablename ?? $payment->table->name ?? ''] : null,
+            'user' => $payment->user ? ['name' => $payment->user->name] : null,
+            'user_type' => 'staff',
+            'created_at' => $payment->created_at,
+        ];
+    });
+    return response()->json(['status' => true, 'data_log' => $data]);
+});
+
+Route::get('/common/payment-status/get-all', [TableController::class, 'getPaymentMethods']);
 
 Route::prefix('user/split-merge-invoice')->middleware('edge.api.key')->group(function () {
     Route::any('/get-list-invoice', [SplitMergeInvoiceController::class, 'getListInvoice']);
@@ -241,16 +338,7 @@ Route::prefix('payment')->middleware('edge.api.key')->group(function () {
 Route::prefix('admin/payment')->middleware('edge.api.key')->group(function () {
     Route::get('/print_payment', [PaymentPrintController::class, 'printPayment']);
     Route::post('/delete-payment-detail', [PaymentController::class, 'deletePaymentDetail']);
-});
-
-Route::prefix('common/payment-status')->middleware('edge.api.key')->group(function () {
-    Route::get('/get-all', [TableController::class, 'getPaymentMethods']);
-});
-
-Route::prefix('user/split-merge-invoice')->middleware('edge.api.key')->group(function () {
-    Route::any('/get-list-invoice', [SplitMergeInvoiceController::class, 'getListInvoice']);
-    Route::post('/split-invoice', [SplitMergeInvoiceController::class, 'splitInvoice']);
-    Route::post('/merge-invoice', [SplitMergeInvoiceController::class, 'mergeInvoice']);
+    Route::get('/delete-payment-for-user', [PaymentController::class, 'deletePaymentForUser']);
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {

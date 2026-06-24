@@ -99,18 +99,23 @@ class PosWebFilterController extends Controller
                 $dataAgencies = $this->agencies($storeId, $request);
             }
 
+            $dataCashDrawer = [];
+            if ($request->has('cash_drawer')) {
+                $dataCashDrawer = $this->cashDrawers($storeId, $request);
+            }
+
             // Check if pagination is requested
             $pagination = $request->input('products.clauses.pagination');
             $dataProduct = $products;
             if ($pagination) {
-                $pageSize = (int)data_get($pagination, 'pageSize', 15);
+                $pageSize = (int)data_get($pagination, 'pageSize', 50);
                 $currentPage = (int)data_get($pagination, 'currentPage', 1);
-                $offset = ($currentPage - 1) * $pageSize;
-                
-                $paginatedList = array_slice($products, $offset, $pageSize);
+                $totalProducts = \App\Models\Product::where(function ($q) use ($storeId) {
+                    $q->whereNull('store_id')->orWhere('store_id', $storeId);
+                })->where('status', 1)->count();
                 $dataProduct = [
-                    'data_list' => $paginatedList,
-                    'total' => (int) ceil(count($products) / $pageSize),
+                    'data_list' => $products,
+                    'total' => (int) ceil($totalProducts / $pageSize),
                     'pageSize' => $pageSize,
                     'currentPage' => $currentPage,
                 ];
@@ -135,6 +140,7 @@ class PosWebFilterController extends Controller
                     'data_bank_payment' => [$bankPayment],
                     'total_records_product' => count($products),
                     'data_agencies' => $dataAgencies,
+                    'dataCashDrawer' => $dataCashDrawer,
                 ],
             ]);
         } catch (\Throwable $exception) {
@@ -220,7 +226,9 @@ class PosWebFilterController extends Controller
 
     private function bankPaymentPayload(): array
     {
-        return [
+        $storeId = $this->storeId(request());
+        $bank = \App\Models\BankPayment::where('store_id', $storeId)->first();
+        return $bank ? $bank->toArray() : [
             'bank_code' => '',
             'account_number' => '',
             'account_owner' => '',
@@ -245,9 +253,7 @@ class PosWebFilterController extends Controller
             if (is_array($queryParam)) {
                 foreach ($queryParam as $column => $value) {
                     if ($column === 'WhereRaw') {
-                        if (!empty($value)) {
-                            $query->whereRaw($value);
-                        }
+                        continue; // Blocked: security risk (SQL injection)
                     } else {
                         if (is_array($value)) {
                             $operator = $value['operator'] ?? '=';
@@ -269,14 +275,23 @@ class PosWebFilterController extends Controller
             }
         }
 
-        return $query->limit(500)
-            ->get()
+        // Apply pagination at DB level if requested
+        $pagination = $request ? $request->input('products.clauses.pagination') : null;
+        if ($pagination) {
+            $pageSize = (int)data_get($pagination, 'pageSize', 50);
+            $currentPage = (int)data_get($pagination, 'currentPage', 1);
+            $query->limit($pageSize)->offset(($currentPage - 1) * $pageSize);
+        } else {
+            $query->limit(500);
+        }
+
+        return $query->get()
             ->map(fn (Product $product) => $this->productPayload($product, $timezone, $isTaxIncluded))
             ->values()
             ->all();
     }
 
-    private function applyTimePrice(Product $product, string $timezone, &$availableFrames = []): Product
+    private function applyTimePrice(Product $product, string $timezone, &$availableFrames = []): array
     {
         $now = now()->setTimezone($timezone);
         $currentDay = $now->dayOfWeek;
@@ -295,7 +310,7 @@ class PosWebFilterController extends Controller
             }
         }
 
-        // Apply first matching time price (same as cloud: first-match-wins, no priority/date used)
+        // Find first matching time price (same as cloud: first-match-wins, no priority/date used)
         foreach ($timePrices as $tp) {
             if (empty($tp->is_active)) {
                 continue;
@@ -304,13 +319,12 @@ class PosWebFilterController extends Controller
             $days = $tp->days_of_week;
 
             if (is_array($days) && in_array($currentDay, $days) && $currentTime >= $tp->start_time && $currentTime <= $tp->end_time) {
-                $product->price = $tp->price ?? $product->price;
-                $product->price_after_tax = $tp->price_after_tax ?? $product->price_after_tax;
-                break;
+                $matchedPrice = $tp->price_after_tax ?? $tp->price ?? null;
+                return [$product, $matchedPrice];
             }
         }
 
-        return $product;
+        return [$product, null];
     }
 
     private function productPayload(Product $product, string $timezone = null, ?int $isTaxIncluded = null): array
@@ -321,14 +335,24 @@ class PosWebFilterController extends Controller
             $isTaxIncluded = $isTaxIncluded ?? ($store ? (int) ($store->is_tax_included ?? 0) : 0);
         }
         $availableFrames = [];
-        $product = $this->applyTimePrice($product, $timezone, $availableFrames);
+        [$product, $matchedPrice] = $this->applyTimePrice($product, $timezone, $availableFrames);
 
         $payload = $product->toArray();
+        // Make image a full URL the browser can load from edge box
+        if (!empty($payload['image'])) {
+            if (str_starts_with($payload['image'], '/storage/')) {
+                $payload['image'] = url($payload['image']);
+            } elseif (!str_starts_with($payload['image'], 'http')) {
+                $payload['image'] = url('storage/' . ltrim($payload['image'], '/'));
+            }
+        }
         $payload['product_code'] = $payload['product_code'] ?? $payload['code'] ?? (string) $product->id;
         $payload['title'] = $payload['title'] ?? $payload['name'] ?? '';
         $payload['price_after_tax'] = $product->price_after_tax ?? $product->price ?? 0;
         $payload['unit_price'] = $product->price ?? 0;
-        $payload['price'] = $isTaxIncluded == 0 ? ($product->price ?? 0) : ($product->price_after_tax ?? 0);
+        $payload['price'] = $matchedPrice !== null
+            ? $matchedPrice
+            : ($isTaxIncluded == 0 ? ($product->price ?? 0) : ($product->price_after_tax ?? 0));
         $payload['vat'] = $payload['vat'] ?? 0;
         $payload['tax_name'] = $this->taxName($payload['vat']);
         $payload['original_tax'] = $payload['vat'] < 0 ? $payload['vat'] : null;
@@ -513,6 +537,113 @@ class PosWebFilterController extends Controller
         }
 
         return $query->get()->toArray();
+    }
+
+    private function cashDrawers(int $storeId, Request $request): array
+    {
+        $query = \App\Models\CashDrawer::where('store_id', $storeId);
+
+        $cdParam = $request->input('cash_drawer');
+        if ($cdParam) {
+            $whereQuery = data_get($cdParam, 'query');
+            if ($whereQuery) {
+                foreach ($whereQuery as $column => $cond) {
+                    if (is_array($cond)) {
+                        $operator = data_get($cond, 'operator', '=');
+                        $value = data_get($cond, 'value');
+                        if (strtolower($operator) === 'like') {
+                            $value = '%' . $value . '%';
+                        }
+                        $query->where($column, $operator, $value);
+                    } elseif ($column === 'WhereRaw') {
+                        continue; // Blocked: security risk (SQL injection)
+                    } elseif ($column !== 'store_id') {
+                        $query->where($column, $cond);
+                    }
+                }
+            }
+
+            $clauses = data_get($cdParam, 'clauses');
+            if ($clauses) {
+                $orderBy = data_get($clauses, 'orderby');
+                if ($orderBy && isset($orderBy['column'])) {
+                    $query->orderBy($orderBy['column'], $orderBy['value'] ?? 'asc');
+                }
+            }
+        }
+
+        return $query->get()->toArray();
+    }
+
+    public function getCashDrawer(Request $request)
+    {
+        try {
+            $storeId = $this->storeId($request);
+            $today = now()->format('Y-m-d');
+            $cashDrawer = \App\Models\CashDrawer::where('store_id', $storeId)
+                ->where('status', 'open')
+                ->whereRaw("started_at LIKE '%{$today}%'")
+                ->orderBy('started_at', 'desc')
+                ->first();
+
+            if ($cashDrawer) {
+                return response()->json(['status' => true, 'cashDrawer' => $cashDrawer->toArray()], 200);
+            }
+
+            // Fallback: find last closed drawer today
+            $closedDrawer = \App\Models\CashDrawer::where('store_id', $storeId)
+                ->where('status', 'closed')
+                ->where('end_user_id', $request->input('user_id', 0))
+                ->whereRaw("ended_at LIKE '%{$today}%'")
+                ->orderBy('ended_at', 'desc')
+                ->first();
+
+            if ($closedDrawer) {
+                return response()->json(['status' => true, 'cashDrawer' => $closedDrawer->toArray()], 200);
+            }
+
+            return response()->json(['status' => false, 'cashDrawer' => null], 200);
+        } catch (\Throwable $th) {
+            \Log::error('Edge getCashDrawer failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'cashDrawer' => null], 500);
+        }
+    }
+
+    public function createCustomer(Request $request)
+    {
+        try {
+            $storeId = $this->storeId($request);
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'name' => ['required'],
+                'phone' => ['required'],
+            ]);
+            if ($validator->fails()) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => $validator->errors()], 400);
+            }
+            $customer = \App\Models\Customer::create([
+                'store_id' => $storeId,
+                'name' => $request->input('name'),
+                'phone' => $request->input('phone'),
+                'address' => $request->input('address', ''),
+                'email' => $request->input('email', ''),
+                'birthday' => $request->input('birthday'),
+                'note' => $request->input('note', ''),
+                'admin_id' => $request->input('admin_id', 0),
+            ]);
+            return response()->json([
+                'status' => true,
+                'message' => __('api.customer_created'),
+                'data' => [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'phone' => $customer->phone,
+                ],
+                'customer' => $customer,
+            ], 200);
+        } catch (\Throwable $th) {
+            \Log::error('Edge createCustomer failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => __('api.ISError')], 500);
+        }
     }
 
     public function apiEdgeFilterByCondition(Request $request)
