@@ -239,23 +239,32 @@ class SplitMergeInvoiceController extends Controller
         $total_tax = $totals['total_tax'];
         $total_value = $totals['total_value'];
 
+        // Proportional discount inheritance (same as cloud)
+        $typeDiscount = $filters['type_discount'] ?? ($originalInvoice->type_discount ?? 'amount');
         $discountAmount = (float) ($filters['discount'] ?? 0);
+        if ($typeDiscount === 'percent') {
+            $discountAmount = (float) ($filters['discount_percent'] ?? ($originalInvoice->discount_percent ?? 0));
+        } else {
+            $origItems = json_decode($originalInvoice->items, true)['item'] ?? [];
+            $origTotal = 0; $splitTotal = 0;
+            foreach ($origItems as $k => $v) { $origTotal += $v['price'] * $v['quantity']; }
+            foreach ($filters['split_merge_item'] as $k => $v) { $splitTotal += $v['price'] * $v['quantity']; }
+            if ($origTotal > 0) {
+                $discountAmount = round(($originalInvoice->discount ?? 0) * $splitTotal / $origTotal);
+            }
+        }
         $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
         $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false);
         $scBaseTotal = $total_value - $total_tax;
-        // Recalculate senior discount based on split items subtotal, not original invoice
         $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
 
         $isSeniorActive = $isSenior && $seniorAmount > 0;
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
 
-        // Recalculate discount on afterSenior for percent (RA 9994)
-        $typeDiscount = $filters['type_discount'] ?? 'amount';
         if ($isSeniorActive && $typeDiscount === 'percent') {
-            $discPct = (float) ($filters['discount_percent'] ?? 0);
-            $discountAmount = round($afterSenior * $discPct / 100);
+            $discountAmount = round($afterSenior * $discountAmount / 100);
         }
 
         $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
@@ -455,7 +464,20 @@ class SplitMergeInvoiceController extends Controller
         $total_value = $totals['total_value'];
         $itemOriginalInvoice['total_tax'] = $total_tax;
 
+        // Proportional discount: re-allocate discount to remaining items (same as cloud)
+        $typeDiscount = $original_invoice->type_discount ?? 'amount';
         $discountAmount = (float) ($original_invoice->discount ?? 0);
+        if ($typeDiscount === 'percent') {
+            $discountAmount = round($discountAmount); // keep original, recalculated below if SD
+        } else {
+            $origItems = json_decode($original_invoice->items, true)['item'] ?? [];
+            $origTotal = 0; $remainTotal = 0;
+            foreach ($origItems as $k => $v) { $origTotal += $v['price'] * $v['quantity']; }
+            foreach ($itemOriginalInvoice['item'] as $k => $v) { $remainTotal += $v['price'] * $v['quantity']; }
+            if ($origTotal > 0) {
+                $discountAmount = round(($original_invoice->discount ?? 0) * $remainTotal / $origTotal);
+            }
+        }
         $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
         $serviceChargePercent = (float) ($original_invoice->service_charge ?? 0);
         $scBaseTotal = $total_value - $total_tax;
@@ -466,7 +488,6 @@ class SplitMergeInvoiceController extends Controller
         $afterSenior = $scBaseTotal - $seniorDeduction;
 
         // Recalculate discount on afterSenior for percent (RA 9994)
-        $typeDiscount = $original_invoice->type_discount ?? 'amount';
         if ($isSeniorActive && $typeDiscount === 'percent') {
             $discPct = (float) ($original_invoice->discount_percent ?? 0);
             $discountAmount = round($afterSenior * $discPct / 100);
@@ -517,22 +538,23 @@ class SplitMergeInvoiceController extends Controller
         $total_tax = $totals['total_tax'];
         $total_value = $totals['total_value'];
 
+        $typeDiscount = $filters['type_discount'] ?? ($originalInvoice ? ($originalInvoice->type_discount ?? 'amount') : 'amount');
         $discountAmount = (float) ($filters['discount'] ?? 0);
+        if ($typeDiscount === 'percent') {
+            $discountAmount = (float) ($filters['discount_percent'] ?? ($originalInvoice ? ($originalInvoice->discount_percent ?? 0) : 0));
+        }
         $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
-        $typeDiscount = $filters['type_discount'] ?? 'amount';
         $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false);
         $scBaseTotal = $total_value - $total_tax;
         $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
 
         $isSeniorActive = $isSenior && $seniorAmount > 0;
 
-        // Recalculate discount on afterSenior for percent discount (RA 9994)
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
         if ($isSeniorActive && $typeDiscount === 'percent') {
-            $discPct = (float) ($filters['discount_percent'] ?? 0);
-            $discountAmount = round($afterSenior * $discPct / 100);
+            $discountAmount = round($afterSenior * $discountAmount / 100);
         }
 
         $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
