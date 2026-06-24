@@ -277,10 +277,12 @@
                     $totalTax = $payment['total_tax'] ?? 0;
                     $valueTotal = $payment['valuetotal'] ?? 0;
                     $amount_received = $payment['amount_received'] ?? 0;
-                    $subTotal = 0;
-                    foreach ($payment['payment_details'] as $item) {
-                        $itemVat = ($item['products']['vat'] ?? 0) / 100;
-                        $subTotal += $is_tax_included == 1 ? $item['total_price'] : round($item['total_price'] / (1 + $itemVat));
+                    $subTotal = $is_tax_included == 1 ? $payment['total_incl_vat_before_discount'] : $payment['sub_total_before_discount'];
+                    if ($subTotal == 0) {
+                        foreach ($payment['payment_details'] as $item) {
+                            $itemVat = ($item['products']['vat'] ?? 0) / 100;
+                            $subTotal += $is_tax_included == 1 ? round($item['total_price'] / (1 + $itemVat)) : $item['total_price'];
+                        }
                     }
                     if($discount > 0 || $seniorDiscount > 0){
                         $subTotalAfterDiscount = $subTotal - $discount - $seniorDiscount;
@@ -291,9 +293,9 @@
                     @php
                         $productExtra = [];
                         $itemVat = $item['products']['vat']/100;
-                        $totalItemPrice = $is_tax_included == 1 ? $item['total_price'] : round($item['total_price']/(1+$itemVat));
+                        $totalItemPrice = $is_tax_included == 1 ? round($item['total_price']/(1+$itemVat)) : $item['total_price'];
                         $itemQuantity = $item['quantity'];
-                        $itemPrice = $item['total_price'] / $itemQuantity;
+                        $itemPrice = $itemQuantity > 0 ? $totalItemPrice / $itemQuantity : 0;
                         if(!empty($item['product_extra'])){
                             $productExtra = json_decode($item['product_extra'], true);
                         }
