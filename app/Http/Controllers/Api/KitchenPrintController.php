@@ -22,29 +22,103 @@ class KitchenPrintController extends Controller
 
         $payload = $this->tablePrintPayload($table);
 
-        // Include browser HTML for master kitchen print (matching cloud behavior)
         $storeId = $table->store_id;
         $store = $storeId ? Store::find($storeId) : null;
-        $paperSize = 80;
+        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
         $settingPrintKitchen = $store ? $store->setting_print_kitchen : null;
         if ($settingPrintKitchen && is_string($settingPrintKitchen)) {
             $settingPrintKitchen = json_decode($settingPrintKitchen, true);
         }
 
+        // ── 1. Group all items by printer ──────────
+        $products = $payload['products'] ?? [];
+        $arrPrint = [];
+        foreach ($products as $item) {
+            $printId = $item['print_id'] ?? 'default';
+            $arrPrint[$printId][] = $item;
+        }
+
+        $printers = Printer::where('store_id', $storeId)->get();
+        $printerHost = $store ? $store->printer_host : '';
+
+        // ── 2. Build real[] PDF base64 per printer ───────────────────────────
+        $real = [];
+        $browserView = [];
+
+        foreach ($arrPrint as $key => $itemPrint) {
+            if ($key === 'default' || $key == 0) {
+                $defaultPrinter = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
+            } else {
+                $defaultPrinter = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
+            }
+
+            $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
+            $tplName = 'kitchen.cook_template_print_' . $paperSize;
+            if (!view()->exists($tplName)) {
+                $tplName = 'kitchen.cook_template_print_80';
+            }
+
+            $paymentGroup = [
+                'user' => [
+                    'name' => ($table->payment && $table->payment->user) ? $table->payment->user->name : '',
+                ],
+                'tablename'    => $table->tablename ?? $table->name ?? '',
+                'payment_code' => $table->payment
+                    ? ($table->payment->payment_code ?: 'EDGE-' . $table->payment->id)
+                    : 'EDGE-TEMP',
+                'products'     => $itemPrint,
+            ];
+
+            // Generate PDF → base64
+            $pdfContent = $this->generateKitchenPDF($paymentGroup, $storeId, $tplName, $paperSize);
+            $base64Pdf  = base64_encode($pdfContent);
+
+            $real[$key] = [
+                'status'      => true,
+                'message'     => 'print_success',
+                'status_code' => 200,
+                'data'        => [
+                    'ip_address'   => $defaultPrinter ? $defaultPrinter->ip_address : '',
+                    'printer_url'  => $printerHost,
+                    'data'         => $base64Pdf,         
+                    'printer_type' => $defaultPrinter ? $defaultPrinter->printer_type : 'kitchen',
+                    'paper_size'   => $paperSize,
+                ],
+            ];
+
+            
+            $groupPayload = $this->tablePrintPayload($table, $itemPrint);
+            $browserView[$key] = view($tplName, [
+                'data'                  => $groupPayload,
+                'payment'               => $groupPayload['payment'] ?? [],
+                'setting_print_kitchen' => $settingPrintKitchen,
+                'bill_setting'          => [],
+                'timeZone'              => $timeZone,
+            ])->render();
+        }
+
+        
+        $defaultTpl = 'kitchen.cook_template_print_all_80';
         $payload['browser'] = [
             'view' => [
-                'default' => view('kitchen.cook_template_print_all_80', [
-                    'payment' => $payload['payment'] ?? $payload,
+                'default' => view($defaultTpl, [
+                    'payment'               => $payload['payment'] ?? $payload,
                     'setting_print_kitchen' => $settingPrintKitchen,
-                    'data' => $payload,
-                    'bill_setting' => [],
-                    'timeZone' => $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone'),
-                ])->render()
-            ]
+                    'data'                  => $payload,
+                    'bill_setting'          => [],
+                    'timeZone'              => $timeZone,
+                ])->render(),
+                ...$browserView,         
+            ],
         ];
+
+        
+        $payload['real'] = $real;
+        $payload['setting_print_kitchen'] = $settingPrintKitchen;
 
         return $this->success($payload);
     }
+    
 
     public function printNextWeb(Request $request)
     {
