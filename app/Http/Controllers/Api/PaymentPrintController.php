@@ -207,7 +207,10 @@ class PaymentPrintController extends Controller
 
         // Use paymentPayload() for 100% consistent format with cloud API
         $paymentData = $this->paymentPayload($payment);
-        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
+        $timeZone = $store ? $store->time_zone : null;
+        if (!$timeZone || $timeZone === 'UTC') {
+            $timeZone = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+        }
         $paymentData['created_at'] = \Carbon\Carbon::parse($payment->created_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
         $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->updated_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
