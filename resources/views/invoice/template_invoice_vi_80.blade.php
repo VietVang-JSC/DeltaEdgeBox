@@ -277,29 +277,21 @@
                     $totalTax = $payment['total_tax'] ?? 0;
                     $valueTotal = $payment['valuetotal'] ?? 0;
                     $amount_received = $payment['amount_received'] ?? 0;
-                    $subTotal = $is_tax_included == 1 ? $payment['total_incl_vat_before_discount'] : $payment['sub_total_before_discount'];
-                    if ($subTotal == 0) {
-                        foreach ($payment['payment_details'] as $item) {
-                            $itemVat = ($item['products']['vat'] ?? 0) / 100;
-                            $subTotal += $is_tax_included == 1 ? round($item['total_price'] / (1 + $itemVat)) : $item['total_price'];
-                        }
-                    }
-                    if($discount > 0 || $seniorDiscount > 0){
-                        $subTotalAfterDiscount = $subTotal - $discount - $seniorDiscount;
-                    }
+                    $subTotal = 0;
                 @endphp
                 @foreach ($payment['payment_details'] as $item)
 
                     @php
                         $productExtra = [];
                         $itemVat = $item['products']['vat']/100;
-                        $totalItemPrice = ($is_tax_included == 1 && ($seniorDiscount ?? 0) > 0) ? round($item['total_price']/(1+$itemVat)) : $item['total_price'];
+                        $totalItemPrice = $is_tax_included == 1 ? $item['total_price'] : round($item['total_price']/(1+$itemVat));
                         $itemQuantity = $item['quantity'];
                         $itemPrice = $itemQuantity > 0 ? $totalItemPrice / $itemQuantity : 0;
                         if(!empty($item['product_extra'])){
                             $productExtra = json_decode($item['product_extra'], true);
                         }
                         $productTile = $item['products']['title'] ?? '';
+                        $subTotal += $totalItemPrice;
                     @endphp
 
                     <tr class="align-top">
@@ -316,6 +308,9 @@
                     <td class="txt-right">{{number_format($totalItemPrice)}}</td>
                     </tr>
                 @endforeach
+                @php
+                    $subTotalAfterDiscount = max(0, $subTotal - ($seniorDiscount ?? 0) - ($discount ?? 0));
+                @endphp
             @endif
             
             </tbody>

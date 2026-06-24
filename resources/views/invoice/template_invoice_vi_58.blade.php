@@ -281,7 +281,7 @@
                         $itemVat = $item['products']['vat']/100;
                         $totalItemPrice = $is_tax_included == 1 ? $item['total_price'] : round($item['total_price']/(1+$itemVat));
                         $itemQuantity = $item['quantity'];
-                        $itemPrice = $item['total_price'] / $itemQuantity;
+                        $itemPrice = $itemQuantity > 0 ? $totalItemPrice / $itemQuantity : 0;
                         if(!empty($item['product_extra'])){
                             $productExtra = json_decode($item['product_extra'], true);
                         }
