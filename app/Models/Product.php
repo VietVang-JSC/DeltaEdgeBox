@@ -112,7 +112,9 @@ class Product extends Model
     }
     public function combo_products()
     {
-        return $this->hasMany(ComboProduct::class, 'product_id', 'id');
+        return $this->hasMany(ComboProduct::class, 'combo_product_id', 'id')
+            ->select('id', 'combo_product_id', 'is_required', 'product_id', 'quantity', 'admin_id')
+            ->with('product');
     }
 
     public function print()
