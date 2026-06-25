@@ -283,8 +283,8 @@ class SplitMergeInvoiceController extends Controller
             "customer_id" => $filters['customer_id'] ?? null,
             "items" => $items,
             "discount" => $discountAmount,
-            "type_discount" => $filters['type_discount'] ?? 'amount',
-            "discount_percent" => $filters['discount_percent'] ?? null,
+            "type_discount" => $typeDiscount,
+            "discount_percent" => $typeDiscount === 'percent' ? $discountAmount : null,
             "surcharge" => $surchargeAmount,
             "payment_method" => $filters['payment_method'] ?? 'cash',
             "status" => 1, // Paid
@@ -575,7 +575,7 @@ class SplitMergeInvoiceController extends Controller
             "items" => $items,
             "discount" => $discountAmount,
             "type_discount" => $typeDiscount,
-            "discount_percent" => $filters['discount_percent'] ?? null,
+            "discount_percent" => $typeDiscount === 'percent' ? $discountAmount : null,
             "surcharge" => $surchargeAmount,
             "payment_method" => $filters['payment_method'] ?? 'cash',
             "status" => 0, // Pending/Unpaid
