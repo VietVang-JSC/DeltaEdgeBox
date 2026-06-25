@@ -53,9 +53,9 @@ class KitchenPrintController extends Controller
             }
 
             $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
-            $tplName = 'kitchen.cook_template_print_' . $paperSize;
+            $tplName = 'kitchen.cook_template_print_all_' . $paperSize;
             if (!view()->exists($tplName)) {
-                $tplName = 'kitchen.cook_template_print_80';
+                $tplName = 'kitchen.cook_template_print_all_80';
             }
 
             $paymentGroup = [
