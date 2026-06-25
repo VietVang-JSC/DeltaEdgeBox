@@ -402,16 +402,17 @@ class KitchenPrintController extends Controller
             return $this->error('Table not found', 404);
         }
 
-        $decoded = json_decode($table->listitem, true) ?: [];
-        $items = $decoded['item'] ?? $decoded ?? [];
         $notPrintedIds = [];
 
-        foreach ($items as $key => $item) {
-            $isPrinted = isset($item['print_status']) && $item['print_status'];
-            if (!$isPrinted) {
+        if ($table->payment) {
+            $details = $table->payment->details()
+                ->whereColumn('printed_quantity', '<', 'quantity')
+                ->whereNull('deleted_at')
+                ->get();
+            foreach ($details as $detail) {
                 $notPrintedIds[] = [
-                    'product_id' => $item['id'] ?? $item['product_id'] ?? null,
-                    'product_key' => $key,
+                    'product_id' => $detail->product_id,
+                    'product_key' => $detail->product_key,
                 ];
             }
         }
