@@ -295,6 +295,7 @@ class SplitMergeInvoiceController extends Controller
             "payment_code" => $paymentCode,
             "store_id" => $filters['store_id'],
             "table_id" => $originalInvoice->table_id,
+            "parent_id" => $originalInvoice->id,
             "valuetotal" => $valuetotal,
             "total_tax" => $total_tax,
             "is_senior_discount" => $isSenior,
@@ -396,15 +397,22 @@ class SplitMergeInvoiceController extends Controller
                         'message' => "Không tìm thấy sản phẩm '" . $split_merge_item[$key]['title'] . "' trong hóa đơn. Key tìm kiếm: '$key'. Các keys hiện có trong hóa đơn gốc: " . json_encode($origKeys) . ", các keys trong split_merge_item: " . json_encode($splitKeys)
                     ];
                 }
-                $quantity = $original_invoice[$key]['quantity'] - $split_merge_item[$key]['quantity'];
-                if ($quantity <= 0) {
+                $quantityRemain = $original_invoice[$key]['quantity'] - $split_merge_item[$key]['quantity'];
+                $splitQuantity = $split_merge_item[$key]['quantity'] ?? 0;
+                $originalPrinted = $original_invoice[$key]['printed_quantity'] ?? 0;
+
+                // Proportion printed_quantity (same as cloud)
+                $split_merge_item[$key]['printed_quantity'] = max(0, $originalPrinted - max(0, $quantityRemain));
+                $original_invoice[$key]['printed_quantity'] = $originalPrinted - $split_merge_item[$key]['printed_quantity'];
+
+                if ($quantityRemain <= 0) {
                     unset($original_invoice[$key]);
                 } else {
-                    $original_invoice[$key]['quantity'] = $quantity;
+                    $original_invoice[$key]['quantity'] = $quantityRemain;
                     $TotalPrice = $is_tax_included ? intval($original_invoice[$key]['quantity']) * floatval($original_invoice[$key]['price']) : $this->calculateTotalAfterTax($original_invoice[$key])['total'];
                     $original_invoice[$key]['TotalPrice'] = $TotalPrice;
                 }
-                $TotalPrice = $is_tax_included ? intval($split_merge_item[$key]['quantity']) * floatval($split_merge_item[$key]['price']) : $this->calculateTotalAfterTax($split_merge_item[$key])['total'];
+                $TotalPrice = $is_tax_included ? intval($splitQuantity) * floatval($split_merge_item[$key]['price']) : $this->calculateTotalAfterTax($split_merge_item[$key])['total'];
                 $split_merge_item[$key]['TotalPrice'] = $TotalPrice;
             }
             return ['status' => true];
@@ -603,6 +611,7 @@ class SplitMergeInvoiceController extends Controller
         $amountReceived = isset($data['amount_received']) ? round((float) $data['amount_received']) : null;
           $payment = Payment::create([
               'payment_code' => $data['payment_code'],
+              'parent_id' => $data['parent_id'] ?? null,
               'store_id' => $data['store_id'],
               'table_id' => $data['table_id'],
               'customer_id' => $data['customer_id'],
