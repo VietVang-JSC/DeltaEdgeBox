@@ -677,19 +677,21 @@ class SplitMergeInvoiceController extends Controller
         ]);
 
         $productList = json_decode($data['items'], true);
-        $listPaymentDetail = PaymentDetail::where("payment_id", $data['id'])->pluck('product_id')->toArray();
+        $listPaymentDetail = PaymentDetail::where("payment_id", $data['id'])->pluck('product_key')->toArray();
 
         foreach ($productList['item'] as $key => $value) {
-            $position = array_search((int)$value['id'], $listPaymentDetail);
+            $position = array_search((string)$key, $listPaymentDetail);
             if ($position !== false) {
                 unset($listPaymentDetail[$position]);
             }
             PaymentDetail::updateOrCreate(
                 [
                     'payment_id' => $data['id'],
-                    'product_id' => $value['id'],
+                    'product_key' => $key,
                 ],
                 [
+                    'product_id' => $value['id'],
+                    'product_key' => $key,
                     'quantity' => $value['quantity'],
                     'price' => $value['price'],
                     'total' => $value['TotalPrice'] ?? ($value['total'] ?? ($value['price'] * $value['quantity'])),
@@ -700,7 +702,7 @@ class SplitMergeInvoiceController extends Controller
             );
         }
         if (!empty($listPaymentDetail)) {
-            PaymentDetail::where('payment_id', $data['id'])->whereIn('product_id', array_values($listPaymentDetail))->delete();
+            PaymentDetail::where('payment_id', $data['id'])->whereIn('product_key', array_values($listPaymentDetail))->delete();
         }
         return $payment;
     }
