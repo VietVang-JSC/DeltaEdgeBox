@@ -148,18 +148,6 @@ class PaymentController extends Controller
             return $this->createPayment($request);
         }
 
-        $validator = Validator::make($request->all(), [
-            'items' => ['required'],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => false,
-                'status_code' => 400,
-                'message' => $validator->errors(),
-            ], 400);
-        }
-
         try {
             $payment = DB::transaction(function () use ($request) {
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
@@ -178,70 +166,89 @@ class PaymentController extends Controller
                 }
 
                 $oldStatus = (int) $payment->status;
-                // Only allow status=1 (paid) if it's a real payment (has payment_method or amount_received)
                 $requestedStatus = (int) $request->input('status', $oldStatus);
                 if ($requestedStatus === self::STATUS_PAYMENT_ACTIVE && $payment->table_id === null && !$request->has('table_id') && !$request->has('payment_method') && $request->input('amount_received', 0) == 0) {
-                    $status = $oldStatus; // Temp invoice — preserve existing status
+                    $status = $oldStatus;
                 } else {
                     $status = $requestedStatus;
                 }
                 $userId = (int) $request->input('user_id', $payment->user_id ?: 1);
                 $paymentTime = $this->storeNow($storeId);
-                $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
 
-                // Preserve table_id if payment was associated with a table and request doesn't explicitly change it
-                $tableId = $request->input('table_id');
-                if ($tableId === null && $payment->table_id !== null) {
-                    $tableId = $payment->table_id; // Keep existing table association
+                $updates = [];
+
+                // Common fields: always update status, payment_method, amount_received if present
+                $updates['status'] = $status;
+                $updates['updated_at'] = $paymentTime;
+                if ($status === self::STATUS_PAYMENT_ACTIVE && $request->has('payment_method')) {
+                    $updates['payment_method'] = (int) $request->input('payment_method');
+                }
+                if ($request->input('amount_received') !== null && $request->input('amount_received') !== '') {
+                    $updates['amount_received'] = round((float) $request->input('amount_received'));
+                }
+                if ($status === self::STATUS_PAYMENT_ACTIVE) {
+                    $updates['paid_date'] = $paymentTime;
+                }
+                if ($request->has('final_total') || $request->has('valuetotal')) {
+                    $updates['final_total'] = (float) ($request->input('final_total', $request->input('valuetotal')));
+                    $updates['total'] = $updates['final_total'];
                 }
 
-                $payment->fill([
-                    'table_id' => $tableId,
-                    'customer_id' => $request->input('customer_id', $payment->customer_id),
-                    'items' => $calculation['items_payload'],
-                    'paid_date' => $status === self::STATUS_PAYMENT_ACTIVE ? $paymentTime : $payment->paid_date,
-                    'total' => $calculation['total'],
-                    'discount' => $calculation['discount'],
-                    'surcharge' => $calculation['surcharge'],
-                    'surcharge_reason' => $calculation['surcharge_reason'],
-                    'surcharge_percent' => $calculation['surcharge_percent'],
-                    'service_charge' => $calculation['service_charge'],
-                    'service_charge_amount' => $calculation['service_charge_amount'],
-                    'tax' => $calculation['tax'],
-                    'final_total' => $calculation['final_total'],
-                    'amount_received' => $request->input('amount_received') !== null && $request->input('amount_received') !== ''
-                        ? round((float) $request->input('amount_received'))
-                        : $payment->amount_received,
-                    'payment_method' => (int) ($request->input('payment_method', $payment->payment_method ?: 1)),
-                    'note' => $request->input('reason'),
-                    'reason' => $request->input('reason'),
-                    'status' => $status,
-                    'user_id' => $userId,
-                    'admin_id' => $request->input('admin_id', $payment->admin_id ?: $userId),
-                    'type_discount' => $calculation['type_discount'],
-                    'discount_percent' => $calculation['discount_percent'],
-                    'is_senior_discount' => $calculation['is_senior_discount'],
-                    'senior_discount_amount' => $calculation['senior_discount_amount'],
-                    'sub_total_before_discount' => $calculation['sub_total_before_discount'],
-                    'total_incl_vat_before_discount' => $calculation['total_incl_vat_before_discount'],
-                    'updated_at' => $paymentTime,
-                ]);
+                // If items provided, do full recalculation
+                $itemsInput = $request->input('items');
+                if (!empty($itemsInput)) {
+                    $calculation = $this->buildCalculatedPaymentData($itemsInput, $storeId, $request->all());
+                    $tableId = $request->input('table_id');
+                    if ($tableId === null && $payment->table_id !== null) {
+                        $tableId = $payment->table_id;
+                    }
+                    $updates['table_id'] = $tableId;
+                    $updates['customer_id'] = $request->input('customer_id', $payment->customer_id);
+                    $updates['items'] = $calculation['items_payload'];
+                    $updates['total'] = $calculation['total'];
+                    $updates['discount'] = $calculation['discount'];
+                    $updates['surcharge'] = $calculation['surcharge'];
+                    $updates['surcharge_reason'] = $calculation['surcharge_reason'];
+                    $updates['surcharge_percent'] = $calculation['surcharge_percent'];
+                    $updates['service_charge'] = $calculation['service_charge'];
+                    $updates['service_charge_amount'] = $calculation['service_charge_amount'];
+                    $updates['tax'] = $calculation['tax'];
+                    $updates['final_total'] = $calculation['final_total'];
+                    $updates['type_discount'] = $calculation['type_discount'];
+                    $updates['discount_percent'] = $calculation['discount_percent'];
+                    $updates['is_senior_discount'] = $calculation['is_senior_discount'];
+                    $updates['senior_discount_amount'] = $calculation['senior_discount_amount'];
+                    $updates['sub_total_before_discount'] = $calculation['sub_total_before_discount'];
+                    $updates['total_incl_vat_before_discount'] = $calculation['total_incl_vat_before_discount'];
+                    if ($request->has('payment_method')) {
+                        $updates['payment_method'] = (int) $request->input('payment_method');
+                    }
+                }
+
+                $updates['note'] = $request->input('reason', $payment->note);
+                $updates['reason'] = $request->input('reason', $payment->reason);
+                $updates['user_id'] = $userId;
+                $updates['admin_id'] = $request->input('admin_id', $payment->admin_id ?: $userId);
+
+                $payment->fill($updates);
                 $payment->save();
 
-                $payment->details()->delete();
-                foreach ($calculation['items'] as $item) {
-                    PaymentDetail::create($this->buildPaymentDetailAttributes(
-                        $payment,
-                        $item,
-                        $storeId,
-                        (int) $request->input('admin_id', $payment->admin_id ?: $userId),
-                        $paymentTime
-                    ));
-                }
+                if (!empty($itemsInput) && isset($calculation)) {
+                    $payment->details()->delete();
+                    foreach ($calculation['items'] as $item) {
+                        PaymentDetail::create($this->buildPaymentDetailAttributes(
+                            $payment,
+                            $item,
+                            $storeId,
+                            (int) $request->input('admin_id', $payment->admin_id ?: $userId),
+                            $paymentTime
+                        ));
+                    }
 
-                if ($oldStatus !== self::STATUS_PAYMENT_ACTIVE && $status === self::STATUS_PAYMENT_ACTIVE) {
-                    $this->deductInventoryForPayment($payment, array_values($calculation['items']), $storeId, $userId);
-                    $this->clearTableAfterPayment($payment->table_id, $storeId);
+                    if ($oldStatus !== self::STATUS_PAYMENT_ACTIVE && $status === self::STATUS_PAYMENT_ACTIVE) {
+                        $this->deductInventoryForPayment($payment, array_values($calculation['items']), $storeId, $userId);
+                        $this->clearTableAfterPayment($payment->table_id, $storeId);
+                    }
                 }
 
                 return $payment->load('details');
