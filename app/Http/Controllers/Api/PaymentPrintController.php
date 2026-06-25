@@ -58,8 +58,8 @@ class PaymentPrintController extends Controller
         // Use paymentPayload() for 100% consistent format with cloud API
         $paymentData = $this->paymentPayload($payment);
         $sourceTz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
-        $paymentData['created_at'] = $payment->created_at->timezone($sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
-        $paymentData['updated_at'] = $payment->updated_at->timezone($sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->getRawOriginal('created_at'), $sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->getRawOriginal('updated_at'), $sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
         // Generate QR image if needed (use blank for now)
         $qrImagePath = '';
@@ -213,8 +213,8 @@ class PaymentPrintController extends Controller
             $timeZone = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
         }
         $sourceTz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
-        $paymentData['created_at'] = $payment->created_at->timezone($sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
-        $paymentData['updated_at'] = $payment->updated_at->timezone($sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->getRawOriginal('created_at'), $sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->getRawOriginal('updated_at'), $sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
         $qrImagePath = '';
 
