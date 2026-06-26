@@ -358,6 +358,15 @@ class PosWebFilterController extends Controller
         $payload['original_tax'] = $payload['vat'] < 0 ? $payload['vat'] : null;
         $payload['product_extra_list'] = $payload['product_extra_list'] ?? [];
         $payload['product_extras'] = $payload['product_extras'] ?? $payload['product_extra_list'];
+        foreach ($payload['product_extras'] as &$extra) {
+            if (isset($extra['product']) && is_array($extra['product'])) {
+                $extra['product']['product_code'] = $extra['product']['code'] ?? ($extra['product']['product_code'] ?? '');
+                $extra['product']['title'] = $extra['product']['title'] ?? ($extra['product']['name'] ?? '');
+                $extra['product']['price_after_tax'] = $extra['product']['price_after_tax'] ?? ($extra['product']['price'] ?? 0);
+                $extra['product']['inventory_required'] = (int) ($extra['product']['inventory_required'] ?? 0);
+            }
+        }
+        unset($extra);
         $payload['combo_products'] = $payload['combo_products'] ?? [];
         $payload['optional_products'] = $payload['optional_products'] ?? [];
         $payload['number_of_options'] = $payload['number_of_options'] ?? 0;
