@@ -53,12 +53,13 @@ class PaymentPrintController extends Controller
         $store = $payment->store;
         $language = $request->input('language', 'vi');
         app()->setLocale($language);
-        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
+        $timeZone = $store ? ($store->time_zone ?? config('edge_box.timezone', 'Asia/Ho_Chi_Minh')) : config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
 
         // Use paymentPayload() for 100% consistent format with cloud API
         $paymentData = $this->paymentPayload($payment);
-        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->created_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
-        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->updated_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $sourceTz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->getRawOriginal('created_at'), $sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->getRawOriginal('updated_at'), $sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
         // Generate QR image if needed (use blank for now)
         $qrImagePath = '';
@@ -211,8 +212,9 @@ class PaymentPrintController extends Controller
         if (!$timeZone || $timeZone === 'UTC') {
             $timeZone = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
         }
-        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->created_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
-        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->updated_at)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $sourceTz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+        $paymentData['created_at'] = \Carbon\Carbon::parse($payment->getRawOriginal('created_at'), $sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        $paymentData['updated_at'] = \Carbon\Carbon::parse($payment->getRawOriginal('updated_at'), $sourceTz)->setTimezone($timeZone)->format('d-m-Y H:i:s');
 
         $qrImagePath = '';
 

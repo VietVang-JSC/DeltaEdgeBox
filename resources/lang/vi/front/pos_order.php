@@ -264,7 +264,7 @@ return [
     ],
     
     'kitchen_order_ticket' => [
-        'PHIẾU GỌI MÓN' => 'PHIẾU GỌI MÓN',
+        'PHIẾU GỌI MÓN' => 'PHIẾU GỌI MÓN(Từng phần)',
         'PHIẾU GỌI MÓN TỔNG' => 'PHIẾU GỌI MÓN(Tất cả)',
         'Ngày' => 'Ngày',
         'Nhân viên' => 'Nhân viên',

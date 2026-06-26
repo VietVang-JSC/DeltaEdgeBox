@@ -1451,8 +1451,9 @@ class PaymentController extends Controller
                 $data['total_tax'] = $data['tax'] ?? 0;
                 $data['service_charge_amount'] = $data['service_charge_amount'] ?? 0;
                 $data['payment_method'] = $paymentMethodNames[$data['payment_method']] ?? $data['payment_method'];
-                $data['created_at'] = date("Y-m-d H:i:s", strtotime($data['created_at']));
-                $data['updated_at'] = date("Y-m-d H:i:s", strtotime($data['updated_at']));
+                $tz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+                $data['created_at'] = \Carbon\Carbon::parse($data['created_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
+                $data['updated_at'] = \Carbon\Carbon::parse($data['updated_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
                 if (!empty($data['details'])) {
                     foreach ($data['details'] as &$detail) {
                         if (empty($detail['products']) && !empty($detail['product_id'])) {
