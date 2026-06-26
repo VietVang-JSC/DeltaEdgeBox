@@ -358,13 +358,33 @@ class PosWebFilterController extends Controller
         $payload['original_tax'] = $payload['vat'] < 0 ? $payload['vat'] : null;
         $payload['product_extra_list'] = $payload['product_extra_list'] ?? [];
         $payload['product_extras'] = $payload['product_extras'] ?? $payload['product_extra_list'];
+        foreach ($payload['product_extras'] as &$extra) {
+            if (isset($extra['product']) && is_array($extra['product'])) {
+                $extra['product']['product_code'] = $extra['product']['code'] ?? ($extra['product']['product_code'] ?? '');
+                $extra['product']['title'] = $extra['product']['title'] ?? ($extra['product']['name'] ?? '');
+                $extra['product']['price_after_tax'] = $extra['product']['price_after_tax'] ?? ($extra['product']['price'] ?? 0);
+                $extra['product']['inventory_required'] = (int) ($extra['product']['inventory_required'] ?? 0);
+            }
+        }
+        unset($extra);
         $payload['combo_products'] = $payload['combo_products'] ?? [];
+        foreach ($payload['combo_products'] as &$cp) {
+            if (isset($cp['product']) && is_array($cp['product'])) {
+                $cp['product']['product_code'] = $cp['product']['code'] ?? ($cp['product']['product_code'] ?? '');
+                $cp['product']['title'] = $cp['product']['title'] ?? ($cp['product']['name'] ?? '');
+            }
+        }
+        unset($cp);
         $payload['optional_products'] = $payload['optional_products'] ?? [];
         $payload['number_of_options'] = $payload['number_of_options'] ?? 0;
         if (isset($payload['types']) && is_array($payload['types'])) {
             $payload['types']['product_types'] = $payload['types']['product_types'] ?? [];
         } else {
             $payload['types'] = ['product_types' => []];
+        }
+        // Fallback: Types table may lack the record, but product_types (via product.type_id) has data
+        if (empty($payload['types']['product_types']) && !empty($payload['product_types'])) {
+            $payload['types']['product_types'] = $payload['product_types'];
         }
         $payload['time_prices'] = $payload['time_prices'] ?? [];
         $payload['product_time_prices'] = $payload['product_time_prices'] ?? $payload['time_prices'];
@@ -916,7 +936,7 @@ class PosWebFilterController extends Controller
     public function getProductList(Request $request)
     {
         $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id ?? 1;
-        $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory', 'combo_products')
+        $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory', 'combo_products', 'product_extras')
             ->where('store_id', $storeId)->where('status', 1)->where('is_show', 1)->orderBy('sort_rank')->get();
         return response()->json([
             'status' => true,

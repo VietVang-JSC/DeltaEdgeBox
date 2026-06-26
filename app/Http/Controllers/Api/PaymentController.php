@@ -329,6 +329,7 @@ class PaymentController extends Controller
         $serviceChargeAmount = (float) ($input['service_charge_amount'] ?? 0);
         $seniorDiscount = filter_var($input['is_senior_discount'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $seniorDiscountAmount = (float) ($input['senior_discount_amount'] ?? 0);
+        if (!$seniorDiscount) { $seniorDiscountAmount = 0; }
         $total = (float) ($summary['total_with_vat'] ?? 0) + $surcharge;
         $baseForCharge = $isTaxIncluded
             ? (float) ($summary['total_with_vat'] ?? 0)

@@ -17,7 +17,7 @@ class ProductExtra extends Model
 
     public $timestamps = true;
 
-    public function extraProduct()
+    public function product()
     {
         return $this->belongsTo(Product::class, 'extra_product_id', 'id');
     }
