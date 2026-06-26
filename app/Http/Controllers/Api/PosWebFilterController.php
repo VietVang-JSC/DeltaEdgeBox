@@ -916,7 +916,7 @@ class PosWebFilterController extends Controller
     public function getProductList(Request $request)
     {
         $storeId = config('edge_box.store_id') ?? \App\Models\Store::first()?->id ?? 1;
-        $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory', 'combo_products')
+        $products = \App\Models\Product::with('timePrices', 'category', 'types', 'product_types', 'inventory', 'combo_products', 'product_extras')
             ->where('store_id', $storeId)->where('status', 1)->where('is_show', 1)->orderBy('sort_rank')->get();
         return response()->json([
             'status' => true,

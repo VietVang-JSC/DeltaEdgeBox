@@ -117,6 +117,12 @@ class Product extends Model
             ->with('product');
     }
 
+    public function product_extras()
+    {
+        return $this->hasMany(ProductExtra::class, 'main_product_id', 'id')
+            ->with('extraProduct');
+    }
+
     public function print()
     {
         return $this->belongsTo(Printer::class, 'print_id', 'id');
