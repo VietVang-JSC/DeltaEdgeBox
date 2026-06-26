@@ -120,7 +120,7 @@ class Product extends Model
     public function product_extras()
     {
         return $this->hasMany(ProductExtra::class, 'main_product_id', 'id')
-            ->with('extraProduct');
+            ->with('product');
     }
 
     public function print()
