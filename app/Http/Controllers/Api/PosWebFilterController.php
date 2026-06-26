@@ -366,6 +366,10 @@ class PosWebFilterController extends Controller
         } else {
             $payload['types'] = ['product_types' => []];
         }
+        // Fallback: Types table may lack the record, but product_types (via product.type_id) has data
+        if (empty($payload['types']['product_types']) && !empty($payload['product_types'])) {
+            $payload['types']['product_types'] = $payload['product_types'];
+        }
         $payload['time_prices'] = $payload['time_prices'] ?? [];
         $payload['product_time_prices'] = $payload['product_time_prices'] ?? $payload['time_prices'];
         $payload['is_restricted_time'] = $payload['is_restricted_time'] ?? 0;
