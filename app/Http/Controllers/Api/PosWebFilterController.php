@@ -368,6 +368,13 @@ class PosWebFilterController extends Controller
         }
         unset($extra);
         $payload['combo_products'] = $payload['combo_products'] ?? [];
+        foreach ($payload['combo_products'] as &$cp) {
+            if (isset($cp['product']) && is_array($cp['product'])) {
+                $cp['product']['product_code'] = $cp['product']['code'] ?? ($cp['product']['product_code'] ?? '');
+                $cp['product']['title'] = $cp['product']['title'] ?? ($cp['product']['name'] ?? '');
+            }
+        }
+        unset($cp);
         $payload['optional_products'] = $payload['optional_products'] ?? [];
         $payload['number_of_options'] = $payload['number_of_options'] ?? 0;
         if (isset($payload['types']) && is_array($payload['types'])) {
