@@ -362,6 +362,8 @@ class PaymentController extends Controller
 
                 $totalAfterDiscount = max(0, $afterSenior - $discountTotal);
                 $taxTotal = 0;
+                foreach ($items as &$item) { $item['tax_amount'] = 0; }
+                unset($item);
                 $serviceChargeAmount = round($totalAfterDiscount * $serviceCharge / 100);
 
                 if ($surchargePercent !== null) {
