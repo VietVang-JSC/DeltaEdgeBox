@@ -640,15 +640,38 @@ class SplitMergeInvoiceController extends Controller
 
         $productList = json_decode($payment->items, true);
         foreach ($productList['item'] as $key => $value) {
+            $detailPrice = (float) ($value['price'] ?? 0);
+            $detailQty = (int) ($value['quantity'] ?? 1);
+            $detailTotal = (float) ($value['TotalPrice'] ?? ($value['total'] ?? ($detailPrice * $detailQty)));
+            $detailVat = (float) ($value['vat'] ?? 0);
+            $detailDiscountExcl = (float) ($value['detail_discount_excluding_tax'] ?? 0);
+            $detailNetExcl = (float) ($value['discounted_price_excluding_tax'] ?? 0);
+            $detailTaxAmt = (float) ($value['tax_amount'] ?? 0);
+            // Compute missing fields if not provided
+            if ($detailNetExcl == 0 && $detailVat > 0) {
+                $detailNetExcl = round($detailTotal / (1 + $detailVat / 100));
+            } elseif ($detailNetExcl == 0) {
+                $detailNetExcl = $detailTotal;
+            }
+            if ($detailTaxAmt == 0 && $detailVat > 0) {
+                $detailTaxAmt = $detailTotal - $detailNetExcl;
+            }
             PaymentDetail::create([
                 'payment_id' => $payment->id,
                 'product_id' => $value['id'],
                 'product_key' => $key,
-                'quantity' => $value['quantity'],
+                'quantity' => $detailQty,
                 'printed_quantity' => $value['printed_quantity'] ?? 0,
-                'price' => $value['price'],
-                'total' => $value['TotalPrice'] ?? ($value['total'] ?? ($value['price'] * $value['quantity'])),
+                'price' => $detailPrice,
+                'total' => $detailTotal,
                 'note' => $value['note'] ?? '',
+                'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
+                'optional_products' => !empty($value['optional_products']) ? json_encode($value['optional_products']) : null,
+                'detail_discount' => (float) ($value['detail_discount'] ?? 0),
+                'detail_discount_excluding_tax' => $detailDiscountExcl,
+                'discounted_price_excluding_tax' => $detailNetExcl,
+                'tax_amount' => $detailTaxAmt,
+                'unit_price_excluding_tax' => (float) ($value['unit_price_excluding_tax'] ?? round($detailNetExcl / $detailQty)),
                 'admin_id' => $payment->admin_id,
                 'store_id' => $payment->store_id,
             ]);
@@ -685,6 +708,21 @@ class SplitMergeInvoiceController extends Controller
             if ($position !== false) {
                 unset($listPaymentDetail[$position]);
             }
+            $detailPrice = (float) ($value['price'] ?? 0);
+            $detailQty = (int) ($value['quantity'] ?? 1);
+            $detailTotal = (float) ($value['TotalPrice'] ?? ($value['total'] ?? ($detailPrice * $detailQty)));
+            $detailVat = (float) ($value['vat'] ?? 0);
+            $detailDiscountExcl = (float) ($value['detail_discount_excluding_tax'] ?? 0);
+            $detailNetExcl = (float) ($value['discounted_price_excluding_tax'] ?? 0);
+            $detailTaxAmt = (float) ($value['tax_amount'] ?? 0);
+            if ($detailNetExcl == 0 && $detailVat > 0) {
+                $detailNetExcl = round($detailTotal / (1 + $detailVat / 100));
+            } elseif ($detailNetExcl == 0) {
+                $detailNetExcl = $detailTotal;
+            }
+            if ($detailTaxAmt == 0 && $detailVat > 0) {
+                $detailTaxAmt = $detailTotal - $detailNetExcl;
+            }
             PaymentDetail::updateOrCreate(
                 [
                     'payment_id' => $data['id'],
@@ -693,11 +731,18 @@ class SplitMergeInvoiceController extends Controller
                 [
                     'product_id' => $value['id'],
                     'product_key' => $key,
-                    'quantity' => $value['quantity'],
+                    'quantity' => $detailQty,
                     'printed_quantity' => $value['printed_quantity'] ?? 0,
-                    'price' => $value['price'],
-                    'total' => $value['TotalPrice'] ?? ($value['total'] ?? ($value['price'] * $value['quantity'])),
+                    'price' => $detailPrice,
+                    'total' => $detailTotal,
                     'note' => $value['note'] ?? '',
+                    'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
+                    'optional_products' => !empty($value['optional_products']) ? json_encode($value['optional_products']) : null,
+                    'detail_discount' => (float) ($value['detail_discount'] ?? 0),
+                    'detail_discount_excluding_tax' => $detailDiscountExcl,
+                    'discounted_price_excluding_tax' => $detailNetExcl,
+                    'tax_amount' => $detailTaxAmt,
+                    'unit_price_excluding_tax' => (float) ($value['unit_price_excluding_tax'] ?? round($detailNetExcl / $detailQty)),
                     'admin_id' => $data['admin_id'] ?? 1,
                     'store_id' => $data['store_id'],
                 ]
