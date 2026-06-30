@@ -545,6 +545,30 @@ class SplitMergeInvoiceController extends Controller
             $discountAmount = round($afterSenior * $discPct / 100);
         }
 
+        // Recalculate tax on after-discount base (matching cloud)
+        if (!$isSeniorActive && $discountAmount > 0) {
+            $newTotalTax = 0;
+            $totalBase = $isTaxInc ? $total_value : $scBaseTotal;
+            foreach ($itemOriginalInvoice['item'] as $item) {
+                $q = (int) ($item['quantity'] ?? 1);
+                $p = (float) ($item['price'] ?? 0);
+                $v = (float) ($item['vat'] ?? 0);
+                $lineBase = $q * $p;
+                $ratio = $totalBase > 0 ? $lineBase / $totalBase : 0;
+                $itemDisc = round($discountAmount * $ratio);
+                if ($isTaxInc) {
+                    $afterDiscIncl = $lineBase - $itemDisc;
+                    $vatDiv = 1 + $v / 100;
+                    $netExcl = $vatDiv > 0 ? round($afterDiscIncl / $vatDiv) : $afterDiscIncl;
+                    $newTotalTax += $afterDiscIncl - $netExcl;
+                } else {
+                    $afterDiscExcl = $lineBase - $itemDisc;
+                    $newTotalTax += round($afterDiscExcl * $v / 100);
+                }
+            }
+            $total_tax = $newTotalTax;
+        }
+
         // Charge base: SD → exVAT after senior+discount; tax-inc+noSD → incVAT after discount; tax-exc+noSD → exVAT after discount
         if ($isSeniorActive) {
             $chargeBase = max(0, $scBaseTotal - $seniorDeduction - $discountAmount);
