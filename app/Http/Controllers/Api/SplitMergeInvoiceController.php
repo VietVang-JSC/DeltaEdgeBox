@@ -241,9 +241,11 @@ class SplitMergeInvoiceController extends Controller
 
         // Proportional discount inheritance (same as cloud)
         $typeDiscount = $filters['type_discount'] ?? ($originalInvoice->type_discount ?? 'amount');
+        $discountPct = 0;
         $discountAmount = (float) ($filters['discount'] ?? 0);
         if ($typeDiscount === 'percent') {
-            $discountAmount = (float) ($filters['discount_percent'] ?? ($originalInvoice->discount_percent ?? 0));
+            $discountPct = (float) ($filters['discount_percent'] ?? ($originalInvoice->discount_percent ?? 0));
+            $discountAmount = $discountPct;
         } else {
             $origItems = json_decode($originalInvoice->items, true)['item'] ?? [];
             $origTotal = 0; $splitTotal = 0;
@@ -253,24 +255,66 @@ class SplitMergeInvoiceController extends Controller
                 $discountAmount = round(($originalInvoice->discount ?? 0) * $splitTotal / $origTotal);
             }
         }
-        $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
-        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
-        $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false);
         $scBaseTotal = $total_value - $total_tax;
         $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
-
+        $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false);
         $isSeniorActive = $isSenior && $seniorAmount > 0;
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
 
-        if ($isSeniorActive && $typeDiscount === 'percent') {
-            $discountAmount = round($afterSenior * $discountAmount / 100);
+        if ($typeDiscount === 'percent') {
+            $discountAmount = $isSeniorActive
+                ? round($afterSenior * $discountPct / 100)
+                : ($isTaxInc ? round($total_value * $discountPct / 100) : round($scBaseTotal * $discountPct / 100));
         }
 
-        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
-        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+        // Recalculate tax on after-discount base (matching cloud allocateDiscountTax*)
+        if (!$isSeniorActive && $discountAmount > 0) {
+            $newTotalTax = 0;
+            $totalBase = $isTaxInc ? $total_value : $scBaseTotal;
+            foreach ($filters['split_merge_item'] as $item) {
+                $q = (int) ($item['quantity'] ?? 1);
+                $p = (float) ($item['price'] ?? 0);
+                $v = (float) ($item['vat'] ?? 0);
+                $lineBase = $q * $p;
+                $ratio = $totalBase > 0 ? $lineBase / $totalBase : 0;
+                $itemDisc = round($discountAmount * $ratio);
+                if ($isTaxInc) {
+                    $afterDiscIncl = $lineBase - $itemDisc;
+                    $vatDiv = 1 + $v / 100;
+                    $netExcl = $vatDiv > 0 ? round($afterDiscIncl / $vatDiv) : $afterDiscIncl;
+                    $newTotalTax += $afterDiscIncl - $netExcl;
+                } else {
+                    $afterDiscExcl = $lineBase - $itemDisc;
+                    $newTotalTax += round($afterDiscExcl * $v / 100);
+                }
+            }
+            $total_tax = $newTotalTax;
+        }
 
-        $valuetotal = max(0, $afterSenior - $discountAmount + ($isSeniorActive ? 0 : $total_tax) + $surchargeAmount + $serviceChargeAmount);
+        // Charge base: SD → exVAT after senior+discount; tax-inc+noSD → incVAT after discount; tax-exc+noSD → exVAT after discount
+        if ($isSeniorActive) {
+            $chargeBase = max(0, $scBaseTotal - $seniorDeduction - $discountAmount);
+        } elseif ($isTaxInc) {
+            $chargeBase = max(0, $total_value - $discountAmount);
+        } else {
+            $chargeBase = max(0, $scBaseTotal - $discountAmount);
+        }
+        $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
+        $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
+        if ($surchargeAmount == 0 && $surchargePercent > 0) {
+            $surchargeAmount = round($chargeBase * $surchargePercent / 100);
+        }
+        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
+        $serviceChargeAmount = round($chargeBase * $serviceChargePercent / 100);
+
+        if ($isSeniorActive) {
+            $valuetotal = max(0, $afterSenior - $discountAmount + $surchargeAmount + $serviceChargeAmount);
+        } elseif ($isTaxInc) {
+            $valuetotal = max(0, $chargeBase + $surchargeAmount + $serviceChargeAmount);
+        } else {
+            $valuetotal = max(0, $chargeBase + $total_tax + $surchargeAmount + $serviceChargeAmount);
+        }
 
         if ($isSeniorActive) {
             $total_tax = 0; // VAT exempt
@@ -501,8 +545,15 @@ class SplitMergeInvoiceController extends Controller
             $discountAmount = round($afterSenior * $discPct / 100);
         }
 
-        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
-        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+        // Charge base: SD → exVAT after senior+discount; tax-inc+noSD → incVAT after discount; tax-exc+noSD → exVAT after discount
+        if ($isSeniorActive) {
+            $chargeBase = max(0, $scBaseTotal - $seniorDeduction - $discountAmount);
+        } elseif ($isTaxInc) {
+            $chargeBase = max(0, $total_value - $discountAmount);
+        } else {
+            $chargeBase = max(0, $scBaseTotal - $discountAmount);
+        }
+        $serviceChargeAmount = round($chargeBase * $serviceChargePercent / 100);
 
         if ($isSeniorActive) {
             $total_tax = 0; // VAT exempt
@@ -550,28 +601,70 @@ class SplitMergeInvoiceController extends Controller
         $total_value = $totals['total_value'];
 
         $typeDiscount = $filters['type_discount'] ?? ($originalInvoice ? ($originalInvoice->type_discount ?? 'amount') : 'amount');
+        $discountPct = 0;
         $discountAmount = (float) ($filters['discount'] ?? 0);
         if ($typeDiscount === 'percent') {
-            $discountAmount = (float) ($filters['discount_percent'] ?? ($originalInvoice ? ($originalInvoice->discount_percent ?? 0) : 0));
+            $discountPct = (float) ($filters['discount_percent'] ?? ($originalInvoice ? ($originalInvoice->discount_percent ?? 0) : 0));
+            $discountAmount = $discountPct;
         }
-        $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
-        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
-        $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false);
         $scBaseTotal = $total_value - $total_tax;
         $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
-
+        $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice ? ($originalInvoice->is_senior_discount ?? false) : false);
         $isSeniorActive = $isSenior && $seniorAmount > 0;
-
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
-        if ($isSeniorActive && $typeDiscount === 'percent') {
-            $discountAmount = round($afterSenior * $discountAmount / 100);
+        if ($typeDiscount === 'percent') {
+            $discountAmount = $isSeniorActive
+                ? round($afterSenior * $discountPct / 100)
+                : ($isTaxInc ? round($total_value * $discountPct / 100) : round($scBaseTotal * $discountPct / 100));
         }
 
-        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
-        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+        // Recalculate tax on after-discount base (matching cloud allocateDiscountTax*)
+        if (!$isSeniorActive && $discountAmount > 0) {
+            $newTotalTax = 0;
+            $totalBase = $isTaxInc ? $total_value : $scBaseTotal;
+            foreach ($filters['split_merge_item'] as $item) {
+                $q = (int) ($item['quantity'] ?? 1);
+                $p = (float) ($item['price'] ?? 0);
+                $v = (float) ($item['vat'] ?? 0);
+                $lineBase = $q * $p;
+                $ratio = $totalBase > 0 ? $lineBase / $totalBase : 0;
+                $itemDisc = round($discountAmount * $ratio);
+                if ($isTaxInc) {
+                    $afterDiscIncl = $lineBase - $itemDisc;
+                    $vatDiv = 1 + $v / 100;
+                    $netExcl = $vatDiv > 0 ? round($afterDiscIncl / $vatDiv) : $afterDiscIncl;
+                    $newTotalTax += $afterDiscIncl - $netExcl;
+                } else {
+                    $afterDiscExcl = $lineBase - $itemDisc;
+                    $newTotalTax += round($afterDiscExcl * $v / 100);
+                }
+            }
+            $total_tax = $newTotalTax;
+        }
 
-        $valuetotal = max(0, $afterSenior - $discountAmount + ($isSeniorActive ? 0 : $total_tax) + $surchargeAmount + $serviceChargeAmount);
+        if ($isSeniorActive) {
+            $chargeBase = max(0, $scBaseTotal - $seniorDeduction - $discountAmount);
+        } elseif ($isTaxInc) {
+            $chargeBase = max(0, $total_value - $discountAmount);
+        } else {
+            $chargeBase = max(0, $scBaseTotal - $discountAmount);
+        }
+        $surchargePercent = (float) ($filters['surcharge_percent'] ?? 0);
+        $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
+        if ($surchargeAmount == 0 && $surchargePercent > 0) {
+            $surchargeAmount = round($chargeBase * $surchargePercent / 100);
+        }
+        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
+        $serviceChargeAmount = round($chargeBase * $serviceChargePercent / 100);
+
+        if ($isSeniorActive) {
+            $valuetotal = max(0, $afterSenior - $discountAmount + $surchargeAmount + $serviceChargeAmount);
+        } elseif ($isTaxInc) {
+            $valuetotal = max(0, $chargeBase + $surchargeAmount + $serviceChargeAmount);
+        } else {
+            $valuetotal = max(0, $chargeBase + $total_tax + $surchargeAmount + $serviceChargeAmount);
+        }
 
         if ($isSeniorActive) {
             $total_tax = 0; // VAT exempt
@@ -640,15 +733,38 @@ class SplitMergeInvoiceController extends Controller
 
         $productList = json_decode($payment->items, true);
         foreach ($productList['item'] as $key => $value) {
+            $detailPrice = (float) ($value['price'] ?? 0);
+            $detailQty = (int) ($value['quantity'] ?? 1);
+            $detailTotal = (float) ($value['TotalPrice'] ?? ($value['total'] ?? ($detailPrice * $detailQty)));
+            $detailVat = (float) ($value['vat'] ?? 0);
+            $detailDiscountExcl = (float) ($value['detail_discount_excluding_tax'] ?? 0);
+            $detailNetExcl = (float) ($value['discounted_price_excluding_tax'] ?? 0);
+            $detailTaxAmt = (float) ($value['tax_amount'] ?? 0);
+            // Compute missing fields if not provided
+            if ($detailNetExcl == 0 && $detailVat > 0) {
+                $detailNetExcl = round($detailTotal / (1 + $detailVat / 100));
+            } elseif ($detailNetExcl == 0) {
+                $detailNetExcl = $detailTotal;
+            }
+            if ($detailTaxAmt == 0 && $detailVat > 0) {
+                $detailTaxAmt = $detailTotal - $detailNetExcl;
+            }
             PaymentDetail::create([
                 'payment_id' => $payment->id,
                 'product_id' => $value['id'],
                 'product_key' => $key,
-                'quantity' => $value['quantity'],
+                'quantity' => $detailQty,
                 'printed_quantity' => $value['printed_quantity'] ?? 0,
-                'price' => $value['price'],
-                'total' => $value['TotalPrice'] ?? ($value['total'] ?? ($value['price'] * $value['quantity'])),
+                'price' => $detailPrice,
+                'total' => $detailTotal,
                 'note' => $value['note'] ?? '',
+                'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
+                'optional_products' => !empty($value['optional_products']) ? json_encode($value['optional_products']) : null,
+                'detail_discount' => (float) ($value['detail_discount'] ?? 0),
+                'detail_discount_excluding_tax' => $detailDiscountExcl,
+                'discounted_price_excluding_tax' => $detailNetExcl,
+                'tax_amount' => $detailTaxAmt,
+                'unit_price_excluding_tax' => (float) ($value['unit_price_excluding_tax'] ?? round($detailNetExcl / $detailQty)),
                 'admin_id' => $payment->admin_id,
                 'store_id' => $payment->store_id,
             ]);
@@ -685,6 +801,21 @@ class SplitMergeInvoiceController extends Controller
             if ($position !== false) {
                 unset($listPaymentDetail[$position]);
             }
+            $detailPrice = (float) ($value['price'] ?? 0);
+            $detailQty = (int) ($value['quantity'] ?? 1);
+            $detailTotal = (float) ($value['TotalPrice'] ?? ($value['total'] ?? ($detailPrice * $detailQty)));
+            $detailVat = (float) ($value['vat'] ?? 0);
+            $detailDiscountExcl = (float) ($value['detail_discount_excluding_tax'] ?? 0);
+            $detailNetExcl = (float) ($value['discounted_price_excluding_tax'] ?? 0);
+            $detailTaxAmt = (float) ($value['tax_amount'] ?? 0);
+            if ($detailNetExcl == 0 && $detailVat > 0) {
+                $detailNetExcl = round($detailTotal / (1 + $detailVat / 100));
+            } elseif ($detailNetExcl == 0) {
+                $detailNetExcl = $detailTotal;
+            }
+            if ($detailTaxAmt == 0 && $detailVat > 0) {
+                $detailTaxAmt = $detailTotal - $detailNetExcl;
+            }
             PaymentDetail::updateOrCreate(
                 [
                     'payment_id' => $data['id'],
@@ -693,11 +824,18 @@ class SplitMergeInvoiceController extends Controller
                 [
                     'product_id' => $value['id'],
                     'product_key' => $key,
-                    'quantity' => $value['quantity'],
+                    'quantity' => $detailQty,
                     'printed_quantity' => $value['printed_quantity'] ?? 0,
-                    'price' => $value['price'],
-                    'total' => $value['TotalPrice'] ?? ($value['total'] ?? ($value['price'] * $value['quantity'])),
+                    'price' => $detailPrice,
+                    'total' => $detailTotal,
                     'note' => $value['note'] ?? '',
+                    'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
+                    'optional_products' => !empty($value['optional_products']) ? json_encode($value['optional_products']) : null,
+                    'detail_discount' => (float) ($value['detail_discount'] ?? 0),
+                    'detail_discount_excluding_tax' => $detailDiscountExcl,
+                    'discounted_price_excluding_tax' => $detailNetExcl,
+                    'tax_amount' => $detailTaxAmt,
+                    'unit_price_excluding_tax' => (float) ($value['unit_price_excluding_tax'] ?? round($detailNetExcl / $detailQty)),
                     'admin_id' => $data['admin_id'] ?? 1,
                     'store_id' => $data['store_id'],
                 ]
@@ -747,8 +885,14 @@ class SplitMergeInvoiceController extends Controller
             $discountAmount = round($afterSenior * $discPct / 100);
         }
 
-        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
-        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+        if ($isSeniorActive) {
+            $chargeBase = max(0, $scBaseTotal - $seniorDeduction - $discountAmount);
+        } elseif ($isTaxInc) {
+            $chargeBase = max(0, $total_value - $discountAmount);
+        } else {
+            $chargeBase = max(0, $scBaseTotal - $discountAmount);
+        }
+        $serviceChargeAmount = round($chargeBase * $serviceChargePercent / 100);
 
         if ($isSeniorActive) {
             $total_tax = 0; // VAT exempt
@@ -820,8 +964,14 @@ class SplitMergeInvoiceController extends Controller
             $discountAmount = round($afterSenior * $discPct / 100);
         }
 
-        $baseForServiceCharge = max(0, $afterSenior - $discountAmount);
-        $serviceChargeAmount = round($baseForServiceCharge * $serviceChargePercent / 100);
+        if ($isSeniorActive) {
+            $chargeBase = max(0, $scBaseTotal - $seniorDeduction - $discountAmount);
+        } elseif ($isTaxInc) {
+            $chargeBase = max(0, $total_value - $discountAmount);
+        } else {
+            $chargeBase = max(0, $scBaseTotal - $discountAmount);
+        }
+        $serviceChargeAmount = round($chargeBase * $serviceChargePercent / 100);
 
         if ($isSeniorActive) {
             $total_tax = 0; // VAT exempt
