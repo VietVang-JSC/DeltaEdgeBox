@@ -1294,6 +1294,13 @@ class PaymentController extends Controller
                 return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
             }
             $data = $payment->toArray();
+            $tz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+            if (!empty($data['created_at'])) {
+                $data['created_at_formatted'] = \Carbon\Carbon::parse($data['created_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
+            }
+            if (!empty($data['updated_at'])) {
+                $data['updated_at_formatted'] = \Carbon\Carbon::parse($data['updated_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
+            }
             $data['unit_price_excluding_tax'] = 0;
             $data['detail_discount_excluding_tax'] = 0;
             $data['discounted_price_excluding_tax'] = 0;
@@ -1453,7 +1460,10 @@ class PaymentController extends Controller
                 $data['total_incl_vat_before_discount'] = $data['total_incl_vat_before_discount'] ?? 0;
                 $data['total_tax'] = $data['tax'] ?? 0;
                 $data['service_charge_amount'] = $data['service_charge_amount'] ?? 0;
-                $data['payment_method'] = $paymentMethodNames[$data['payment_method']] ?? $data['payment_method'];
+                if (is_string($data['payment_method'])) {
+                    $map = array_flip($paymentMethodNames);
+                    $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int)$data['payment_method'] : 0);
+                }
                 $tz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
                 $data['created_at'] = \Carbon\Carbon::parse($data['created_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
                 $data['updated_at'] = \Carbon\Carbon::parse($data['updated_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
