@@ -518,9 +518,10 @@ class SplitMergeInvoiceController extends Controller
 
         // Proportional discount: re-allocate discount to remaining items (same as cloud)
         $typeDiscount = $original_invoice->type_discount ?? 'amount';
+        $discountPct = (float) ($original_invoice->discount_percent ?? 0);
         $discountAmount = (float) ($original_invoice->discount ?? 0);
         if ($typeDiscount === 'percent') {
-            $discountAmount = round($discountAmount); // keep original, recalculated below if SD
+            // keep percent value for recalculation after scBaseTotal/afterSenior
         } else {
             $origItems = json_decode($original_invoice->items, true)['item'] ?? [];
             $origTotal = 0; $remainTotal = 0;
@@ -537,10 +538,11 @@ class SplitMergeInvoiceController extends Controller
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
 
-        // Recalculate discount on afterSenior for percent (RA 9994)
-        if ($isSeniorActive && $typeDiscount === 'percent') {
-            $discPct = (float) ($original_invoice->discount_percent ?? 0);
-            $discountAmount = round($afterSenior * $discPct / 100);
+        // Recalculate discount percent on appropriate base
+        if ($typeDiscount === 'percent') {
+            $discountAmount = $isSeniorActive
+                ? round($afterSenior * $discountPct / 100)
+                : ($isTaxInc ? round($total_value * $discountPct / 100) : round($scBaseTotal * $discountPct / 100));
         }
 
         // Recalculate tax on after-discount base (matching cloud)
