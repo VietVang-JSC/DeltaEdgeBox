@@ -236,7 +236,7 @@ class SplitMergeInvoiceController extends Controller
         $store = Store::find($filters['store_id']);
         $isTaxInc = $store->is_tax_included ?? 0;
         $totals = $this->computeTotalsFromItems($filters['split_merge_item'], $isTaxInc);
-        $total_tax = $totals['total_tax'];
+        $total_tax_pre = $totals['total_tax']; // pre-discount tax (from items directly)
         $total_value = $totals['total_value'];
 
         // Use original - remain for ALL values to ensure sum = original 100% (prevent rounding)
@@ -251,13 +251,17 @@ class SplitMergeInvoiceController extends Controller
         $serviceChargeAmount = max(0, (float) ($originalInvoice->service_charge_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['service_charge_amount'] ?? 0));
         $total_tax = $isSeniorActive ? 0 : max(0, (float) ($originalInvoice->tax ?? 0) - (float) ($paramUpdateOriginalInvoice['total_tax'] ?? 0));
 
+        // Valuetotal: (totalValue - discount) adjusted for tax recalc difference
+        // For tax-inc: totalValue already includes VAT → vt = totalValue - discount + sur + SC
+        // For tax-exc: vt = (totalValue - totalTaxPre - discount) + totalTax + sur + SC
         if ($isSeniorActive) {
-            $total_tax = 0; // VAT exempt
+            $total_tax = 0;
             $valuetotal = max(0, $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount);
         } elseif ($isTaxInc) {
             $valuetotal = max(0, $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount);
         } else {
-            $valuetotal = max(0, $total_value - $discountAmount + $total_tax + $surchargeAmount + $serviceChargeAmount);
+            $scBase = max(0, $total_value - $total_tax_pre - $discountAmount);
+            $valuetotal = max(0, $scBase + $total_tax + $surchargeAmount + $serviceChargeAmount);
         }
 
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
