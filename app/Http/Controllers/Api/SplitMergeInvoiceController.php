@@ -239,99 +239,25 @@ class SplitMergeInvoiceController extends Controller
         $total_tax = $totals['total_tax'];
         $total_value = $totals['total_value'];
 
-        // Proportional discount inheritance (same as cloud)
-        $typeDiscount = $filters['type_discount'] ?? ($originalInvoice->type_discount ?? 'amount');
-        $discountPct = 0;
-        $discountAmount = (float) ($filters['discount'] ?? 0);
-        if ($typeDiscount === 'percent') {
-            $discountPct = (float) ($filters['discount_percent'] ?? ($originalInvoice->discount_percent ?? 0));
-            $discountAmount = $discountPct;
-        } else {
-            $origItems = json_decode($originalInvoice->items, true)['item'] ?? [];
-            $origTotal = 0; $splitTotal = 0;
-            foreach ($origItems as $k => $v) { $origTotal += $v['price'] * $v['quantity']; }
-            foreach ($filters['split_merge_item'] as $k => $v) { $splitTotal += $v['price'] * $v['quantity']; }
-            if ($origTotal > 0) {
-                $discountAmount = round(($originalInvoice->discount ?? 0) * $splitTotal / $origTotal);
-            }
-        }
-        $scBaseTotal = $total_value - $total_tax;
-        $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
-        $isSenior = $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false);
+        // Use original - remain for ALL values to ensure sum = original 100% (prevent rounding)
+        $typeDiscount = $originalInvoice->type_discount ?? 'amount';
+        $discountAmount = max(0, (float) ($originalInvoice->discount ?? 0) - (float) ($paramUpdateOriginalInvoice['discount'] ?? 0));
+        $seniorAmount = max(0, (float) ($originalInvoice->senior_discount_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['senior_discount_amount'] ?? 0));
+        $isSenior = (bool) ($originalInvoice->is_senior_discount ?? false);
         $isSeniorActive = $isSenior && $seniorAmount > 0;
-        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
-        $afterSenior = $scBaseTotal - $seniorDeduction;
-
-        if ($typeDiscount === 'percent') {
-            $discountAmount = $isSeniorActive
-                ? round($afterSenior * $discountPct / 100)
-                : ($isTaxInc ? round($total_value * $discountPct / 100) : round($scBaseTotal * $discountPct / 100));
-        }
-
-        // Recalculate tax on after-discount base (matching cloud allocateDiscountTax*)
-        if (!$isSeniorActive && $discountAmount > 0) {
-            $newTotalTax = 0;
-            $totalBase = $isTaxInc ? $total_value : $scBaseTotal;
-            foreach ($filters['split_merge_item'] as $item) {
-                $q = (int) ($item['quantity'] ?? 1);
-                $p = (float) ($item['price'] ?? 0);
-                $v = (float) ($item['vat'] ?? 0);
-                $lineBase = $q * $p;
-                $ratio = $totalBase > 0 ? $lineBase / $totalBase : 0;
-                $itemDisc = round($discountAmount * $ratio);
-                if ($isTaxInc) {
-                    $afterDiscIncl = $lineBase - $itemDisc;
-                    $vatDiv = 1 + $v / 100;
-                    $netExcl = $vatDiv > 0 ? round($afterDiscIncl / $vatDiv) : $afterDiscIncl;
-                    $newTotalTax += $afterDiscIncl - $netExcl;
-                } else {
-                    $afterDiscExcl = $lineBase - $itemDisc;
-                    $newTotalTax += round($afterDiscExcl * $v / 100);
-                }
-            }
-            $total_tax = $newTotalTax;
-        }
-
-        // Charge base: SD → exVAT after senior+discount; tax-inc+noSD → incVAT after discount; tax-exc+noSD → exVAT after discount
-        if ($isSeniorActive) {
-            $chargeBase = max(0, $scBaseTotal - $seniorDeduction - $discountAmount);
-        } elseif ($isTaxInc) {
-            $chargeBase = max(0, $total_value - $discountAmount);
-        } else {
-            $chargeBase = max(0, $scBaseTotal - $discountAmount);
-        }
         $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
-        $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
-        if ($surchargeAmount == 0 && $surchargePercent > 0) {
-            $surchargeAmount = round($chargeBase * $surchargePercent / 100);
-        }
+        $surchargeAmount = max(0, (float) ($originalInvoice->surcharge ?? 0) - (float) ($paramUpdateOriginalInvoice['surcharge'] ?? 0));
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
-        $serviceChargeAmount = round($chargeBase * $serviceChargePercent / 100);
-
-        // Adjust SC & surcharge to ensure remain + split = original (prevent rounding error)
-        if (isset($paramUpdateOriginalInvoice) && $paramUpdateOriginalInvoice) {
-            $origSC = (float) ($originalInvoice->service_charge_amount ?? 0);
-            $remainSC = (float) ($paramUpdateOriginalInvoice['service_charge_amount'] ?? 0);
-            if ($origSC > 0 && $remainSC + $serviceChargeAmount != $origSC) {
-                $serviceChargeAmount = $origSC - $remainSC;
-            }
-            $origSur = (float) ($originalInvoice->surcharge ?? 0);
-            $remainSur = (float) ($paramUpdateOriginalInvoice['surcharge'] ?? 0);
-            if ($origSur > 0 && $surchargePercent > 0 && $remainSur + $surchargeAmount != $origSur) {
-                $surchargeAmount = $origSur - $remainSur;
-            }
-        }
-
-        if ($isSeniorActive) {
-            $valuetotal = max(0, $afterSenior - $discountAmount + $surchargeAmount + $serviceChargeAmount);
-        } elseif ($isTaxInc) {
-            $valuetotal = max(0, $chargeBase + $surchargeAmount + $serviceChargeAmount);
-        } else {
-            $valuetotal = max(0, $chargeBase + $total_tax + $surchargeAmount + $serviceChargeAmount);
-        }
+        $serviceChargeAmount = max(0, (float) ($originalInvoice->service_charge_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['service_charge_amount'] ?? 0));
+        $total_tax = $isSeniorActive ? 0 : max(0, (float) ($originalInvoice->tax ?? 0) - (float) ($paramUpdateOriginalInvoice['total_tax'] ?? 0));
 
         if ($isSeniorActive) {
             $total_tax = 0; // VAT exempt
+            $valuetotal = max(0, $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount);
+        } elseif ($isTaxInc) {
+            $valuetotal = max(0, $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount);
+        } else {
+            $valuetotal = max(0, $total_value - $discountAmount + $total_tax + $surchargeAmount + $serviceChargeAmount);
         }
 
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
