@@ -251,18 +251,10 @@ class SplitMergeInvoiceController extends Controller
         $serviceChargeAmount = max(0, (float) ($originalInvoice->service_charge_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['service_charge_amount'] ?? 0));
         $total_tax = $isSeniorActive ? 0 : max(0, (float) ($originalInvoice->tax ?? 0) - (float) ($paramUpdateOriginalInvoice['total_tax'] ?? 0));
 
-        // Valuetotal: (totalValue - discount) adjusted for tax recalc difference
-        // For tax-inc: totalValue already includes VAT → vt = totalValue - discount + sur + SC
-        // For tax-exc: vt = (totalValue - totalTaxPre - discount) + totalTax + sur + SC
-        if ($isSeniorActive) {
-            $total_tax = 0;
-            $valuetotal = max(0, $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount);
-        } elseif ($isTaxInc) {
-            $valuetotal = max(0, $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount);
-        } else {
-            $scBase = max(0, $total_value - $total_tax_pre - $discountAmount);
-            $valuetotal = max(0, $scBase + $total_tax + $surchargeAmount + $serviceChargeAmount);
-        }
+        // Valuetotal = original - remain (rounding adjustment, standard accounting practice)
+        $valuetotal = max(0, (float) ($originalInvoice->final_total ?? $originalInvoice->total ?? 0) - (float) ($paramUpdateOriginalInvoice['valuetotal'] ?? 0));
+        // Components from orig-remain for internal consistency
+        if ($isSeniorActive) { $total_tax = 0; }
 
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
