@@ -530,8 +530,6 @@ class SplitMergeInvoiceController extends Controller
                 $discountAmount = round(($original_invoice->discount ?? 0) * $remainTotal / $origTotal);
             }
         }
-        $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
-        $serviceChargePercent = (float) ($original_invoice->service_charge ?? 0);
         $scBaseTotal = $total_value - $total_tax;
 
         $seniorAmount = (float) round($scBaseTotal * 20 / 100);
@@ -577,6 +575,24 @@ class SplitMergeInvoiceController extends Controller
         } else {
             $chargeBase = max(0, $scBaseTotal - $discountAmount);
         }
+
+        // Surcharge: proportion from original (nếu flat) hoặc recalc từ percent (nếu có)
+        $surchargePercent = $original_invoice->surcharge_percent ?? 0;
+        $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
+        if ($surchargePercent > 0) {
+            $surchargeAmount = round($chargeBase * $surchargePercent / 100);
+        } elseif ($surchargeAmount > 0) {
+            $origItems = json_decode($original_invoice->items, true)['item'] ?? [];
+            $origTotal = 0;
+            foreach ($origItems as $k => $v) { $origTotal += $v['price'] * $v['quantity']; }
+            $remainTotal = 0;
+            foreach ($itemOriginalInvoice['item'] as $k => $v) { $remainTotal += $v['price'] * $v['quantity']; }
+            if ($origTotal > 0) {
+                $surchargeAmount = round($surchargeAmount * $remainTotal / $origTotal);
+            }
+        }
+
+        $serviceChargePercent = (float) ($original_invoice->service_charge ?? 0);
         $serviceChargeAmount = round($chargeBase * $serviceChargePercent / 100);
 
         if ($isSeniorActive) {
