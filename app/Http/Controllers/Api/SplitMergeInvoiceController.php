@@ -308,6 +308,20 @@ class SplitMergeInvoiceController extends Controller
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
         $serviceChargeAmount = round($chargeBase * $serviceChargePercent / 100);
 
+        // Adjust SC & surcharge to ensure remain + split = original (prevent rounding error)
+        if (isset($paramUpdateOriginalInvoice) && $paramUpdateOriginalInvoice) {
+            $origSC = (float) ($originalInvoice->service_charge_amount ?? 0);
+            $remainSC = (float) ($paramUpdateOriginalInvoice['service_charge_amount'] ?? 0);
+            if ($origSC > 0 && $remainSC + $serviceChargeAmount != $origSC) {
+                $serviceChargeAmount = $origSC - $remainSC;
+            }
+            $origSur = (float) ($originalInvoice->surcharge ?? 0);
+            $remainSur = (float) ($paramUpdateOriginalInvoice['surcharge'] ?? 0);
+            if ($origSur > 0 && $surchargePercent > 0 && $remainSur + $surchargeAmount != $origSur) {
+                $surchargeAmount = $origSur - $remainSur;
+            }
+        }
+
         if ($isSeniorActive) {
             $valuetotal = max(0, $afterSenior - $discountAmount + $surchargeAmount + $serviceChargeAmount);
         } elseif ($isTaxInc) {
