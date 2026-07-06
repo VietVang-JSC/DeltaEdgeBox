@@ -290,6 +290,8 @@ class PaymentPrintController extends Controller
             'surcharge_percent',
             'service_charge',
             'language',
+            'is_senior_discount',
+            'senior_discount_amount',
         ];
 
         $filters = $request->only($acceptFields);
