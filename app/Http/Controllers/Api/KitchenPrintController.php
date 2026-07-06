@@ -116,6 +116,10 @@ class KitchenPrintController extends Controller
         $payload['real'] = $real;
         $payload['setting_print_kitchen'] = $settingPrintKitchen;
 
+        // Mark all items as printed after successful generation
+        try { $this->listPrintableItems($table, true); }
+        catch (\Throwable $th) { Log::warning('printAll markPrinted failed', ['error' => $th->getMessage()]); }
+
         return $this->success($payload);
     }
     
@@ -192,8 +196,8 @@ class KitchenPrintController extends Controller
         }
 
         try {
-            // Retrieve printable kitchen items (where printed_quantity < quantity) without updating DB
-            $products = $this->listPrintableItems($table, false);
+            // Retrieve printable kitchen items (where printed_quantity < quantity) and mark as printed
+            $products = $this->listPrintableItems($table, true);
             if (empty($products)) {
                 return response()->json([
                     'status' => false,
