@@ -1294,7 +1294,8 @@ class PaymentController extends Controller
                 return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
             }
             $data = $payment->toArray();
-            $tz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+            $store = $payment->store ?? Store::find($data['store_id'] ?? config('edge_box.store_id'));
+            $tz = $store ? ($store->time_zone ?? config('edge_box.timezone', 'Asia/Ho_Chi_Minh')) : config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
             if (!empty($data['created_at'])) {
                 $data['created_at_formatted'] = \Carbon\Carbon::parse($data['created_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
             }
