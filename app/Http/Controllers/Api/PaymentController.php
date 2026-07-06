@@ -1302,6 +1302,8 @@ class PaymentController extends Controller
             if (!empty($data['updated_at'])) {
                 $data['updated_at_formatted'] = \Carbon\Carbon::parse($data['updated_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
             }
+            $data['total_tax'] = $data['tax'] ?? 0;
+            $data['valuetotal'] = $data['final_total'] ?? ($data['total'] ?? 0);
             $data['unit_price_excluding_tax'] = 0;
             $data['detail_discount_excluding_tax'] = 0;
             $data['discounted_price_excluding_tax'] = 0;
