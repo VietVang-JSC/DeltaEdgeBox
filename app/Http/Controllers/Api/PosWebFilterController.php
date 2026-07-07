@@ -88,7 +88,12 @@ class PosWebFilterController extends Controller
             $products = $this->products($storeId, $request);
             $categories = $this->categories($storeId);
             $customers = $this->customers($storeId);
-            $payments = $this->pendingPayments($storeId);
+            $paymentsInput = $request->input('payments', []);
+            if (!empty($paymentsInput)) {
+                $payments = $this->filteredPayments($storeId, $paymentsInput);
+            } else {
+                $payments = $this->pendingPayments($storeId);
+            }
             $tables = $this->tables($storeId);
             $store = $this->storePayload($storeId);
             $billSetting = $this->billSettingPayload($store);
@@ -461,6 +466,67 @@ class PosWebFilterController extends Controller
                 $query->whereNull('store_id')
                     ->orWhere('store_id', $storeId);
             })
+            ->get()
+            ->map(fn (Payment $payment) => $this->paymentPayload($payment))
+            ->values()
+            ->all();
+    }
+
+    private function filteredPayments(int $storeId, array $paymentsInput): array
+    {
+        $query = $paymentsInput['query'] ?? [];
+        $clauses = $paymentsInput['clauses'] ?? [];
+        $orderBy = $clauses['orderby'] ?? ['column' => 'updated_at', 'value' => 'DESC'];
+        $pagination = $clauses['pagination'] ?? null;
+
+        $paymentsQuery = Payment::with(['user', 'customer', 'details'])
+            ->where('store_id', $storeId);
+
+        // Apply filters
+        if (!empty($query['user_id'])) {
+            $paymentsQuery->where('user_id', $query['user_id']);
+        }
+        if (isset($query['customer_id'])) {
+            $paymentsQuery->where('customer_id', $query['customer_id']);
+        }
+        if (!empty($query['payment_method'])) {
+            $paymentsQuery->where('payment_method', $query['payment_method']);
+        }
+        if (isset($query['status']) && $query['status'] !== '' && $query['status'] !== null) {
+            $paymentsQuery->where('status', (int) $query['status']);
+        }
+        if (!empty($query['updated_at']) && is_array($query['updated_at'])) {
+            $dates = array_filter($query['updated_at']);
+            if (!empty($dates)) {
+                $paymentsQuery->whereDate('updated_at', '>=', $dates[0]);
+                if (isset($dates[1])) {
+                    $paymentsQuery->whereDate('updated_at', '<=', $dates[1]);
+                }
+            }
+        }
+
+        $column = $orderBy['column'] ?? 'updated_at';
+        $direction = strtoupper($orderBy['value'] ?? 'DESC');
+        if (!in_array($direction, ['ASC', 'DESC'])) { $direction = 'DESC'; }
+
+        if ($pagination) {
+            $pageSize = (int) ($pagination['pageSize'] ?? 15);
+            $currentPage = (int) ($pagination['currentPage'] ?? 1);
+            $total = $paymentsQuery->count();
+            $payments = $paymentsQuery->orderBy($column, $direction)
+                ->skip(($currentPage - 1) * $pageSize)
+                ->take($pageSize)
+                ->get();
+            $result = $payments->map(fn($p) => $this->paymentPayload($p))->values()->all();
+            return [
+                'data_list' => $result,
+                'total' => (int) ceil($total / $pageSize),
+                'pageSize' => $pageSize,
+                'currentPage' => $currentPage,
+            ];
+        }
+
+        return $paymentsQuery->orderBy($column, $direction)
             ->get()
             ->map(fn (Payment $payment) => $this->paymentPayload($payment))
             ->values()

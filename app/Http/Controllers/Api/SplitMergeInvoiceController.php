@@ -283,11 +283,13 @@ class SplitMergeInvoiceController extends Controller
             "table_id" => $originalInvoice->table_id,
             "parent_id" => $originalInvoice->id,
             "valuetotal" => $valuetotal,
-            "total_tax" => $total_tax,
+            "total_tax" => $isSeniorActive ? 0 : $total_tax,
             "is_senior_discount" => $isSenior,
             "senior_discount_amount" => $seniorAmount,
             "service_charge" => $serviceChargePercent,
             "service_charge_amount" => $serviceChargeAmount,
+            "sub_total_before_discount" => max(0, (float) ($originalInvoice->sub_total_before_discount ?? 0) - (float) ($paramUpdateOriginalInvoice['sub_total_before_discount'] ?? 0)),
+            "total_incl_vat_before_discount" => max(0, (float) ($originalInvoice->total_incl_vat_before_discount ?? 0) - (float) ($paramUpdateOriginalInvoice['total_incl_vat_before_discount'] ?? 0)),
         ];
 
         $createPayment = $this->createPaymentLocal($paramCreatePayment);
@@ -677,6 +679,8 @@ class SplitMergeInvoiceController extends Controller
               'senior_discount_amount' => $data['senior_discount_amount'] ?? 0,
               'service_charge' => $data['service_charge'] ?? 0,
               'service_charge_amount' => $data['service_charge_amount'] ?? 0,
+              'sub_total_before_discount' => (float) ($data['sub_total_before_discount'] ?? 0),
+              'total_incl_vat_before_discount' => (float) ($data['total_incl_vat_before_discount'] ?? 0),
           ]);
 
         $productList = json_decode($payment->items, true);
@@ -689,12 +693,16 @@ class SplitMergeInvoiceController extends Controller
             $detailNetExcl = (float) ($value['discounted_price_excluding_tax'] ?? 0);
             $detailTaxAmt = (float) ($value['tax_amount'] ?? 0);
             // Compute missing fields if not provided
-            if ($detailNetExcl == 0 && $detailVat > 0) {
+            $isSeniorActive = !empty($data['is_senior_discount']) && !empty($data['senior_discount_amount']);
+            if ($isSeniorActive) {
+                $detailTaxAmt = 0;
+                $detailNetExcl = $detailTotal;
+            } elseif ($detailNetExcl == 0 && $detailVat > 0) {
                 $detailNetExcl = round($detailTotal / (1 + $detailVat / 100));
             } elseif ($detailNetExcl == 0) {
                 $detailNetExcl = $detailTotal;
             }
-            if ($detailTaxAmt == 0 && $detailVat > 0) {
+            if (!$isSeniorActive && $detailTaxAmt == 0 && $detailVat > 0) {
                 $detailTaxAmt = $detailTotal - $detailNetExcl;
             }
             PaymentDetail::create([
