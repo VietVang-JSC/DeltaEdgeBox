@@ -52,11 +52,21 @@ class PaymentObserver
         try {
             $priority = ($operation === 'delete') ? 2 : 1; // Urgent for deletions
 
+            $data = $payment->toArray();
+            
+            // Format dates to 'Y-m-d H:i:s' to prevent ISO-8601 errors on Cloud BE
+            $dateAttributes = ['created_at', 'updated_at', 'deleted_at', 'paid_date'];
+            foreach ($dateAttributes as $attr) {
+                if (!empty($payment->$attr) && $payment->$attr instanceof \DateTimeInterface) {
+                    $data[$attr] = $payment->$attr->format('Y-m-d H:i:s');
+                }
+            }
+
             $this->syncService->queueForSync(
                 table: 'payments',
                 operation: $operation,
                 recordId: $payment->id,
-                data: $payment->toArray(),
+                data: $data,
                 priority: $priority
             );
 

@@ -55,16 +55,44 @@
 
         .receipt-items {
             width: 100%;
-            /* border-collapse: collapse; */
+            border-collapse: collapse;
+            table-layout: fixed;
         }
+
+        .receipt-items th:nth-child(1), .receipt-items td:nth-child(1) { width: 55%; text-align: left; }
+        .receipt-items th:nth-child(2), .receipt-items td:nth-child(2) { width: 15%; text-align: right; }
+        .receipt-items th:nth-child(3), .receipt-items td:nth-child(3) { width: 30%; text-align: right; }
 
         .receipt-items th, .receipt-items td {
-            text-align: left;
+            border-bottom: 1px dashed black;
         }
         
-
-        .receipt-items td {
-            border-bottom: 1px dashed black;
+        .info-table {
+            font-size: 10pt;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .info-table td {
+            vertical-align: top;
+        }
+        .info_label {
+            text-align: left;
+            font-weight: bold;
+        }
+        .Info_staff_input {
+            text-align: right;
+        }
+        .invoice-title {
+            display: block;
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: bold;
+            font-size: 11pt;
+        }
+        .invoice-details {
+            display: flex;
+            flex-direction: column; 
+            margin-bottom: 10px;
         }
 
         .payment .item {
@@ -218,40 +246,60 @@
                 </div>
             @endif
 
-            @php
-                $titleHeader = $payment['status'] == 1 ? 'レシート番号' : '請求書番号';
-            @endphp
-            <div class="font-size-head">
-                <label style="margin: 0;">{{ $titleHeader }} {{ $payment['payment_code'] ?? '' }}</label>
-            </div>
         </div>
-
-@if (!empty($payment['updated_at']))
-    <div class="receipt-date font-size-info">{{ $payment['updated_at'] }}</div>
-@elseif (!empty($payment['created_at']))
-    <div class="receipt-date font-size-info">{{ $payment['created_at'] }}</div>
-@endif
-
-        @if (!empty($payment['table']['tablename']))
-            <div class="receipt-table font-size-info">テーブル番号：{{ $payment['table']['tablename'] }}</div>
-        @endif
-
+        
         @php
-            $isUnpaid = $payment['status'] == 0;
+            $titleHeader = $payment['status'] == 1 ? 'レシート' : '請求書';
         @endphp
+        
+        <div class="invoice-details">
+            <span class="invoice-title">{{ $titleHeader }}</span>
+            <table class="info-table" aria-label="請求書情報">
+                <tr>
+                    <th class="info_label">{{ __('front/pos_order.invoices.Ngày') }}:</th>
+                    <td class="Info_staff_input current_date">{{ $payment['updated_at'] ?? $payment['created_at'] ?? '' }}</td>
+                </tr>
+                <tr>
+                    <th class="info_label">{{ __('front/pos_order.invoices.Nhân viên') }}:</th>
+                    <td class="Info_staff_input staff_name">{{ $payment['user']['name'] ?? '' }}</td>
+                </tr>
+                <tr>
+                    <th class="info_label">{{ __('front/pos_order.invoices.Mã hóa đơn') }}:</th>
+                    <td class="Info_staff_input payment_id">{{ $payment['payment_code'] ?? '' }}</td>
+                </tr>
+                @if (!empty($payment['table']['tablename']))
+                    <tr>
+                        <th class="info_label">{{ __('front/pos_order.invoices.Bàn') }}:</th>
+                        <td class="Info_staff_input table_name">{{ $payment['table']['tablename'] }}</td>
+                    </tr>
+                @endif
+                
+                @php
+                    $isUnpaid = $payment['status'] == 0;
+                @endphp
+                
+                @if ($isUnpaid && !empty($payment['table']['number_of_people']))
+                    <tr>
+                        <th class="info_label">{{ __('front/pos_order.invoices.Số khách') }}:</th>
+                        <td class="Info_staff_input number_of_people">{{ $payment['table']['number_of_people'] }}</td>
+                    </tr>
+                @elseif (!empty($payment['number_of_people']))
+                    <tr>
+                        <th class="info_label">{{ __('front/pos_order.invoices.Số khách') }}:</th>
+                        <td class="Info_staff_input number_of_people">{{ $payment['number_of_people'] }}</td>
+                    </tr>
+                @endif
+            </table>
+        </div>
+        
+        <div class="dashed-line"></div>
 
-        @if ($isUnpaid && !empty($payment['table']['number_of_people']))
-            <div class="receipt-customer font-size-info">人数：{{ $payment['table']['number_of_people'] }}</div>
-
-        @elseif (!empty($payment['number_of_people']))
-            <div class="receipt-customer font-size-info">人数：{{ $payment['number_of_people'] }}</div>
-        @endif
-        <table class="receipt-items" aria-label="Danh sách món ăn trong hóa đơn">
+        <table class="receipt-items" aria-label="品目リスト">
             <thead>
                 <tr>
-                    <th>品目</th>
-                    <th class="txt-right">数量</th>
-                    <th class="txt-right">金額</th>
+                    <th>{{__('front/pos_order.invoices.Sản phẩm')}}</th>
+                    <th class="txt-right">{{__('front/pos_order.invoices.Số lượng')}}</th>
+                    <th class="txt-right">{{__('front/pos_order.invoices.Tổng Tiền')}}</th>
                 </tr>
             </thead>
             <tbody>
@@ -296,7 +344,7 @@
 
         <div class="tax-info">
             @if (!empty($taxArray))
-                <table class="tax-table" aria-label="Thông tin thuế theo món" role="presentation">
+                <table class="tax-table" aria-label="税金情報" role="presentation">
                     <tbody>
                         @foreach ($taxArray as $key => $item)
                             {{-- @php
@@ -327,7 +375,7 @@
             @endif
         </div>
 
-        <table class="payment" width="100%" aria-label="Thông tin thanh toán" role="presentation">
+        <table class="payment" width="100%" aria-label="支払い情報" role="presentation">
             @if (!empty($discount))
                 <tr class="item">
                     <td class="font-weight-nomarl txt-left">割引</td>

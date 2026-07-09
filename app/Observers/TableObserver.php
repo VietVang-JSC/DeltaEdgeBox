@@ -58,11 +58,21 @@ class TableObserver
     protected function queueForSync(Table $table, string $operation, int $priority = 1): void
     {
         try {
+            $data = $table->toArray();
+            
+            // Format dates to 'Y-m-d H:i:s' to prevent ISO-8601 errors on Cloud BE
+            $dateAttributes = ['created_at', 'updated_at', 'deleted_at', 'lock_time'];
+            foreach ($dateAttributes as $attr) {
+                if (!empty($table->$attr) && $table->$attr instanceof \DateTimeInterface) {
+                    $data[$attr] = $table->$attr->format('Y-m-d H:i:s');
+                }
+            }
+
             $this->syncService->queueForSync(
                 table: 'table',
                 operation: $operation,
                 recordId: $table->id,
-                data: $table->toArray(),
+                data: $data,
                 priority: $priority
             );
 

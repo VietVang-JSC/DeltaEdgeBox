@@ -37,11 +37,21 @@ class OrderObserver
     protected function queueForSync(Order $order, string $operation, int $priority = 1): void
     {
         try {
+            $data = $order->toArray();
+            
+            // Format dates to 'Y-m-d H:i:s' to prevent ISO-8601 errors on Cloud BE
+            $dateAttributes = ['created_at', 'updated_at', 'deleted_at'];
+            foreach ($dateAttributes as $attr) {
+                if (!empty($order->$attr) && $order->$attr instanceof \DateTimeInterface) {
+                    $data[$attr] = $order->$attr->format('Y-m-d H:i:s');
+                }
+            }
+
             $this->syncService->queueForSync(
                 table: 'orders',
                 operation: $operation,
                 recordId: $order->id,
-                data: $order->toArray(),
+                data: $data,
                 priority: $priority
             );
 
