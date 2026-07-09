@@ -63,6 +63,11 @@ class PaymentPrintController extends Controller
         if ($payment->updated_at) {
             $paymentData['updated_at'] = $payment->updated_at->setTimezone($timeZone)->format('d-m-Y H:i:s');
         }
+        if ($payment->paid_date) {
+            $paymentData['paid_date'] = $payment->paid_date->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        } else {
+            $paymentData['paid_date'] = $paymentData['created_at'] ?? now($timeZone)->format('d-m-Y H:i:s');
+        }
 
         // Generate QR image if needed (use blank for now)
         $qrImagePath = '';
@@ -220,6 +225,11 @@ class PaymentPrintController extends Controller
         }
         if ($payment->updated_at) {
             $paymentData['updated_at'] = $payment->updated_at->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        }
+        if ($payment->paid_date) {
+            $paymentData['paid_date'] = $payment->paid_date->setTimezone($timeZone)->format('d-m-Y H:i:s');
+        } else {
+            $paymentData['paid_date'] = $paymentData['created_at'] ?? now($timeZone)->format('d-m-Y H:i:s');
         }
 
         $qrImagePath = '';
