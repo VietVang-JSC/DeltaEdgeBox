@@ -518,10 +518,18 @@ class PaymentPrintController extends Controller
         $attributes['split_merge_item'] = array_replace(array_flip($originalOrder), $billItem['items']);
 
         foreach ($attributes['split_merge_item'] as $key => $value) {
+            $noteParts = [];
+            if (!empty($value['note'])) $noteParts[] = $value['note'];
+            if (!empty($value['product_types']) && is_array($value['product_types'])) {
+                foreach ($value['product_types'] as $pt) {
+                    if (!empty($pt['productTypeValue'])) $noteParts[] = $pt['productTypeValue'];
+                }
+            }
             $paymentDetails[] = [
                 'quantity' => $value['quantity'],
                 'price' => $value['price'],
                 'total_price' => $value['TotalPrice'] ?? $value['total'] ?? 0,
+                'note' => !empty($noteParts) ? implode(', ', $noteParts) : null,
                 'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
                 'products' => [
                     'title' => $value['title'] ?? '',
