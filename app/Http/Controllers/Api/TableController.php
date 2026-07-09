@@ -420,7 +420,16 @@ class TableController extends Controller
                 'quantity' => $item['quantity'],
                 'price' => $item['price'],
                 'total' => $item['total'],
-                'note' => $item['note'] ?? null,
+                'note' => (function() use ($item) {
+                    $parts = [];
+                    if (!empty($item['note'])) $parts[] = $item['note'];
+                    if (!empty($item['product_types']) && is_array($item['product_types'])) {
+                        foreach ($item['product_types'] as $pt) {
+                            if (!empty($pt['productTypeValue'])) $parts[] = $pt['productTypeValue'];
+                        }
+                    }
+                    return !empty($parts) ? implode(', ', $parts) : null;
+                })(),
                 'product_extra' => $item['product_extra'] ?? null,
                 'optional_products' => $item['optional_products'] ?? null,
                 'printed_quantity' => $printedQuantity,
@@ -490,6 +499,7 @@ class TableController extends Controller
                 'note' => $item['note'] ?? $item['noted'] ?? null,
                 'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : null,
                 'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
+                'product_types' => $item['product_types'] ?? [],
             ];
         }
 

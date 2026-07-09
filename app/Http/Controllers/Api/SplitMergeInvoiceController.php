@@ -805,7 +805,16 @@ class SplitMergeInvoiceController extends Controller
                     'printed_quantity' => $value['printed_quantity'] ?? 0,
                     'price' => $detailPrice,
                     'total' => $detailTotal,
-                    'note' => $value['note'] ?? '',
+                'note' => (function() use ($value) {
+                    $parts = [];
+                    if (!empty($value['note'])) $parts[] = $value['note'];
+                    if (!empty($value['product_types']) && is_array($value['product_types'])) {
+                        foreach ($value['product_types'] as $pt) {
+                            if (!empty($pt['productTypeValue'])) $parts[] = $pt['productTypeValue'];
+                        }
+                    }
+                    return !empty($parts) ? implode(', ', $parts) : null;
+                })(),
                     'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
                     'optional_products' => !empty($value['optional_products']) ? json_encode($value['optional_products']) : null,
                     'detail_discount' => (float) ($value['detail_discount'] ?? 0),
