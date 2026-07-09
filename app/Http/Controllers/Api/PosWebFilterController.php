@@ -353,8 +353,10 @@ class PosWebFilterController extends Controller
         }
         $payload['product_code'] = $payload['product_code'] ?? $payload['code'] ?? (string) $product->id;
         $payload['title'] = $payload['title'] ?? $payload['name'] ?? '';
-        $payload['price_after_tax'] = $product->price_after_tax ?? $product->price ?? 0;
-        $payload['unit_price'] = $product->price ?? 0;
+        $payload['price_after_tax'] = $matchedPrice !== null
+            ? ($isTaxIncluded ? $matchedPrice : ($matchedPrice * (1 + ($product->vat ?? 0) / 100)))
+            : ($product->price_after_tax ?? $product->price ?? 0);
+        $payload['unit_price'] = $matchedPrice !== null ? $matchedPrice : ($product->price ?? 0);
         $payload['price'] = $matchedPrice !== null
             ? $matchedPrice
             : ($isTaxIncluded == 0 ? ($product->price ?? 0) : ($product->price_after_tax ?? 0));
