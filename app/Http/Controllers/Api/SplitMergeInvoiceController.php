@@ -248,8 +248,13 @@ class SplitMergeInvoiceController extends Controller
         // Use original - remain for ALL values to ensure sum = original 100% (prevent rounding)
         $typeDiscount = $originalInvoice->type_discount ?? 'amount';
         $discountAmount = max(0, (float) ($originalInvoice->discount ?? 0) - (float) ($paramUpdateOriginalInvoice['discount'] ?? 0));
-        $seniorAmount = max(0, (float) ($originalInvoice->senior_discount_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['senior_discount_amount'] ?? 0));
-        $isSenior = (bool) ($originalInvoice->is_senior_discount ?? false);
+        if (($store->time_zone ?? null) === 'Asia/Manila') {
+            $seniorAmount = max(0, (float) ($originalInvoice->senior_discount_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['senior_discount_amount'] ?? 0));
+            $isSenior = (bool) ($originalInvoice->is_senior_discount ?? false);
+        } else {
+            $seniorAmount = 0;
+            $isSenior = false;
+        }
         $isSeniorActive = $isSenior && $seniorAmount > 0;
         $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
         $surchargeAmount = max(0, (float) ($originalInvoice->surcharge ?? 0) - (float) ($paramUpdateOriginalInvoice['surcharge'] ?? 0));
@@ -477,8 +482,13 @@ class SplitMergeInvoiceController extends Controller
         }
         $scBaseTotal = $total_value - $total_tax;
 
-        $seniorAmount = (float) round($scBaseTotal * 20 / 100);
-        $isSeniorActive = $original_invoice->is_senior_discount && $seniorAmount > 0;
+        if (($storeOrig->time_zone ?? null) === 'Asia/Manila') {
+            $seniorAmount = (float) round($scBaseTotal * 20 / 100);
+            $isSeniorActive = $original_invoice->is_senior_discount && $seniorAmount > 0;
+        } else {
+            $seniorAmount = 0;
+            $isSeniorActive = false;
+        }
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
 
@@ -590,8 +600,13 @@ class SplitMergeInvoiceController extends Controller
         $hasRemain = isset($filters['_remain_vt']);
         if ($hasRemain) {
             $discountAmount = max(0, (float) ($originalInvoice->discount ?? 0) - (float) ($filters['_remain_disc'] ?? 0));
-            $seniorAmount = max(0, (float) ($originalInvoice->senior_discount_amount ?? 0) - (float) ($filters['_remain_senior'] ?? 0));
-            $isSenior = (bool) ($originalInvoice->is_senior_discount ?? false);
+            if (($store->time_zone ?? null) === 'Asia/Manila') {
+                $seniorAmount = max(0, (float) ($originalInvoice->senior_discount_amount ?? 0) - (float) ($filters['_remain_senior'] ?? 0));
+                $isSenior = (bool) ($originalInvoice->is_senior_discount ?? false);
+            } else {
+                $seniorAmount = 0;
+                $isSenior = false;
+            }
             $isSeniorActive = $isSenior && $seniorAmount > 0;
             $surchargeAmount = max(0, (float) ($originalInvoice->surcharge ?? 0) - (float) ($filters['_remain_surcharge'] ?? 0));
             $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
@@ -604,8 +619,13 @@ class SplitMergeInvoiceController extends Controller
             $discountPct = (float) ($filters['discount_percent'] ?? 0);
             $discountAmount = $typeDiscount === 'percent' ? $discountPct : (float) ($filters['discount'] ?? 0);
             $scBaseTotal = $total_value - $total_tax;
-            $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
-            $isSenior = (bool) ($filters['is_senior_discount'] ?? false);
+            if (($store->time_zone ?? null) === 'Asia/Manila') {
+                $seniorAmount = (float) ($filters['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
+                $isSenior = (bool) ($filters['is_senior_discount'] ?? false);
+            } else {
+                $seniorAmount = 0;
+                $isSenior = false;
+            }
             $isSeniorActive = $isSenior && $seniorAmount > 0;
             $surchargePercent = (float) ($filters['surcharge_percent'] ?? 0);
             $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
@@ -829,9 +849,15 @@ class SplitMergeInvoiceController extends Controller
         $surchargeAmount = (float) ($targetInvoice['surcharge'] ?? 0);
         $serviceChargePercent = (float) ($targetInvoice['service_charge'] ?? 0);
         $scBaseTotal = $total_value - $total_tax;
-        $seniorAmount = (float) ($targetInvoice['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
+        
+        if (($storeTarget->time_zone ?? null) === 'Asia/Manila') {
+            $seniorAmount = (float) ($targetInvoice['senior_discount_amount'] ?? round($scBaseTotal * 20 / 100));
+            $isSeniorActive = !empty($targetInvoice['is_senior_discount']) && $seniorAmount > 0;
+        } else {
+            $seniorAmount = 0;
+            $isSeniorActive = false;
+        }
 
-        $isSeniorActive = !empty($targetInvoice['is_senior_discount']) && $seniorAmount > 0;
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
 
@@ -908,9 +934,15 @@ class SplitMergeInvoiceController extends Controller
         $surchargeAmount = (float) ($target_invoice->surcharge ?? 0);
         $serviceChargePercent = (float) ($target_invoice->service_charge ?? 0);
         $scBaseTotal = $total_value - $total_tax;
-        $seniorAmount = (float) ($target_invoice->senior_discount_amount ?? round($scBaseTotal * 20 / 100));
+        
+        if (($storeMerge->time_zone ?? null) === 'Asia/Manila') {
+            $seniorAmount = (float) ($target_invoice->senior_discount_amount ?? round($scBaseTotal * 20 / 100));
+            $isSeniorActive = !empty($target_invoice->is_senior_discount) && $seniorAmount > 0;
+        } else {
+            $seniorAmount = 0;
+            $isSeniorActive = false;
+        }
 
-        $isSeniorActive = !empty($target_invoice->is_senior_discount) && $seniorAmount > 0;
         $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
         $afterSenior = $scBaseTotal - $seniorDeduction;
 
