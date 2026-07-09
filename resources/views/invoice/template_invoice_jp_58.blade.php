@@ -8,8 +8,18 @@
     <style>
         @page { size: auto; margin: 0mm; }
 
+        @font-face {
+            font-family: 'NotoSerifJP-SemiBold';
+            src: url("{{ storage_path('fonts/NotoSerifJP-SemiBold.ttf') }}") format('truetype');
+        }
+
+        @font-face {
+            font-family: 'NotoSansJP-Bold';
+            src: url("{{ storage_path('fonts/NotoSansJP-Bold.ttf') }}") format('truetype');
+        }
+
         body {
-            font-family: Meiryo !important;
+            font-family: 'NotoSerifJP-SemiBold', serif;
             background-color: #f9f9f9;
             margin: 0;
             padding: 0;
@@ -174,7 +184,13 @@
         $amount_received = $payment['amount_received'] ?? 0;
         $change = $amount_received > $total ? $amount_received - $total : 0;
         $taxArray = [];
-        $currencySymbol = \App\Helpers\Helpers::getCurrencySymbolHTML(Session::get('user')['store']['currency']);
+        $currencyRaw = strtoupper($payment['store']['currency'] ?? 'VND');
+        $currencySymbols = [
+            'JPY' => '¥', 'USD' => '$', 'EUR' => '€',
+            'GBP' => '£', 'VND' => '₫', 'PHP' => '₱',
+        ];
+        $symbol = $currencySymbols[$currencyRaw] ?? '';
+        $currencySymbol = '<span class="currency-symbol">' . $symbol . '</span>';
     @endphp
     <div class="receipt" id="print">
         <div class="receipt-header">
@@ -319,7 +335,7 @@
                     <td class="txt-right">¥{{ number_format($seniorDiscount) }}</td>
                 </tr>
             @endif
-            @if(($payment['service_charge_amount'] ?? 0) > 0 || (Session::get('user')['store']['time_zone'] ?? '') == 'Asia/Manila')
+            @if(($payment['service_charge_amount'] ?? 0) > 0 || ($payment['store']['time_zone'] ?? '') == 'Asia/Manila')
             <tr class="item">
                 <td class="font-weight-nomarl txt-left">サービス料</td>
                 <td class="txt-right">{!! isset($currencySymbol) ? $currencySymbol : '¥' !!}{{ number_format($payment['service_charge_amount'] ?? 0) }}</td>
