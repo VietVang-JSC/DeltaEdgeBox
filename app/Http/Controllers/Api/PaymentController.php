@@ -299,9 +299,8 @@ class PaymentController extends Controller
 
     private function storeNow(int $storeId)
     {
-        $timeZone = Store::whereKey($storeId)->value('time_zone') ?: config('edge_box.timezone', 'Asia/Manila');
-
-        return now($timeZone);
+        $storeTz = Store::whereKey($storeId)->value('time_zone');
+        return $storeTz ? now($storeTz) : now();
     }
 
     private function buildCalculatedPaymentData($itemsInput, int $storeId, array $input): array
@@ -1295,7 +1294,7 @@ class PaymentController extends Controller
             }
             $data = $payment->toArray();
             $store = $payment->store ?? Store::find($data['store_id'] ?? config('edge_box.store_id'));
-            $tz = $store ? ($store->time_zone ?? config('edge_box.timezone', 'Asia/Manila')) : config('edge_box.timezone', 'Asia/Manila');
+            $tz = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             if (!empty($data['created_at'])) {
                 $data['created_at_formatted'] = \Carbon\Carbon::parse($data['created_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
             }
@@ -1467,7 +1466,7 @@ class PaymentController extends Controller
                     $map = array_flip($paymentMethodNames);
                     $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int)$data['payment_method'] : 0);
                 }
-                $tz = config('edge_box.timezone', 'Asia/Manila');
+                $tz = config('app.timezone');
                 $data['created_at'] = \Carbon\Carbon::parse($data['created_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
                 $data['updated_at'] = \Carbon\Carbon::parse($data['updated_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
                 if (!empty($data['details'])) {
