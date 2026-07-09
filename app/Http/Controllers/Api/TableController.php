@@ -339,7 +339,7 @@ class TableController extends Controller
             'store_id' => $storeId,
             'table_id' => $table->id,
             'customer_id' => $request->input('customer_id') ?: null,
-            'paid_date' => now(),
+            'paid_date' => now($store ? ($store->time_zone ?? config('edge_box.timezone', 'Asia/Manila')) : config('edge_box.timezone', 'Asia/Manila')),
             'total' => $isTaxIncluded ? $calcResult['total_incl_vat_before_discount'] : $calcResult['sub_total_before_discount'],
             'discount' => $calcResult['discount'],
             'tax' => $calcResult['total_tax'],
