@@ -867,6 +867,7 @@ class TableController extends Controller
 
             // Senior Discount (RA 9994)
             if (!empty($attributes['is_senior_discount'])) {
+                $params['is_senior_discount'] = true;
                 $seniorRate = 20; // Default 20%
                 $seniorDiscountAmount = round($billItem['summary']['subtotal_before'] * $seniorRate / 100);
                 $params['senior_discount_amount'] = $seniorDiscountAmount;
