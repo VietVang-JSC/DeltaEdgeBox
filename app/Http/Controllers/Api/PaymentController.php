@@ -1278,7 +1278,7 @@ class PaymentController extends Controller
             } elseif ($type === 'table') {
                 $query->whereNotNull('table_id');
             }
-            $payments = $query->orderBy('created_at', 'desc')->get();
+            $payments = $query->orderBy('updated_at', 'desc')->get();
             return response()->json([
                 'status' => true,
                 'data' => $payments,
@@ -1415,7 +1415,7 @@ class PaymentController extends Controller
             $payments = Payment::with('details')
                 ->where('store_id', $storeId)
                 ->where('status', 0)
-                ->orderBy('created_at', 'desc')
+                ->orderBy('updated_at', 'desc')
                 ->get();
             return response()->json([
                 'status' => true,
@@ -1463,7 +1463,7 @@ class PaymentController extends Controller
 
             $total = $paymentsQuery->count();
             $totalPages = max(1, ceil($total / $pageSize));
-            $payments = $paymentsQuery->orderBy('created_at', 'desc')
+            $payments = $paymentsQuery->orderBy('updated_at', 'desc')
                 ->skip(($page - 1) * $pageSize)
                 ->take($pageSize)
                 ->get();
