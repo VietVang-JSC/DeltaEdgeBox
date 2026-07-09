@@ -259,8 +259,11 @@
                         @endphp
                         <tr class="font-size-tr">
                             <td class="text-break-container">
-                                {{ $item['products']['title'] }} {{ $taxNote }}
-                            </td>
+                        {{ $item['products']['title'] }} {{ $taxNote }}
+                        @if(!empty($item['note']))
+                            <div>{{ $item['note'] }}</div>
+                        @endif
+                    </td>
                             <td class="txt-right">{{ number_format($item['quantity']) }}</td>
                             <td class="txt-right">{!! $currencySymbol !!}{{ number_format($item['total_price']) }}</td>
                         </tr>
