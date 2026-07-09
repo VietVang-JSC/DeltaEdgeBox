@@ -484,32 +484,65 @@ class PosWebFilterController extends Controller
         $paymentsQuery = Payment::with(['user', 'customer', 'details'])
             ->where('store_id', $storeId);
 
-        // Apply filters
-        if (!empty($query['user_id'])) {
-            $paymentsQuery->where('user_id', $query['user_id']);
-        }
-        if (isset($query['customer_id'])) {
-            $paymentsQuery->where('customer_id', $query['customer_id']);
-        }
-        if (!empty($query['payment_method'])) {
-            $paymentsQuery->where('payment_method', $query['payment_method']);
-        }
-        if (isset($query['status']) && $query['status'] !== '' && $query['status'] !== null) {
-            $paymentsQuery->where('status', (int) $query['status']);
-        }
-        if (!empty($query['updated_at']) && is_array($query['updated_at'])) {
-            $dates = array_filter($query['updated_at']);
-            if (!empty($dates)) {
-                $paymentsQuery->whereDate('updated_at', '>=', $dates[0]);
-                if (isset($dates[1])) {
-                    $paymentsQuery->whereDate('updated_at', '<=', $dates[1]);
+        // Apply filters 
+        foreach ($query as $column => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if (is_array($value)) {
+                if (isset($value['condition'])) {
+                    $condition = $value['condition'];
+                    // Special handling for date fields with 'Between'
+                    if (is_array($value['value']) && strtolower($condition) === 'between') {
+                        $paymentsQuery->whereBetween(\Illuminate\Support\Facades\DB::raw("DATE($column)"), $value['value']);
+                    } else {
+                        $paymentsQuery->{"where{$condition}"}($column, $value['value']);
+                    }
+                } elseif (isset($value['operator'])) {
+                    $operator = $value['operator'];
+                    $val = $value['value'];
+                    if (strtolower($operator) === 'like') {
+                        $val = "%{$val}%";
+                    }
+
+                    if (isset($value['or'])) {
+                        $paymentsQuery->where(function ($q) use ($column, $operator, $val, $value) {
+                            $q->where($column, $operator, $val);
+                            $orKeys = is_array($value['or']) ? $value['or'] : [$value['or']];
+                            foreach ($orKeys as $orKey) {
+                                $q->orWhere($orKey, $operator, $val);
+                            }
+                        });
+                    } else {
+                        if (strtolower($operator) === 'in' && is_array($val)) {
+                            $paymentsQuery->whereIn($column, $val);
+                        } else {
+                            $paymentsQuery->where($column, $operator, $val);
+                        }
+                    }
+                } elseif (isset($value[0]) && isset($value[1]) && $column === 'updated_at') {
+                    // Fallback for old simple array of dates format without operator
+                    $dates = array_filter($value);
+                    if (!empty($dates)) {
+                        $paymentsQuery->whereDate('updated_at', '>=', $dates[0]);
+                        if (isset($dates[1])) {
+                            $paymentsQuery->whereDate('updated_at', '<=', $dates[1]);
+                        }
+                    }
+                } else {
+                    $paymentsQuery->whereIn($column, $value);
                 }
+            } else {
+                $paymentsQuery->where($column, $value);
             }
         }
 
         $column = $orderBy['column'] ?? 'updated_at';
         $direction = strtoupper($orderBy['value'] ?? 'DESC');
-        if (!in_array($direction, ['ASC', 'DESC'])) { $direction = 'DESC'; }
+        if (!in_array($direction, ['ASC', 'DESC'])) {
+            $direction = 'DESC';
+        }
 
         if ($pagination) {
             $pageSize = (int) ($pagination['pageSize'] ?? 15);
@@ -530,7 +563,7 @@ class PosWebFilterController extends Controller
 
         return $paymentsQuery->orderBy($column, $direction)
             ->get()
-            ->map(fn (Payment $payment) => $this->paymentPayload($payment))
+            ->map(fn(Payment $payment) => $this->paymentPayload($payment))
             ->values()
             ->all();
     }
@@ -768,7 +801,7 @@ class PosWebFilterController extends Controller
 
                     if (is_array($value)) {
                         $operator = $value['operator'] ?? '=';
-                        $val      = $value['value'] ?? null;
+                        $val = $value['value'] ?? null;
 
                         if ($val !== null) {
                             if (strtolower($operator) === 'like') {
@@ -793,21 +826,21 @@ class PosWebFilterController extends Controller
                     $orderBy = $params['customers']['clauses']['orderby'];
                     $customerQuery->orderBy(
                         $orderBy['column'] ?? 'id',
-                        $orderBy['value']  ?? 'ASC'
+                        $orderBy['value'] ?? 'ASC'
                     );
                 }
 
                 // Pagination
-                $pageSize    = $params['customers']['clauses']['pagination']['pageSize']    ?? 15;
+                $pageSize = $params['customers']['clauses']['pagination']['pageSize'] ?? 15;
                 $currentPage = $params['customers']['clauses']['pagination']['currentPage'] ?? 1;
 
                 $customers = $customerQuery->paginate($pageSize, ['*'], 'page', $currentPage);
 
                 $response['customer_list'] = [
-                    'data_list'   => $customers->items(),
-                    'total'       => $customers->total(),
+                    'data_list' => $customers->items(),
+                    'total' => $customers->total(),
                     'currentPage' => $customers->currentPage(),
-                    'pageSize'    => $customers->perPage(),
+                    'pageSize' => $customers->perPage(),
                 ];
             }
 
@@ -842,21 +875,21 @@ class PosWebFilterController extends Controller
                     $orderBy = $params['payments']['clauses']['orderby'];
                     $paymentQuery->orderBy(
                         $orderBy['column'] ?? 'updated_at',
-                        $orderBy['value']  ?? 'DESC'
+                        $orderBy['value'] ?? 'DESC'
                     );
                 }
 
                 // Pagination
-                $pageSize    = $params['payments']['clauses']['pagination']['pageSize']    ?? 15;
+                $pageSize = $params['payments']['clauses']['pagination']['pageSize'] ?? 15;
                 $currentPage = $params['payments']['clauses']['pagination']['currentPage'] ?? 1;
 
                 $payments = $paymentQuery->paginate($pageSize, ['*'], 'page', $currentPage);
 
                 $response['data_payment'] = [
-                    'data_list'   => $payments->items(),
-                    'total'       => $payments->total(),
+                    'data_list' => $payments->items(),
+                    'total' => $payments->total(),
                     'currentPage' => $payments->currentPage(),
-                    'pageSize'    => $payments->perPage(),
+                    'pageSize' => $payments->perPage(),
                 ];
             }
 
@@ -875,7 +908,7 @@ class PosWebFilterController extends Controller
 
                     if (is_array($value)) {
                         $operator = $value['operator'] ?? '=';
-                        $val      = $value['value'] ?? null;
+                        $val = $value['value'] ?? null;
 
                         if ($val !== null) {
                             if (strtolower($operator) === 'like') {
@@ -902,21 +935,21 @@ class PosWebFilterController extends Controller
                     $orderBy = $params['data_payment']['clauses']['orderby'];
                     $paymentQuery->orderBy(
                         $orderBy['column'] ?? 'updated_at',
-                        $orderBy['value']  ?? 'DESC'
+                        $orderBy['value'] ?? 'DESC'
                     );
                 }
 
                 // Pagination
-                $pageSize    = $params['data_payment']['clauses']['pagination']['pageSize']    ?? 15;
+                $pageSize = $params['data_payment']['clauses']['pagination']['pageSize'] ?? 15;
                 $currentPage = $params['data_payment']['clauses']['pagination']['currentPage'] ?? 1;
 
                 $payments = $paymentQuery->paginate($pageSize, ['*'], 'page', $currentPage);
 
                 $response['data_payment'] = [
-                    'data_list'   => $payments->items(),
-                    'total'       => $payments->total(),
+                    'data_list' => $payments->items(),
+                    'total' => $payments->total(),
                     'currentPage' => $payments->currentPage(),
-                    'pageSize'    => $payments->perPage(),
+                    'pageSize' => $payments->perPage(),
                 ];
             }
 
@@ -935,7 +968,7 @@ class PosWebFilterController extends Controller
 
                     if (is_array($value)) {
                         $operator = $value['operator'] ?? '=';
-                        $val      = $value['value'] ?? null;
+                        $val = $value['value'] ?? null;
 
                         if ($val !== null) {
                             if (strtolower($operator) === 'like') {
@@ -962,7 +995,7 @@ class PosWebFilterController extends Controller
                     $orderBy = $params['combo_products']['clauses']['orderby'];
                     $comboQuery->orderBy(
                         $orderBy['column'] ?? 'id',
-                        $orderBy['value']  ?? 'ASC'
+                        $orderBy['value'] ?? 'ASC'
                     );
                 }
 
@@ -970,16 +1003,16 @@ class PosWebFilterController extends Controller
                 $pagination = $params['combo_products']['clauses']['pagination'] ?? null;
 
                 if ($pagination) {
-                    $pageSize    = (int) ($pagination['pageSize']    ?? 15);
+                    $pageSize = (int) ($pagination['pageSize'] ?? 15);
                     $currentPage = (int) ($pagination['currentPage'] ?? 1);
 
                     $combos = $comboQuery->paginate($pageSize, ['*'], 'page', $currentPage);
 
                     $response['combo_products'] = [
-                        'data_list'   => $combos->items(),
-                        'total'       => $combos->total(),
+                        'data_list' => $combos->items(),
+                        'total' => $combos->total(),
                         'currentPage' => $combos->currentPage(),
-                        'pageSize'    => $combos->perPage(),
+                        'pageSize' => $combos->perPage(),
                     ];
                 } else {
                     $response['combo_products'] = $comboQuery->get()->toArray();
@@ -988,14 +1021,14 @@ class PosWebFilterController extends Controller
 
             return response()->json([
                 'status' => true,
-                'data'   => $response,
+                'data' => $response,
             ]);
 
         } catch (\Throwable $e) {
             Log::error($e);
 
             return response()->json([
-                'status'  => false,
+                'status' => false,
                 'message' => $e->getMessage(),
             ], 500);
         }
