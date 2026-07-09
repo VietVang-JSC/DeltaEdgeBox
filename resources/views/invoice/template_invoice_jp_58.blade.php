@@ -8,8 +8,18 @@
     <style>
         @page { size: auto; margin: 0mm; }
 
+        @font-face {
+            font-family: 'NotoSerifJP-SemiBold';
+            src: url("{{ storage_path('fonts/NotoSerifJP-SemiBold.ttf') }}") format('truetype');
+        }
+
+        @font-face {
+            font-family: 'NotoSansJP-Bold';
+            src: url("{{ storage_path('fonts/NotoSansJP-Bold.ttf') }}") format('truetype');
+        }
+
         body {
-            font-family: Meiryo !important;
+            font-family: 'NotoSerifJP-SemiBold', serif;
             background-color: #f9f9f9;
             margin: 0;
             padding: 0;
