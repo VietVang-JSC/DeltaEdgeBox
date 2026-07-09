@@ -199,10 +199,10 @@
             </div>
         </div>
 
-@if (!empty($payment['paid_date']))
-    <div class="receipt-date font-size-info">{{ $payment['paid_date'] }}</div>
-@elseif (!empty($payment['updated_at']))
+@if (!empty($payment['updated_at']))
     <div class="receipt-date font-size-info">{{ $payment['updated_at'] }}</div>
+@elseif (!empty($payment['created_at']))
+    <div class="receipt-date font-size-info">{{ $payment['created_at'] }}</div>
 @endif
 
         @if (!empty($payment['table']['tablename']))
