@@ -499,6 +499,7 @@ class TableController extends Controller
                 'note' => $item['note'] ?? $item['noted'] ?? null,
                 'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : null,
                 'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
+                'product_types' => $item['product_types'] ?? [],
             ];
         }
 
