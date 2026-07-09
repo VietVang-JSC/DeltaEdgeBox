@@ -286,6 +286,9 @@
                     <tr class="align-top">
                     <td class="text-break-container">
                         {{$productTile}}
+                        @if(!empty($item['note']))
+                            <div class="note">{{ $item['note'] }}</div>
+                        @endif
                         @if(!empty($productExtra))
                             @foreach ($productExtra as $extra_product_item)
                                 <div>+{{$extra_product_item['title'] ?? ''}}</div>
