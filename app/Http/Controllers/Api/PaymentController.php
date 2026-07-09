@@ -590,7 +590,7 @@ class PaymentController extends Controller
             'quantity' => (int) $item['quantity'],
             'price' => (float) $item['price'],
             'total' => (float) ($item['TotalPrice'] ?? $item['total'] ?? 0),
-            'note' => $item['note'] ?? $item['noted'] ?? null,
+            'note' => $this->buildItemNote($item),
             'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : ($item['product_extra'] ?? null),
             'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
             'inventory_histories' => !empty($item['inventory_histories']) ? json_encode($item['inventory_histories']) : null,
@@ -609,6 +609,22 @@ class PaymentController extends Controller
             'created_at' => $timestamp,
             'updated_at' => $timestamp,
         ];
+    }
+
+    private function buildItemNote(array $item): ?string
+    {
+        $parts = [];
+        if (!empty($item['note'])) {
+            $parts[] = $item['note'];
+        }
+        if (!empty($item['product_types']) && is_array($item['product_types'])) {
+            foreach ($item['product_types'] as $pt) {
+                if (!empty($pt['productTypeValue'])) {
+                    $parts[] = $pt['productTypeValue'];
+                }
+            }
+        }
+        return !empty($parts) ? implode(', ', $parts) : null;
     }
 
     private function applyDetailQuantityRatio(PaymentDetail $detail, int $targetQuantity, int $originalQuantity): void
