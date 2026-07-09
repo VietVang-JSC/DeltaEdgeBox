@@ -104,9 +104,9 @@ class PaymentPrintController extends Controller
         $payload['total_tax'] = $payload['tax'] ?? 0;
         $payload['amount_received'] = $payload['amount_received'] ?? ($payload['final_total'] ?? 0);
         // Calculate subtotal from payment_details for accuracy
-        $subtotalFromDetails = $details ? array_sum(array_map(fn($d) => (float)($d['total_price'] ?? $d['total'] ?? 0), $details->toArray())) : 0;
-        $payload['sub_total_before_discount'] = !empty($payload['sub_total_before_discount']) ? (float)$payload['sub_total_before_discount'] : ($subtotalFromDetails ?: ($payload['total'] ?? 0));
-        $payload['total_incl_vat_before_discount'] = !empty($payload['total_incl_vat_before_discount']) ? (float)$payload['total_incl_vat_before_discount'] : ($subtotalFromDetails ?: ($payload['total'] ?? 0));
+        $subtotalFromDetails = $details ? array_sum(array_map(fn($d) => (float) ($d['total_price'] ?? $d['total'] ?? 0), $details->toArray())) : 0;
+        $payload['sub_total_before_discount'] = !empty($payload['sub_total_before_discount']) ? (float) $payload['sub_total_before_discount'] : ($subtotalFromDetails ?: ($payload['total'] ?? 0));
+        $payload['total_incl_vat_before_discount'] = !empty($payload['total_incl_vat_before_discount']) ? (float) $payload['total_incl_vat_before_discount'] : ($subtotalFromDetails ?: ($payload['total'] ?? 0));
         $payload['payment_code'] = $payload['payment_code'] ?: ('EDGE-' . $payment->id);
         $payload['is_senior_discount'] = $payload['is_senior_discount'] ?? false;
         $payload['senior_discount_amount'] = $payload['senior_discount_amount'] ?? 0;
@@ -206,7 +206,7 @@ class PaymentPrintController extends Controller
             ->where('printer_type', 'receipt')
             ->where('default', 1)
             ->first();
-        
+
         $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
 
         // Use paymentPayload() for 100% consistent format with cloud API
@@ -329,7 +329,7 @@ class PaymentPrintController extends Controller
         $filters['split_merge_item'] = $itemsInput['item'] ?? $itemsInput ?? [];
 
         $temporaryPayment = $this->buildSimplePayment($filters, $isTaxIncluded);
-        
+
         $table = null;
         if ($payment && $payment->table) {
             $table = $payment->table;
@@ -337,7 +337,7 @@ class PaymentPrintController extends Controller
             $table = Table::find($payment->table_id);
         }
         $temporaryPayment['table'] = $table ? $table->toArray() : [];
-        
+
         $user = $payment && $payment->user ? $payment->user : null;
         if (!$user && $payment && !empty($payment->admin_id)) {
             $user = User::find($payment->admin_id);
@@ -363,9 +363,9 @@ class PaymentPrintController extends Controller
             ->where('printer_type', 'receipt')
             ->where('default', 1)
             ->first();
-        
+
         $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
-        
+
         $language = $request->input('language', 'vi');
         app()->setLocale($language);
 
@@ -470,7 +470,7 @@ class PaymentPrintController extends Controller
             if (empty($params['data_bank_payment'])) {
                 $baseHeight += 100;
             }
-            
+
             $details = $params['payment']['payment_details'] ?? [];
             $countProduct = count($details);
 
@@ -498,7 +498,7 @@ class PaymentPrintController extends Controller
         uasort($attributes['split_merge_item'], function ($a, $b) {
             return ($b['vat'] ?? 0) <=> ($a['vat'] ?? 0);
         });
-        
+
         if (!isset($attributes['discount'])) {
             $attributes['discount'] = 0;
         }
@@ -511,18 +511,20 @@ class PaymentPrintController extends Controller
             $attributes['discount_percent'] = null;
         }
 
-        $billItem = $isTaxIncluded 
-            ? $this->allocateDiscountTaxIncluded($attributes['split_merge_item'], $totalDiscount, $typeDiscount) 
+        $billItem = $isTaxIncluded
+            ? $this->allocateDiscountTaxIncluded($attributes['split_merge_item'], $totalDiscount, $typeDiscount)
             : $this->allocateDiscountTaxExcluded($attributes['split_merge_item'], $totalDiscount, $typeDiscount);
-            
+
         $attributes['split_merge_item'] = array_replace(array_flip($originalOrder), $billItem['items']);
 
         foreach ($attributes['split_merge_item'] as $key => $value) {
             $noteParts = [];
-            if (!empty($value['note'])) $noteParts[] = $value['note'];
+            if (!empty($value['note']))
+                $noteParts[] = $value['note'];
             if (!empty($value['product_types']) && is_array($value['product_types'])) {
                 foreach ($value['product_types'] as $pt) {
-                    if (!empty($pt['productTypeValue'])) $noteParts[] = $pt['productTypeValue'];
+                    if (!empty($pt['productTypeValue']))
+                        $noteParts[] = $pt['productTypeValue'];
                 }
             }
             $paymentDetails[] = [
@@ -555,7 +557,7 @@ class PaymentPrintController extends Controller
         $storeId = config('edge_box.store_id', 1);
         $store = Store::find($storeId);
         if ($store && $store->time_zone == 'Asia/Manila') {
-            $serviceCharge = isset($attributes['service_charge']) ? (int)$attributes['service_charge'] : ($store->service_charge ?? 0);
+            $serviceCharge = isset($attributes['service_charge']) ? (int) $attributes['service_charge'] : ($store->service_charge ?? 0);
             $params['service_charge'] = $serviceCharge;
 
             $baseForSurcharge = $isTaxIncluded
@@ -574,6 +576,7 @@ class PaymentPrintController extends Controller
 
             // Senior Discount (RA 9994)
             if (!empty($attributes['is_senior_discount'])) {
+                $params['is_senior_discount'] = true;
                 $seniorRate = 20; // Default 20%
                 $seniorDiscountAmount = round($billItem['summary']['subtotal_before'] * $seniorRate / 100);
                 $params['senior_discount_amount'] = $seniorDiscountAmount;
