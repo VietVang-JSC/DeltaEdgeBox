@@ -339,7 +339,7 @@ class KitchenPrintController extends Controller
     private function generateKitchenPDF($payload, $storeId, $templatePath, $paperSize = 80)
     {
         try {
-            $contentWidth = $paperSize == 58 ? 227 : 302;
+            $contentWidth = $paperSize == 58 ? 164 : 227;
             $maxTries = 50;
             $tryCount = 0;
             $heightExtra = 0;
