@@ -53,7 +53,7 @@ class PaymentPrintController extends Controller
         $store = $payment->store;
         $language = $request->input('language', 'vi');
         app()->setLocale($language);
-        $timeZone = $store ? ($store->time_zone ?? config('edge_box.timezone', 'Asia/Ho_Chi_Minh')) : config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+        $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
 
         // Use paymentPayload() for 100% consistent format with cloud API
         $paymentData = $this->paymentPayload($payment);
@@ -213,7 +213,7 @@ class PaymentPrintController extends Controller
         $paymentData = $this->paymentPayload($payment);
         $timeZone = $store ? $store->time_zone : null;
         if (!$timeZone || $timeZone === 'UTC') {
-            $timeZone = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+            $timeZone = config('app.timezone');
         }
         if ($payment->created_at) {
             $paymentData['created_at'] = $payment->created_at->setTimezone($timeZone)->format('d-m-Y H:i:s');

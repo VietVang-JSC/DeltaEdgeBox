@@ -24,7 +24,7 @@ class PosWebFilterController extends Controller
         try {
             $storeId = $this->storeId($request);
             $store = Store::find($storeId) ?: Store::first();
-            $timezone = $store ? ($store->time_zone ?? 'Asia/Ho_Chi_Minh') : 'Asia/Ho_Chi_Minh';
+            $timezone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             $isTaxIncluded = $store ? (int) ($store->is_tax_included ?? 0) : 0;
 
             $queryParam = $request->input('products.query', []);
@@ -77,7 +77,7 @@ class PosWebFilterController extends Controller
 
     private function defaultTimeZone(): string
     {
-        return config('app.timezone', 'Asia/Ho_Chi_Minh');
+        return config('app.timezone');
     }
 
     public function filter(Request $request)
@@ -243,7 +243,7 @@ class PosWebFilterController extends Controller
     private function products(int $storeId, Request $request = null): array
     {
         $store = Store::find($storeId) ?: Store::first();
-        $timezone = $store ? ($store->time_zone ?? 'Asia/Ho_Chi_Minh') : 'Asia/Ho_Chi_Minh';
+        $timezone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
         $isTaxIncluded = $store ? (int) ($store->is_tax_included ?? 0) : 0;
 
         $query = Product::query()
@@ -336,7 +336,7 @@ class PosWebFilterController extends Controller
     {
         if ($timezone === null || $isTaxIncluded === null) {
             $store = Store::find($product->store_id) ?: Store::first();
-            $timezone = $timezone ?? ($store ? ($store->time_zone ?? 'Asia/Ho_Chi_Minh') : 'Asia/Ho_Chi_Minh');
+            $timezone = $timezone ?? ($store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone'));
             $isTaxIncluded = $isTaxIncluded ?? ($store ? (int) ($store->is_tax_included ?? 0) : 0);
         }
         $availableFrames = [];
