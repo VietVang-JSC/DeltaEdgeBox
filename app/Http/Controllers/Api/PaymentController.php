@@ -225,6 +225,21 @@ class PaymentController extends Controller
                     }
                 }
 
+                if (empty($itemsInput)) {
+                    $store = Store::whereKey($storeId)->first();
+                    if (($store->time_zone ?? null) === 'Asia/Manila') {
+                        if ($request->has('is_senior_discount')) {
+                            $updates['is_senior_discount'] = filter_var($request->input('is_senior_discount'), FILTER_VALIDATE_BOOLEAN);
+                        }
+                        if ($request->has('senior_discount_amount')) {
+                            $updates['senior_discount_amount'] = (float) $request->input('senior_discount_amount');
+                        }
+                    } else {
+                        $updates['is_senior_discount'] = false;
+                        $updates['senior_discount_amount'] = 0;
+                    }
+                }
+
                 $updates['note'] = $request->input('reason', $payment->note);
                 $updates['reason'] = $request->input('reason', $payment->reason);
                 $updates['user_id'] = $userId;

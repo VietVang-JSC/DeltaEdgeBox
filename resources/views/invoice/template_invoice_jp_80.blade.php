@@ -168,7 +168,13 @@
         $amount_received = $payment['amount_received'] ?? 0;
         $change = $amount_received > $total ? $amount_received - $total : 0;
         $taxArray = [];
-        $currencySymbol = \App\Helpers\Helpers::getCurrencySymbolHTML(Session::get('user')['store']['currency']);
+        $currencyRaw = strtoupper($payment['store']['currency'] ?? 'VND');
+        $currencySymbols = [
+            'JPY' => '¥', 'USD' => '$', 'EUR' => '€',
+            'GBP' => '£', 'VND' => '₫', 'PHP' => '₱',
+        ];
+        $symbol = $currencySymbols[$currencyRaw] ?? '';
+        $currencySymbol = '<span class="currency-symbol">' . $symbol . '</span>';
     @endphp
     <div class="receipt" id="print">
         <div class="receipt-header">
@@ -318,7 +324,7 @@
                     <td class="txt-right">{!! $currencySymbol !!}{{ number_format($seniorDiscount) }}</td>
                 </tr>
             @endif
-            @if(($payment['service_charge_amount'] ?? 0) > 0 || (Session::get('user')['store']['time_zone'] ?? '') == 'Asia/Manila')
+            @if(($payment['service_charge_amount'] ?? 0) > 0 || ($payment['store']['time_zone'] ?? '') == 'Asia/Manila')
             <tr class="item">
                 <td class="font-weight-nomarl txt-left">サービス料</td>
                 <td class="txt-right">{!! isset($currencySymbol) ? $currencySymbol : '¥' !!}{{ number_format($payment['service_charge_amount'] ?? 0) }}</td>
