@@ -434,7 +434,7 @@ class PaymentPrintController extends Controller
     {
         try {
             $heightExtra = 0;
-            $contentWidth = $paperSize == 80 ? 302 : 227;
+            $contentWidth = $paperSize == 80 ? 227 : 164;
             $maxTries = 50;
             $tryCount = 0;
             $pdf = null;
