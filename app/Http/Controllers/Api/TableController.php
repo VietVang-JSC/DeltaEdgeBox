@@ -420,7 +420,16 @@ class TableController extends Controller
                 'quantity' => $item['quantity'],
                 'price' => $item['price'],
                 'total' => $item['total'],
-                'note' => $item['note'] ?? null,
+                'note' => (function() use ($item) {
+                    $parts = [];
+                    if (!empty($item['note'])) $parts[] = $item['note'];
+                    if (!empty($item['product_types']) && is_array($item['product_types'])) {
+                        foreach ($item['product_types'] as $pt) {
+                            if (!empty($pt['productTypeValue'])) $parts[] = $pt['productTypeValue'];
+                        }
+                    }
+                    return !empty($parts) ? implode(', ', $parts) : null;
+                })(),
                 'product_extra' => $item['product_extra'] ?? null,
                 'optional_products' => $item['optional_products'] ?? null,
                 'printed_quantity' => $printedQuantity,
