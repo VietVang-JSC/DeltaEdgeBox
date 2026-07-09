@@ -218,7 +218,7 @@
                 <table class="info-table" aria-label="Thông tin hóa đơn">
                     <tr> 
                         <th class="info_label">{{ __('front/pos_order.invoices.Ngày') }}:</th>
-                        <td class="Info_staff_input current_date">{{ $payment['created_at'] ?? '' }}</td>
+                        <td class="Info_staff_input current_date">{{ $payment['updated_at'] ?? $payment['created_at'] ?? '' }}</td>
                     </tr>
                     <tr>
                         <th class="info_label">{{ __('front/pos_order.invoices.Nhân viên') }}:</th>
@@ -286,6 +286,9 @@
                     <tr class="align-top">
                     <td class="text-break-container">
                         {{$productTile}}
+                        @if(!empty($item['note']))
+                            <div class="note">{{ $item['note'] }}</div>
+                        @endif
                         @if(!empty($productExtra))
                             @foreach ($productExtra as $extra_product_item)
                                 <div>+{{$extra_product_item['title'] ?? ''}}</div>

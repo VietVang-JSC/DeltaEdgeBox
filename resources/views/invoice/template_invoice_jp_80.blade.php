@@ -199,9 +199,11 @@
             </div>
         </div>
 
-        @if (!empty($payment['updated_at']))
-            <div class="receipt-date font-size-info">{{ $payment['updated_at'] }}</div>
-        @endif
+@if (!empty($payment['updated_at']))
+    <div class="receipt-date font-size-info">{{ $payment['updated_at'] }}</div>
+@elseif (!empty($payment['created_at']))
+    <div class="receipt-date font-size-info">{{ $payment['created_at'] }}</div>
+@endif
 
         @if (!empty($payment['table']['tablename']))
             <div class="receipt-table font-size-info">テーブル番号：{{ $payment['table']['tablename'] }}</div>
@@ -257,8 +259,11 @@
                         @endphp
                         <tr class="font-size-tr">
                             <td class="text-break-container">
-                                {{ $item['products']['title'] }} {{ $taxNote }}
-                            </td>
+                        {{ $item['products']['title'] }} {{ $taxNote }}
+                        @if(!empty($item['note']))
+                            <div>{{ $item['note'] }}</div>
+                        @endif
+                    </td>
                             <td class="txt-right">{{ number_format($item['quantity']) }}</td>
                             <td class="txt-right">{!! $currencySymbol !!}{{ number_format($item['total_price']) }}</td>
                         </tr>

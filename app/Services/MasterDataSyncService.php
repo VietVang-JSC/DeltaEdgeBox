@@ -307,7 +307,7 @@ class MasterDataSyncService
                             'api_key' => $st['api_key'] ?? null,
                             'is_tax_included' => $st['is_tax_included'] ?? false,
                             'printer_host' => $st['printer_host'] ?? null,
-                            'time_zone' => $st['time_zone'] ?? 'Asia/Ho_Chi_Minh',
+                            'time_zone' => $st['time_zone'] ?? 'Asia/Manila',
                             'use_node_print_driver' => $st['use_node_print_driver'] ?? true,
                             'type_check_qr' => $st['type_check_qr'] ?? 'pin',
                             'setting_print_kitchen' => isset($st['setting_print_kitchen']) 

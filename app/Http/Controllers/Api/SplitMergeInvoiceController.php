@@ -652,6 +652,7 @@ class SplitMergeInvoiceController extends Controller
     private function createPaymentLocal($data)
     {
         $amountReceived = isset($data['amount_received']) ? round((float) $data['amount_received']) : null;
+          $storeTz = \App\Models\Store::whereKey($data['store_id'])->value('time_zone') ?: config('edge_box.timezone', 'Asia/Manila');
           $payment = Payment::create([
               'payment_code' => $data['payment_code'],
               'parent_id' => $data['parent_id'] ?? null,
@@ -659,7 +660,7 @@ class SplitMergeInvoiceController extends Controller
               'table_id' => $data['table_id'],
               'customer_id' => $data['customer_id'],
               'items' => $data['items'],
-              'paid_date' => now(),
+              'paid_date' => now($storeTz),
               'total' => round((float) ($data['valuetotal'] ?? 0)),
               'discount' => (float) ($data['discount'] ?? 0),
               'surcharge' => (float) ($data['surcharge'] ?? 0),

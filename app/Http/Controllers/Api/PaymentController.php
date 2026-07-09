@@ -299,9 +299,8 @@ class PaymentController extends Controller
 
     private function storeNow(int $storeId)
     {
-        $timeZone = Store::whereKey($storeId)->value('time_zone') ?: config('app.timezone', 'Asia/Ho_Chi_Minh');
-
-        return now($timeZone);
+        $storeTz = Store::whereKey($storeId)->value('time_zone');
+        return $storeTz ? now($storeTz) : now();
     }
 
     private function buildCalculatedPaymentData($itemsInput, int $storeId, array $input): array
@@ -591,7 +590,7 @@ class PaymentController extends Controller
             'quantity' => (int) $item['quantity'],
             'price' => (float) $item['price'],
             'total' => (float) ($item['TotalPrice'] ?? $item['total'] ?? 0),
-            'note' => $item['note'] ?? $item['noted'] ?? null,
+            'note' => $this->buildItemNote($item),
             'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : ($item['product_extra'] ?? null),
             'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
             'inventory_histories' => !empty($item['inventory_histories']) ? json_encode($item['inventory_histories']) : null,
@@ -610,6 +609,22 @@ class PaymentController extends Controller
             'created_at' => $timestamp,
             'updated_at' => $timestamp,
         ];
+    }
+
+    private function buildItemNote(array $item): ?string
+    {
+        $parts = [];
+        if (!empty($item['note'])) {
+            $parts[] = $item['note'];
+        }
+        if (!empty($item['product_types']) && is_array($item['product_types'])) {
+            foreach ($item['product_types'] as $pt) {
+                if (!empty($pt['productTypeValue'])) {
+                    $parts[] = $pt['productTypeValue'];
+                }
+            }
+        }
+        return !empty($parts) ? implode(', ', $parts) : null;
     }
 
     private function applyDetailQuantityRatio(PaymentDetail $detail, int $targetQuantity, int $originalQuantity): void
@@ -1295,7 +1310,7 @@ class PaymentController extends Controller
             }
             $data = $payment->toArray();
             $store = $payment->store ?? Store::find($data['store_id'] ?? config('edge_box.store_id'));
-            $tz = $store ? ($store->time_zone ?? config('edge_box.timezone', 'Asia/Ho_Chi_Minh')) : config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+            $tz = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             if (!empty($data['created_at'])) {
                 $data['created_at_formatted'] = \Carbon\Carbon::parse($data['created_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
             }
@@ -1467,7 +1482,7 @@ class PaymentController extends Controller
                     $map = array_flip($paymentMethodNames);
                     $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int)$data['payment_method'] : 0);
                 }
-                $tz = config('edge_box.timezone', 'Asia/Ho_Chi_Minh');
+                $tz = config('app.timezone');
                 $data['created_at'] = \Carbon\Carbon::parse($data['created_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
                 $data['updated_at'] = \Carbon\Carbon::parse($data['updated_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
                 if (!empty($data['details'])) {
