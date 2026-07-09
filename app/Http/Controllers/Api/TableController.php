@@ -67,7 +67,9 @@ class TableController extends Controller
                 return $this->error('api.table_empty', 404);
             }
 
-            $userId = $this->userId($request);
+            $userId = $request->has('user_id')
+                ? (int) $request->input('user_id')
+                : ($table->user_id ?: 1);
             $currentTime = now()->toDateTimeString();
             $lockTime = now()->addMinutes(5)->toDateTimeString();
 
