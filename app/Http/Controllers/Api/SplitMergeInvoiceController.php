@@ -393,9 +393,6 @@ class SplitMergeInvoiceController extends Controller
                 $quantityRemain = $original_invoice[$key]['quantity'] - $split_merge_item[$key]['quantity'];
                 $splitQuantity = $split_merge_item[$key]['quantity'] ?? 0;
                 $originalPrinted = $original_invoice[$key]['printed_quantity'] ?? 0;
-                // Save original TotalPrice and qty before modification for proportional split
-                $origTotalPrice = (float) ($original_invoice[$key]['TotalPrice'] ?? 0);
-                $origQty = (int) ($original_invoice[$key]['quantity']);
 
                 // Proportion printed_quantity (same as cloud)
                 $split_merge_item[$key]['printed_quantity'] = max(0, $originalPrinted - max(0, $quantityRemain));
@@ -405,28 +402,16 @@ class SplitMergeInvoiceController extends Controller
                     unset($original_invoice[$key]);
                 } else {
                     $original_invoice[$key]['quantity'] = $quantityRemain;
-                    $TotalPrice = $this->proportionTotalPrice($origTotalPrice, $origQty, $quantityRemain, $is_tax_included, $original_invoice[$key]);
+                    $TotalPrice = $is_tax_included ? intval($original_invoice[$key]['quantity']) * floatval($original_invoice[$key]['price']) : $this->calculateTotalAfterTax($original_invoice[$key])['total'];
                     $original_invoice[$key]['TotalPrice'] = $TotalPrice;
                 }
-                $TotalPrice = $this->proportionTotalPrice($origTotalPrice, $origQty, $splitQuantity, $is_tax_included, $split_merge_item[$key]);
+                $TotalPrice = $is_tax_included ? intval($splitQuantity) * floatval($split_merge_item[$key]['price']) : $this->calculateTotalAfterTax($split_merge_item[$key])['total'];
                 $split_merge_item[$key]['TotalPrice'] = $TotalPrice;
             }
             return ['status' => true];
         } catch (\Throwable $th) {
             throw $th;
         }
-    }
-
-    private function proportionTotalPrice(float $origTotal, int $origQty, int $targetQty, bool $isTaxInc, array $item): float
-    {
-        if ($origQty > 0 && $origTotal > 0) {
-            return round($origTotal * $targetQty / $origQty);
-        }
-        // Fallback: recalculate from price
-        if ($isTaxInc) {
-            return (float) ($targetQty * (float) ($item['price'] ?? 0));
-        }
-        return $this->calculateTotalAfterTax($item)['total'];
     }
 
     private function calculateTotalAfterTax(array $item, bool $isTaxIncluded = false): array
