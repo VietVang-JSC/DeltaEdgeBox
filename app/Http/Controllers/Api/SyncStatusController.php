@@ -231,8 +231,8 @@ class SyncStatusController extends Controller
             'categories' => ['name', 'description', 'image', 'sort_order', 'status', 'parent_id', 'admin_id', 'updated_at'],
             'table' => ['tablename', 'listitem', 'image', 'status', 'user_id', 'admin_id', 'is_show', 'sort_rank', 'userordered', 'booking_code', 'lock_time', 'qr_token', 'payment_id', 'number_of_people', 'can_order', 'qr_code', 'is_order_enabled', 'pin', 'qr_code_token', 'updated_at'],
             'payment_methods' => ['name', 'status', 'admin_id', 'updated_at'],
-            'payments' => ['table_id', 'customer_id', 'paid_date', 'total', 'discount', 'tax', 'final_total', 'payment_method', 'note', 'status', 'user_id', 'updated_at'],
-            'payment_details' => ['payment_id', 'product_id', 'quantity', 'price', 'total', 'note', 'updated_at'],
+            'payments' => ['table_id', 'customer_id', 'paid_date', 'total', 'discount', 'tax', 'final_total', 'payment_method', 'note', 'status', 'user_id', 'is_senior_discount', 'senior_discount_amount', 'sub_total_before_discount', 'total_incl_vat_before_discount', 'updated_at'],
+            'payment_details' => ['payment_id', 'product_id', 'quantity', 'price', 'total', 'note', 'detail_discount', 'tax_amount', 'detail_discount_excluding_tax', 'unit_price_excluding_tax', 'discounted_price_excluding_tax', 'updated_at'],
             'users' => ['name', 'username', 'email', 'phone', 'role', 'status', 'updated_at'],
         ];
     }
