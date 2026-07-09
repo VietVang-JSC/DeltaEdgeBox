@@ -220,6 +220,16 @@ class SplitMergeInvoiceController extends Controller
     private function createInvoiceFromOriginal($filters, $originalInvoice)
     {
         $itemOriginalInvoice = $this->getPaymentItems($originalInvoice);
+        // Load printed_quantity from payment_details (items JSON doesn't store it)
+        $paymentDetails = $originalInvoice->details()->get();
+        if ($paymentDetails->isNotEmpty()) {
+            foreach ($paymentDetails as $detail) {
+                $productKey = $detail->product_key;
+                if ($productKey && isset($itemOriginalInvoice['item'][$productKey])) {
+                    $itemOriginalInvoice['item'][$productKey]['printed_quantity'] = (int) $detail->printed_quantity;
+                }
+            }
+        }
         $handleData = $this->handleDataSplitInvoice($itemOriginalInvoice['item'], $filters['split_merge_item'], $filters['store_id']);
         if (!$handleData['status']) {
             return $handleData;
