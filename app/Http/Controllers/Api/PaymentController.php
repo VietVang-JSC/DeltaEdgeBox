@@ -337,40 +337,38 @@ class PaymentController extends Controller
             $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
         }
 
-        if (($store->time_zone ?? null) === 'Asia/Manila') {
-            if (!array_key_exists('service_charge', $input) && isset($store->service_charge)) {
-                $serviceCharge = (int) $store->service_charge;
-                $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
+        if (!array_key_exists('service_charge', $input) && isset($store->service_charge)) {
+            $serviceCharge = (int) $store->service_charge;
+            $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
+        }
+
+        if ($surchargePercent !== null) {
+            $surcharge = $baseForCharge * $surchargePercent / 100;
+        }
+
+        $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
+        $total = (float) ($summary['total_with_vat'] ?? 0) + $serviceChargeAmount + $surcharge;
+
+        if (($store->time_zone ?? null) === 'Asia/Manila' && $seniorDiscount) {
+            $rate = (float) config('params.senior_discount.rate', 20);
+            $seniorDiscountAmount = round((float) ($summary['subtotal_before'] ?? 0) * $rate / 100);
+            $afterSenior = (float) ($summary['subtotal_before'] ?? 0) - $seniorDiscountAmount;
+
+            if ($typeDiscount === 'percent') {
+                $discountTotal = round($afterSenior * $discountValue / 100);
             }
+
+            $totalAfterDiscount = max(0, $afterSenior - $discountTotal);
+            $taxTotal = 0;
+            foreach ($items as &$item) { $item['tax_amount'] = 0; }
+            unset($item);
+            $serviceChargeAmount = round($totalAfterDiscount * $serviceCharge / 100);
 
             if ($surchargePercent !== null) {
-                $surcharge = $baseForCharge * $surchargePercent / 100;
+                $surcharge = $totalAfterDiscount * $surchargePercent / 100;
             }
 
-            $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
-            $total = (float) ($summary['total_with_vat'] ?? 0) + $serviceChargeAmount + $surcharge;
-
-            if ($seniorDiscount) {
-                $rate = (float) config('params.senior_discount.rate', 20);
-                $seniorDiscountAmount = round((float) ($summary['subtotal_before'] ?? 0) * $rate / 100);
-                $afterSenior = (float) ($summary['subtotal_before'] ?? 0) - $seniorDiscountAmount;
-
-                if ($typeDiscount === 'percent') {
-                    $discountTotal = round($afterSenior * $discountValue / 100);
-                }
-
-                $totalAfterDiscount = max(0, $afterSenior - $discountTotal);
-                $taxTotal = 0;
-                foreach ($items as &$item) { $item['tax_amount'] = 0; }
-                unset($item);
-                $serviceChargeAmount = round($totalAfterDiscount * $serviceCharge / 100);
-
-                if ($surchargePercent !== null) {
-                    $surcharge = $totalAfterDiscount * $surchargePercent / 100;
-                }
-
-                $total = $totalAfterDiscount + $serviceChargeAmount + $surcharge;
-            }
+            $total = $totalAfterDiscount + $serviceChargeAmount + $surcharge;
         }
 
         $finalTotal = round($total);
