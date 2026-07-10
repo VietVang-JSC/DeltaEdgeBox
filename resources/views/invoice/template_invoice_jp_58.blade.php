@@ -62,7 +62,7 @@
         }
         .info_label {
             text-align: left;
-            font-weight: bold;
+            /* font-weight: bold; */
         }
         .Info_staff_input {
             text-align: right;
@@ -71,7 +71,7 @@
             display: block;
             text-align: center;
             margin-bottom: 10px;
-            font-weight: bold;
+            /* font-weight: bold; */
             font-size: 11pt;
         }
         .invoice-details {
@@ -132,11 +132,11 @@
         .font-size-head{
             font-size: 11pt;
             /* font-family: 'NotoSerifJP-Bold'; */
-            font-weight: bold;
+            /* font-weight: bold; */
         }
         .font-size-info{
             font-size: 10pt;
-            font-weight: bold;
+            /* font-weight: bold; */
         }
         .font-size-tr{
             font-size: 10pt;
@@ -145,7 +145,7 @@
         .receipt-items th {
             border-bottom: 1px dashed black;
             font-size: 10pt;
-            font-weight: bold;
+            /* font-weight: bold; */
             
         }
         .font-size-invoice-tr{
@@ -155,7 +155,7 @@
         .invoice-footer {
             font-size: 11pt;
             text-align: center;
-            font-weight: bold;
+            /* font-weight: bold; */
         }
 
         /* .payment {
