@@ -299,7 +299,7 @@ class SplitMergeInvoiceController extends Controller
             $afterSeniorSplit = max(0, $scBaseTotalSplitFinal - $seniorAmount);
             $valuetotal = max(0, $afterSeniorSplit - $discountAmount + $surchargeAmount + $serviceChargeAmount);
         } elseif ($isTaxInc) {
-            $valuetotal = max(0, $total_value - $discountAmount + $total_tax + $surchargeAmount + $serviceChargeAmount);
+            $valuetotal = max(0, $total_value - $discountAmount + $surchargeAmount + $serviceChargeAmount);
         } else {
             $valuetotal = max(0, $scBaseTotalSplitFinal - $discountAmount + $total_tax + $surchargeAmount + $serviceChargeAmount);
         }
