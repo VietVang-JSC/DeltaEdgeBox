@@ -258,6 +258,11 @@ class SplitMergeInvoiceController extends Controller
         // Use original - remain for ALL values to ensure sum = original 100% (prevent rounding)
         $typeDiscount = $originalInvoice->type_discount ?? 'amount';
         $discountAmount = max(0, (float) ($originalInvoice->discount ?? 0) - (float) ($paramUpdateOriginalInvoice['discount'] ?? 0));
+        if (isset($filters['discount'])) {
+            $discountAmount = (float) $filters['discount'];
+            $typeDiscount = $filters['type_discount'] ?? $typeDiscount;
+        }
+
         if (($store->time_zone ?? null) === 'Asia/Manila') {
             $isSenior = (bool) ($filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false));
             $inheritedSeniorAmount = max(0, (float) ($originalInvoice->senior_discount_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['senior_discount_amount'] ?? 0));
@@ -274,6 +279,9 @@ class SplitMergeInvoiceController extends Controller
         $isSeniorActive = $isSenior && $seniorAmount > 0;
         $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
         $surchargeAmount = max(0, (float) ($originalInvoice->surcharge ?? 0) - (float) ($paramUpdateOriginalInvoice['surcharge'] ?? 0));
+        if (isset($filters['surcharge'])) {
+            $surchargeAmount = (float) $filters['surcharge'];
+        }
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($originalInvoice->service_charge ?? 0));
         // Calculate service charge for split bill independently (same formula as handleUpdateOriginalInvoice)
         // Using subtraction (orig - remain) can result in 0 when original invoice has service_charge_amount=0
