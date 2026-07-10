@@ -1,5 +1,14 @@
 {
     "notosansjp-regular": {
-        "normal": "notosansjp_regular_normal_1b3c7dc98481ec289c337839ca00e1bf"
+        "normal": "notosansjp_regular_normal_1b3c7dc98481ec289c337839ca00e1bf",
+        "bold": "notosansjp_regular_normal_1b3c7dc98481ec289c337839ca00e1bf",
+        "italic": "notosansjp_regular_normal_1b3c7dc98481ec289c337839ca00e1bf",
+        "bold_italic": "notosansjp_regular_normal_1b3c7dc98481ec289c337839ca00e1bf"
+    },
+    "notoserifjp-semibold": {
+        "normal": "notoserifjp_semibold_normal_bcd373b416c3fb5349752427f8a0bd06",
+        "bold": "notoserifjp_semibold_normal_bcd373b416c3fb5349752427f8a0bd06",
+        "italic": "notoserifjp_semibold_normal_bcd373b416c3fb5349752427f8a0bd06",
+        "bold_italic": "notoserifjp_semibold_normal_bcd373b416c3fb5349752427f8a0bd06"
     }
 }
