@@ -274,22 +274,34 @@ class SplitMergeInvoiceController extends Controller
         $isSeniorActive = $isSenior && $seniorAmount > 0;
         $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
         $surchargeAmount = max(0, (float) ($originalInvoice->surcharge ?? 0) - (float) ($paramUpdateOriginalInvoice['surcharge'] ?? 0));
-        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($store->service_charge ?? 0));
-        $serviceChargeAmount = max(0, (float) ($originalInvoice->service_charge_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['service_charge_amount'] ?? 0));
+        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($originalInvoice->service_charge ?? 0));
+        // Calculate service charge for split bill independently (same formula as handleUpdateOriginalInvoice)
+        // Using subtraction (orig - remain) can result in 0 when original invoice has service_charge_amount=0
+        if ($serviceChargePercent > 0) {
+            $scBaseTotalForCharge = $total_value - $total_tax_pre;
+            if ($isSeniorActive) {
+                $chargeBaseSplit = max(0, $scBaseTotalForCharge - $seniorAmount - $discountAmount);
+            } elseif ($isTaxInc) {
+                $chargeBaseSplit = max(0, $total_value - $discountAmount);
+            } else {
+                $chargeBaseSplit = max(0, $scBaseTotalForCharge - $discountAmount);
+            }
+            $serviceChargeAmount = round($chargeBaseSplit * $serviceChargePercent / 100);
+        } else {
+            $serviceChargeAmount = 0;
+        }
         $total_tax = $isSeniorActive ? 0 : max(0, (float) ($originalInvoice->tax ?? 0) - (float) ($paramUpdateOriginalInvoice['total_tax'] ?? 0));
 
-        // Valuetotal = original - remain (rounding adjustment, standard accounting practice)
-        $valuetotal = max(0, (float) ($originalInvoice->final_total ?? $originalInvoice->total ?? 0) - (float) ($paramUpdateOriginalInvoice['valuetotal'] ?? 0));
-        
+        $scBaseTotalSplitFinal = $total_value - $total_tax_pre;
         $isNewSeniorDiscount = $isSeniorActive && empty($originalInvoice->is_senior_discount);
-        if ($isNewSeniorDiscount) {
-            $total_tax = 0;
-            $valuetotal = max(0, $valuetotal - $seniorAmount - $total_tax_pre);
-        }
-        
-        // Components from orig-remain for internal consistency
         if ($isSeniorActive) {
             $total_tax = 0;
+            $afterSeniorSplit = max(0, $scBaseTotalSplitFinal - $seniorAmount);
+            $valuetotal = max(0, $afterSeniorSplit - $discountAmount + $surchargeAmount + $serviceChargeAmount);
+        } elseif ($isTaxInc) {
+            $valuetotal = max(0, $total_value - $discountAmount + $total_tax + $surchargeAmount + $serviceChargeAmount);
+        } else {
+            $valuetotal = max(0, $scBaseTotalSplitFinal - $discountAmount + $total_tax + $surchargeAmount + $serviceChargeAmount);
         }
 
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
