@@ -10,17 +10,17 @@
 
         @font-face {
             font-family: 'NotoSerifJP-SemiBold';
-            src: url("{{ storage_path('fonts/NotoSerifJP-SemiBold.ttf') }}") format('truetype');
+            src: url("{{ str_replace('\\', '/', storage_path('fonts/NotoSerifJP-SemiBold.ttf')) }}") format('truetype');
         }
 
         @font-face {
             font-family: 'NotoSansJP-Bold';
-            src: url("{{ storage_path('fonts/NotoSansJP-Bold.ttf') }}") format('truetype');
+            src: url("{{ str_replace('\\', '/', storage_path('fonts/NotoSansJP-Bold.ttf')) }}") format('truetype');
         }
 
         @font-face {
             font-family: 'notosansjp-regular';
-            src: url("{{ storage_path('fonts/NotoSansJP-Regular.ttf') }}") format('truetype');
+            src: url("{{ str_replace('\\', '/', storage_path('fonts/NotoSansJP-Regular.ttf')) }}") format('truetype');
         }
 
         body {
