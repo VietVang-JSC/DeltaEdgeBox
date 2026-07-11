@@ -294,7 +294,8 @@
                         // Separate base price from extra items prices
                         $extraLines = [];
                         $extrasTotal = 0;
-                        if (!empty($productExtra)) {
+                        $isSeniorExempt = ($seniorDiscount ?? 0) > 0;
+                        if (!empty($productExtra) && !$isSeniorExempt) {
                             foreach ($productExtra as $extraItem) {
                                 $extraUnitPrice = (float) ($extraItem['price'] ?? 0);
                                 $extraLineTotal = $extraUnitPrice * $itemQuantity;
@@ -306,7 +307,7 @@
                                 ];
                             }
                         }
-                        $baseTotal = max(0, $totalItemPrice - $extrasTotal);
+                        $baseTotal = $isSeniorExempt ? $totalItemPrice : max(0, $totalItemPrice - $extrasTotal);
                         $baseUnitPrice = $itemQuantity > 0 ? $baseTotal / $itemQuantity : 0;
                         $subTotal += $totalItemPrice;
                     @endphp
