@@ -884,6 +884,9 @@ class PaymentController extends Controller
             }
 
             $payment = DB::transaction(function () use ($payment, $productKey, $deleteQuantity, $deletePayment, $tableId, $storeId, $productList, $discount, $surcharge, $totalTax, $valuetotal, $deleteNote, $surchargeReason, $calculationInput) {
+                // Lock payment to prevent concurrent overwrites
+                $payment = Payment::whereKey($payment->id)->lockForUpdate()->first();
+
                 $detail = PaymentDetail::where('payment_id', $payment->id)
                     ->where('product_key', $productKey)
                     ->where(function ($query) use ($storeId) {
@@ -929,6 +932,12 @@ class PaymentController extends Controller
                     Log::info('Edge delete: removed from items JSON', [
                         'payment_id' => $payment->id, 'product_key' => $productKey,
                     ]);
+                    // Update Table listitem in ALL paths
+                    if (!empty($tableId)) {
+                        Table::whereKey($tableId)->where('store_id', $storeId)->update([
+                            'listitem' => $payment->items,
+                        ]);
+                    }
                     return $payment;
                 }
 

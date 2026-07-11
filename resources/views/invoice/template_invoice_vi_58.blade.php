@@ -275,11 +275,28 @@
                         $itemVat = ($products['vat'] ?? 0) / 100;
                         $totalItemPrice = $is_tax_included == 1 ? (($seniorDiscount ?? 0) > 0 ? round($item['total_price']/(1+$itemVat)) : $item['total_price']) : round($item['total_price']/(1+$itemVat));
                         $itemQuantity = $item['quantity'];
-                        $itemPrice = $itemQuantity > 0 ? $totalItemPrice / $itemQuantity : 0;
                         if(!empty($item['product_extra'])){
                             $productExtra = json_decode($item['product_extra'], true);
                         }
                         $productTile = $products['title'] ?? '';
+                        // Separate base price from extra items prices
+                        $extraLines = [];
+                        $extrasTotal = 0;
+                        $isSeniorExempt = ($seniorDiscount ?? 0) > 0;
+                        if (!empty($productExtra) && !$isSeniorExempt) {
+                            foreach ($productExtra as $extraItem) {
+                                $extraUnitPrice = (float) ($extraItem['price'] ?? 0);
+                                $extraLineTotal = $extraUnitPrice * $itemQuantity;
+                                $extrasTotal += $extraLineTotal;
+                                $extraLines[] = [
+                                    'title' => $extraItem['title'] ?? '',
+                                    'price' => $extraUnitPrice,
+                                    'total' => $extraLineTotal,
+                                ];
+                            }
+                        }
+                        $baseTotal = $isSeniorExempt ? $totalItemPrice : max(0, $totalItemPrice - $extrasTotal);
+                        $baseUnitPrice = $itemQuantity > 0 ? $baseTotal / $itemQuantity : 0;
                         $subTotal += $totalItemPrice;
                     @endphp
 
@@ -289,16 +306,19 @@
                         @if(!empty($item['note']))
                             <div class="note">{{ $item['note'] }}</div>
                         @endif
-                        @if(!empty($productExtra))
-                            @foreach ($productExtra as $extra_product_item)
-                                <div>+{{$extra_product_item['title'] ?? ''}}</div>
-                            @endforeach 
-                        @endif
                     </td>
-                    <td>{{number_format($itemPrice)}}</td>
+                    <td>{{number_format($baseUnitPrice)}}</td>
                     <td>x{{$itemQuantity}}</td>
-                    <td class="txt-right">{{number_format($totalItemPrice)}}</td>
+                    <td class="txt-right">{{number_format($baseTotal)}}</td>
                     </tr>
+                    @foreach ($extraLines as $extraLine)
+                    <tr class="align-top">
+                    <td class="text-break-container">+ {{$extraLine['title']}}</td>
+                    <td>{{number_format($extraLine['price'])}}</td>
+                    <td>x{{$itemQuantity}}</td>
+                    <td class="txt-right">{{number_format($extraLine['total'])}}</td>
+                    </tr>
+                    @endforeach
                 @endforeach
                 @php
                     $subTotalAfterDiscount = max(0, $subTotal - ($seniorDiscount ?? 0) - ($discount ?? 0));

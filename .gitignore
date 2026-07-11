@@ -20,3 +20,6 @@ yarn-error.log
 
 # Plan/docs files
 *.md
+
+storage/fonts/
+storage/fonts/*.json
