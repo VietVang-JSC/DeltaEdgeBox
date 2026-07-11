@@ -1504,9 +1504,10 @@ class PaymentController extends Controller
                     $map = array_flip($paymentMethodNames);
                     $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int)$data['payment_method'] : 0);
                 }
-                $tz = config('app.timezone');
-                $data['created_at'] = \Carbon\Carbon::parse($data['created_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
-                $data['updated_at'] = \Carbon\Carbon::parse($data['updated_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
+                $store = $p->store;
+                $tz = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
+                $data['created_at'] = \Carbon\Carbon::parse($data['created_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
+                $data['updated_at'] = \Carbon\Carbon::parse($data['updated_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
                 if (!empty($data['details'])) {
                     foreach ($data['details'] as &$detail) {
                         if (empty($detail['products']) && !empty($detail['product_id'])) {
