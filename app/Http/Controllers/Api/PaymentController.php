@@ -10,6 +10,7 @@ use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\Table;
+use App\Models\User;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -1331,6 +1332,16 @@ class PaymentController extends Controller
                 return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
             }
             $data = $payment->toArray();
+            // Fallback: if user relationship is null (cloud/edge box ID mismatch), try admin_id
+            if (empty($data['user']) && !empty($data['admin_id'])) {
+                $adminUser = User::find($data['admin_id']);
+                if ($adminUser) {
+                    $data['user'] = $adminUser->toArray();
+                }
+            }
+            if (empty($data['user'])) {
+                $data['user'] = ['id' => 0, 'name' => '', 'phone' => '', 'email' => ''];
+            }
             $store = $payment->store ?? Store::find($data['store_id'] ?? config('edge_box.store_id'));
             $tz = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             if (!empty($data['created_at'])) {
