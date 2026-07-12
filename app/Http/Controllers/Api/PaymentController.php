@@ -1361,6 +1361,17 @@ class PaymentController extends Controller
                 $data['updated_at_formatted'] = \Carbon\Carbon::parse($data['updated_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
             }
             $data['total_tax'] = $data['tax'] ?? 0;
+            // Map payment method name for custom methods
+            $pmVal = $data['payment_method'] ?? null;
+            $data['payment_method_name'] = null;
+            if ($pmVal && !isset([1=>1,2=>1,3=>1,4=>1,5=>1][(int)$pmVal])) {
+                $pm = \App\Models\PaymentMethod::where('value', $pmVal)->where('store_id', $data['store_id'])->first();
+                if ($pm) $data['payment_method_name'] = $pm->name;
+            }
+            if (!$data['payment_method_name']) {
+                $names = [1=>'Tiền mặt',2=>'Chuyển khoản',3=>'Thẻ tín dụng',4=>'Thẻ ghi nợ',5=>'Ví điện tử',6=>'Khác'];
+                $data['payment_method_name'] = $names[(int)$pmVal] ?? $pmVal;
+            }
             // Compute valuetotal from components to avoid ex-VAT display
             $totalDb = $data['total'] ?? 0;
             $estimatedTotal = $totalDb + ($data['tax'] ?? 0) + ($data['surcharge'] ?? 0) + ($data['service_charge_amount'] ?? 0);
