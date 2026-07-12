@@ -847,11 +847,19 @@ class PaymentController extends Controller
             }
 
             if (!$payment) {
+                // Payment might be soft-deleted — clear table listitem if table_id known
+                $trashed = Payment::whereKey($paymentId)->withTrashed()->first();
+                if ($trashed && $trashed->table_id) {
+                    Table::whereKey($trashed->table_id)->where('store_id', $storeId)->update([
+                        'status' => 1, 'payment_id' => null, 'listitem' => null,
+                        'user_id' => null, 'lock_time' => null, 'number_of_people' => 0,
+                    ]);
+                }
                 return response()->json([
-                    'status' => false,
-                    'status_code' => 404,
-                    'message' => 'Không tìm thấy thông tin hóa đơn',
-                ], 404);
+                    'status' => true,
+                    'status_code' => 200,
+                    'message' => 'Đã xóa',
+                ]);
             }
 
             Log::info('Edge delete payment detail resolved payment', [
@@ -934,8 +942,9 @@ class PaymentController extends Controller
                         'payment_id' => $payment->id, 'product_key' => $productKey,
                     ]);
                     // Update Table listitem in ALL paths
-                    if (!empty($tableId)) {
-                        Table::whereKey($tableId)->where('store_id', $storeId)->update([
+                    $tblId = $tableId ?: $payment->table_id;
+                    if (!empty($tblId)) {
+                        Table::whereKey($tblId)->where('store_id', $storeId)->update([
                             'listitem' => $payment->items,
                         ]);
                     }
@@ -947,6 +956,7 @@ class PaymentController extends Controller
                 }
 
                 if ($deletePayment) {
+                    $tableId = $tableId ?: $payment->table_id;
                     if (!empty($tableId)) {
                         $this->clearTableAfterPayment($tableId, $storeId);
                     }
