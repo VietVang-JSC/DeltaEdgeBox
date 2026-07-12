@@ -1361,7 +1361,10 @@ class PaymentController extends Controller
                 $data['updated_at_formatted'] = \Carbon\Carbon::parse($data['updated_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
             }
             $data['total_tax'] = $data['tax'] ?? 0;
-            $data['valuetotal'] = $data['final_total'] ?? ($data['total'] ?? 0);
+            // Compute valuetotal from components to avoid ex-VAT display
+            $totalDb = $data['total'] ?? 0;
+            $estimatedTotal = $totalDb + ($data['tax'] ?? 0) + ($data['surcharge'] ?? 0) + ($data['service_charge_amount'] ?? 0);
+            $data['valuetotal'] = $data['final_total'] ?? max($totalDb, $estimatedTotal);
             // Normalize payment.discounted_price_excluding_tax in case qty changed (split)
             if (!empty($data['details'])) {
                 foreach ($data['details'] as &$detail) {
@@ -1484,7 +1487,7 @@ class PaymentController extends Controller
             $pageSize = (int) $request->input('pageSize', 15);
             $query = $request->input('query', []);
 
-            $paymentsQuery = Payment::with(['user', 'customer', 'details'])
+            $paymentsQuery = Payment::with(['store', 'user', 'customer', 'details'])
                 ->where('store_id', $storeId);
 
             // Apply filters
@@ -1531,22 +1534,35 @@ class PaymentController extends Controller
             ];
             $payments = $payments->map(function ($p) use ($paymentMethodNames) {
                 $data = $p->toArray();
-                $data['valuetotal'] = $data['final_total'] ?? ($data['total'] ?? 0);
+                // User fallback from admin_id
+                if (empty($data['user']) && !empty($data['admin_id'])) {
+                    $adminUser = \App\Models\User::find($data['admin_id']);
+                    if ($adminUser) {
+                        $data['user'] = $adminUser->toArray();
+                    }
+                }
+                if (empty($data['user'])) {
+                    $data['user'] = ['id' => 0, 'name' => ''];
+                }
                 $data['reasonSurcharge'] = $data['surcharge_reason'] ?? '';
-                $data['user'] = $data['user'] ?? ['id' => 0, 'name' => ''];
                 $data['customer'] = $data['customer'] ?? null;
                 $data['payment_details'] = $data['details'] ?? [];
                 $data['sub_total_before_discount'] = $data['sub_total_before_discount'] ?? 0;
                 $data['total_incl_vat_before_discount'] = $data['total_incl_vat_before_discount'] ?? 0;
                 $data['total_tax'] = $data['tax'] ?? 0;
                 $data['service_charge_amount'] = $data['service_charge_amount'] ?? 0;
+                // Compute valuetotal from components to avoid ex-VAT display
+                $totalFromDb = $data['total'] ?? 0;
+                $estimatedTotal = $totalFromDb + ($data['tax'] ?? 0) + ($data['surcharge'] ?? 0) + ($data['service_charge_amount'] ?? 0);
+                $data['valuetotal'] = $data['final_total'] ?? max($totalFromDb, $estimatedTotal);
                 if (is_string($data['payment_method'])) {
                     $map = array_flip($paymentMethodNames);
                     $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int)$data['payment_method'] : 0);
                 }
-                $tz = config('app.timezone');
-                $data['created_at'] = \Carbon\Carbon::parse($data['created_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
-                $data['updated_at'] = \Carbon\Carbon::parse($data['updated_at'], 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s');
+                $store = $p->store;
+                $tz = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
+                $data['created_at'] = \Carbon\Carbon::parse($data['created_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
+                $data['updated_at'] = \Carbon\Carbon::parse($data['updated_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
                 if (!empty($data['details'])) {
                     foreach ($data['details'] as &$detail) {
                         if (empty($detail['products']) && !empty($detail['product_id'])) {
