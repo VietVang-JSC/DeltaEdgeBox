@@ -934,8 +934,9 @@ class PaymentController extends Controller
                         'payment_id' => $payment->id, 'product_key' => $productKey,
                     ]);
                     // Update Table listitem in ALL paths
-                    if (!empty($tableId)) {
-                        Table::whereKey($tableId)->where('store_id', $storeId)->update([
+                    $tblId = $tableId ?: $payment->table_id;
+                    if (!empty($tblId)) {
+                        Table::whereKey($tblId)->where('store_id', $storeId)->update([
                             'listitem' => $payment->items,
                         ]);
                     }
@@ -947,6 +948,7 @@ class PaymentController extends Controller
                 }
 
                 if ($deletePayment) {
+                    $tableId = $tableId ?: $payment->table_id;
                     if (!empty($tableId)) {
                         $this->clearTableAfterPayment($tableId, $storeId);
                     }
