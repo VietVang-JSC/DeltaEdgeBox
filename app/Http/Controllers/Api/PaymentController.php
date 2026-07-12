@@ -1362,6 +1362,25 @@ class PaymentController extends Controller
             }
             $data['total_tax'] = $data['tax'] ?? 0;
             $data['valuetotal'] = $data['final_total'] ?? ($data['total'] ?? 0);
+            // Normalize payment.discounted_price_excluding_tax in case qty changed (split)
+            if (!empty($data['details'])) {
+                foreach ($data['details'] as &$detail) {
+                    $q = (int) ($detail['quantity'] ?? 1);
+                    $u = (float) ($detail['unit_price_excluding_tax'] ?? 0);
+                    if ($u > 0) {
+                        $correct = $u * $q;
+                        $stored = (float) ($detail['discounted_price_excluding_tax'] ?? 0);
+                        if ($stored !== $correct) {
+                            $detail['discounted_price_excluding_tax'] = $correct;
+                        }
+                    }
+                }
+                // Recompute subtotal from details price*qty for accuracy
+                $realSubtotal = array_sum(array_map(fn($d) => (float) ($d['price'] ?? 0) * (int) ($d['quantity'] ?? 0), $data['details']));
+                if ($realSubtotal > 0) {
+                    $data['sub_total_before_discount'] = $realSubtotal;
+                }
+            }
             $data['unit_price_excluding_tax'] = 0;
             $data['detail_discount_excluding_tax'] = 0;
             $data['discounted_price_excluding_tax'] = 0;
