@@ -1491,6 +1491,7 @@ class PaymentController extends Controller
             ];
             $payments = $payments->map(function ($p) use ($paymentMethodNames) {
                 $data = $p->toArray();
+                $data['valuetotal'] = $data['final_total'] ?? ($data['total'] ?? 0);
                 $data['reasonSurcharge'] = $data['surcharge_reason'] ?? '';
                 $data['user'] = $data['user'] ?? ['id' => 0, 'name' => ''];
                 $data['customer'] = $data['customer'] ?? null;
@@ -1499,11 +1500,6 @@ class PaymentController extends Controller
                 $data['total_incl_vat_before_discount'] = $data['total_incl_vat_before_discount'] ?? 0;
                 $data['total_tax'] = $data['tax'] ?? 0;
                 $data['service_charge_amount'] = $data['service_charge_amount'] ?? 0;
-                // Compute valuetotal from components if final_total is not reliable (some flows store ex-VAT total)
-                $finalFromDb = $data['final_total'] ?? 0;
-                $totalFromDb = $data['total'] ?? 0;
-                $estimatedTotal = $totalFromDb + ($data['tax'] ?? 0) + ($data['surcharge'] ?? 0) + ($data['service_charge_amount'] ?? 0);
-                $data['valuetotal'] = $finalFromDb > 0 ? $finalFromDb : max($totalFromDb, $estimatedTotal);
                 if (is_string($data['payment_method'])) {
                     $map = array_flip($paymentMethodNames);
                     $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int)$data['payment_method'] : 0);
