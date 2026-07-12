@@ -832,13 +832,6 @@ class PaymentController extends Controller
                     $storeId = (int) $payment->store_id;
                 }
             }
-            // Fallback: payment might be soft-deleted (status=-1) — try withTrashed
-            if (!$payment) {
-                $payment = Payment::whereKey($paymentId)->withTrashed()->first();
-                if ($payment) {
-                    $storeId = (int) $payment->store_id;
-                }
-            }
             if (!$payment && !empty($tableId)) {
                 if ($table && !empty($table->payment_id)) {
                     $payment = Payment::whereKey($table->payment_id)->where('store_id', $storeId)->first();
