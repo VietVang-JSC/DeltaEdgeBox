@@ -1378,15 +1378,28 @@ class PaymentController extends Controller
             $data['valuetotal'] = $data['final_total'] ?? max($totalDb, $estimatedTotal);
             // Normalize payment.discounted_price_excluding_tax in case qty changed (split)
             if (!empty($data['details'])) {
+                $hasSenior = !empty($data['is_senior_discount']);
                 foreach ($data['details'] as &$detail) {
                     $q = (int) ($detail['quantity'] ?? 1);
                     $u = (float) ($detail['unit_price_excluding_tax'] ?? 0);
+                    $p = (float) ($detail['price'] ?? 0);
                     if ($u > 0) {
                         $correct = $u * $q;
                         $stored = (float) ($detail['discounted_price_excluding_tax'] ?? 0);
                         if ($stored !== $correct) {
                             $detail['discounted_price_excluding_tax'] = $correct;
                         }
+                    }
+                    // Normalize detail_discount proportionally
+                    $origQty = $detail['detail_discount'] > 0 && $p > 0 ? round($detail['detail_discount'] / ($p * ($detail['discount_percent'] ?? 10) / 100)) : $q;
+                    if ($origQty > $q && $p > 0) {
+                        $discPct = (float) ($detail['discount_percent'] ?? 0);
+                        if ($discPct > 0) {
+                            $detail['detail_discount'] = round($p * $q * $discPct / 100);
+                        }
+                    }
+                    if ($hasSenior) {
+                        $detail['tax_amount'] = 0;
                     }
                 }
                 // Recompute subtotal from details price*qty for accuracy
