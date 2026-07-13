@@ -158,7 +158,7 @@ class KitchenPrintController extends Controller
             $store = Store::find($table->store_id);
             $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             $paperSize = $request->input('paper_size', '80');
-            $language = $request->input('language', 'vi');
+            $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
             app()->setLocale($language);
 
             // Render kitchen template HTML
@@ -210,7 +210,7 @@ class KitchenPrintController extends Controller
             $store = Store::find($table->store_id);
             $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
             $storeId = $table->store_id;
-            $language = $request->input('language', 'vi');
+            $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
             app()->setLocale($language);
 
             // Group items by printer

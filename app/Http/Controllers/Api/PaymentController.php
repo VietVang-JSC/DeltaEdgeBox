@@ -1116,7 +1116,7 @@ class PaymentController extends Controller
 
     public function getSaleToday(Request $request)
     {
-        $language = $request->input('language', 'vi');
+        $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
         app()->setLocale($language);
 
         Log::info('Edge getSaleToday: API request received', [
