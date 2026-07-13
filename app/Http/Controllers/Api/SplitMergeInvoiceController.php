@@ -266,11 +266,10 @@ class SplitMergeInvoiceController extends Controller
         if (($store->time_zone ?? null) === 'Asia/Manila') {
             $isSenior = (bool) ($filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false));
             $inheritedSeniorAmount = max(0, (float) ($originalInvoice->senior_discount_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['senior_discount_amount'] ?? 0));
-            if ($isSenior && empty($filters['senior_discount_amount']) && empty($originalInvoice->is_senior_discount)) {
-                $scBaseTotalSplit = $total_value - $total_tax_pre;
-                $seniorAmount = (float) round($scBaseTotalSplit * 20 / 100);
+            if ($isSenior) {
+                $seniorAmount = (float) round(($total_value - $total_tax_pre) * 20 / 100);
             } else {
-                $seniorAmount = $isSenior ? (float) ($filters['senior_discount_amount'] ?? $inheritedSeniorAmount) : 0;
+                $seniorAmount = 0;
             }
         } else {
             $seniorAmount = 0;
