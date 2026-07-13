@@ -760,14 +760,15 @@ class PaymentController extends Controller
 
     public function deletePaymentForUser(Request $request)
     {
+        app()->setLocale($request->input('isCheckLanguage', 'vi'));
         $paymentId = $request->input('data.id');
         $reason = $request->input('data.reason', '');
         if (!$paymentId) {
-            return response()->json(['status' => false, 'message' => 'Missing payment id'], 400);
+            return response()->json(['status' => false, 'message' => __('api.missing_payment_id')], 400);
         }
         $payment = Payment::find($paymentId);
         if (!$payment) {
-            return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+            return response()->json(['status' => false, 'message' => __('api.payment_not_found')], 404);
         }
         $payment->status = -1;
         $payment->reason = $reason;
@@ -775,11 +776,12 @@ class PaymentController extends Controller
         $payment->details()->update(['delete_note' => $reason]);
         $payment->details()->delete();
         $payment->delete();
-        return response()->json(['status' => true, 'message' => 'Payment deleted']);
+        return response()->json(['status' => true, 'message' => __('api.payment_deleted')]);
     }
 
     public function deletePaymentDetail(Request $request)
     {
+        app()->setLocale($request->input('isCheckLanguage', 'vi'));
         $validator = Validator::make($request->all(), [
             'payment_id' => ['required'],
             'product_key' => ['required'],
@@ -858,7 +860,7 @@ class PaymentController extends Controller
                 return response()->json([
                     'status' => true,
                     'status_code' => 200,
-                    'message' => 'Đã xóa',
+                    'message' => __('api.payment_detail_deleted'),
                 ]);
             }
 
@@ -1052,7 +1054,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
-                'message' => 'Xóa chi tiết hóa đơn thành công',
+                'message' => __('api.payment_detail_deleted'),
                 'data' => $paymentInfo,
                 'paymentInfo' => $paymentInfo,
             ]);
@@ -1062,7 +1064,7 @@ class PaymentController extends Controller
                 return response()->json([
                     'status' => false,
                     'status_code' => 404,
-                    'message' => 'Khong tim thay chi tiet hoa don',
+                    'message' => __('api.payment_detail_not_found'),
                 ], 404);
             }
 
@@ -1076,14 +1078,14 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => 500,
-                'message' => 'Loi xu ly he thong cuc bo',
+                'message' => __('api.system_error'),
             ], 500);
         } catch (\InvalidArgumentException $th) {
             if ($th->getMessage() === 'invalid_delete_quantity') {
                 return response()->json([
                     'status' => false,
                     'status_code' => 400,
-                    'message' => 'So luong xoa khong hop le',
+                    'message' => __('api.invalid_delete_quantity'),
                 ], 400);
             }
 
@@ -1097,7 +1099,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => 500,
-                'message' => 'Loi xu ly he thong cuc bo',
+                'message' => __('api.system_error'),
             ], 500);
         } catch (\Throwable $th) {
             Log::error('Edge delete payment detail failed', [
@@ -1109,7 +1111,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => 500,
-                'message' => 'Lỗi xử lý hệ thống cục bộ',
+                'message' => __('api.system_error'),
             ], 500);
         }
     }
