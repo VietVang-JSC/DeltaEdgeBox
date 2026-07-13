@@ -10,7 +10,7 @@ class Table extends Model
 {
     use HasFactory;
 
-    protected $table = 'table';
+    protected $table = 'tables';
 
     protected $fillable = [
         'id',

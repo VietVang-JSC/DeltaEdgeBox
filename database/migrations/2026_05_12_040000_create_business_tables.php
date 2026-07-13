@@ -63,8 +63,8 @@ return new class extends Migration
             $table->index(['store_id', 'category_id', 'status']);
         });
 
-        // Tables (bàn ăn) table
-        Schema::create('table', function (Blueprint $table) {
+        // Tables (bàn ăn) — using plural 'tables' to avoid SQLite reserved word conflict
+        Schema::create('tables', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('store_id')->nullable()->index();
             $table->string('name')->nullable();
@@ -140,7 +140,7 @@ return new class extends Migration
     {
         Schema::dropIfExists('payment_details');
         Schema::dropIfExists('payments');
-        Schema::dropIfExists('table');
+        Schema::dropIfExists('tables');
         Schema::dropIfExists('products');
         Schema::dropIfExists('categories');
         Schema::dropIfExists('customers');
