@@ -84,6 +84,8 @@ class SplitMergeInvoiceController extends Controller
         $filters = $request->all();
         $storeId = (int) $request->input('store_id', config('app.store_id'));
         $filters['store_id'] = $storeId;
+        $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
+        app()->setLocale($language);
 
         DB::beginTransaction();
         try {
@@ -92,7 +94,7 @@ class SplitMergeInvoiceController extends Controller
                 ->find($filters['original_invoice_id']);
             if (!$originalInvoice) {
                 DB::rollBack();
-                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy hóa đơn gốc'], 404);
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => __('api.invoice_not_found')], 404);
             }
 
             $splitMethod = '';
@@ -106,7 +108,7 @@ class SplitMergeInvoiceController extends Controller
 
             if (!$splitMethod) {
                 DB::rollBack();
-                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Không xác định được phương thức tách hóa đơn'], 400);
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => __('api.split_method_unknown')], 400);
             }
 
             $res = $this->$splitMethod($filters, $originalInvoice);
@@ -169,7 +171,7 @@ class SplitMergeInvoiceController extends Controller
         return [
             'status' => true,
             'status_code' => 200,
-            'message' => 'Tách hóa đơn thành công',
+            'message' => __('api.split_success'),
             'data' => [
                 $create['payment'],
                 $this->refreshPaymentWithDetails($originalInvoice->id),
@@ -209,7 +211,7 @@ class SplitMergeInvoiceController extends Controller
         return [
             'status' => true,
             'status_code' => 200,
-            'message' => 'Tách hóa đơn thành công',
+            'message' => __('api.split_success'),
             'data' => [
                 $this->refreshPaymentWithDetails($originalInvoice->id),
                 $this->refreshPaymentWithDetails($checkTargetInvoice->id),
@@ -342,7 +344,7 @@ class SplitMergeInvoiceController extends Controller
         return [
             'status' => true,
             'status_code' => 200,
-            'message' => 'Tách hóa đơn thành công',
+            'message' => __('api.split_success'),
             'data' => [
                 'parent_bill' => $this->refreshPaymentWithDetails($originalInvoice->id),
                 'split_bill' => $createPayment['payment']
