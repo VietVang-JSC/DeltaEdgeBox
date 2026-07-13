@@ -133,7 +133,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => $isStock ? 409 : 500,
-                'message' => $isStock ? 'Insufficient stock for one or more items' : __('api.ISError'),
+                'message' => $isStock ? __('api.insufficient_stock') : __('api.ISError'),
             ], $isStock ? 409 : 500);
         }
     }
@@ -298,7 +298,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => $isStock ? 409 : 404,
-                'message' => $isStock ? 'Insufficient stock for one or more items' : $th->getMessage(),
+                'message' => $isStock ? __('api.insufficient_stock') : $th->getMessage(),
             ], $isStock ? 409 : 404);
         } catch (\Throwable $th) {
             Log::error('Edge payment update failed', [
@@ -1316,7 +1316,7 @@ class PaymentController extends Controller
         try {
             $payment = Payment::with('details')->where('id', $id)->withTrashed()->first();
             if (!$payment) {
-                return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+                return response()->json(['status' => false, 'message' => __('api.payment_not_found')], 404);
             }
             return response()->json(['status' => true, 'data' => $payment], 200);
         } catch (\Throwable $th) {
@@ -1328,7 +1328,7 @@ class PaymentController extends Controller
     public function getPaymentDetailByRequest(Request $request)
     {
         $id = $request->input('id');
-        if (!$id) return response()->json(['status' => false, 'message' => 'id is required'], 400);
+        if (!$id) return response()->json(['status' => false, 'message' => __('api.id_required')], 400);
         return $this->getPaymentDetail($id);
     }
 
@@ -1341,7 +1341,7 @@ class PaymentController extends Controller
                 $payment = Payment::with(['details.product', 'user', 'customer', 'table'])->where('id', $id)->withTrashed()->first();
             }
             if (!$payment) {
-                return response()->json(['status' => false, 'message' => 'Payment not found'], 404);
+                return response()->json(['status' => false, 'message' => __('api.payment_not_found')], 404);
             }
             $data = $payment->toArray();
             // Fallback: if user relationship is null (cloud/edge box ID mismatch), try admin_id
@@ -1445,7 +1445,7 @@ class PaymentController extends Controller
     {
         $paymentId = $request->input('payment_id');
         if (!$paymentId) {
-            return response()->json(['status' => false, 'status_code' => 400, 'message' => 'payment_id required'], 400);
+            return response()->json(['status' => false, 'status_code' => 400, 'message' => __('api.payment_id_required')], 400);
         }
 
         $payment = Payment::find($paymentId);
@@ -1469,7 +1469,7 @@ class PaymentController extends Controller
     {
         $id = $request->input('id', $request->input('payment_id'));
         if (!$id) {
-            return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Payment ID required'], 400);
+            return response()->json(['status' => false, 'status_code' => 400, 'message' => __('api.payment_id_required')], 400);
         }
         return $this->getPayment($id);
     }
@@ -1480,11 +1480,11 @@ class PaymentController extends Controller
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
             $tableId = $request->input('table_id', $request->input('id'));
             if (!$tableId) {
-                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Table ID required'], 400);
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => __('api.table_id_required')], 400);
             }
             $table = \App\Models\Table::with('payment.details')->where('store_id', $storeId)->where('id', $tableId)->first();
             if (!$table || !$table->payment) {
-                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'No payment found for table'], 404);
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => __('api.payment_not_found')], 404);
             }
             return response()->json([
                 'status' => true,
@@ -1698,7 +1698,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => 400,
-                'message' => 'Date is required',
+                'message' => __('api.date_required'),
             ], 400);
         }
 
@@ -1768,7 +1768,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => 400,
-                'message' => 'date_start and date_end are required',
+                'message' => __('api.date_required'),
             ], 400);
         }
 

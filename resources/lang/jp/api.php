@@ -25,4 +25,8 @@ return [
     'served_update_failed' => '提供ステータスの更新に失敗しました',
     'system_error' => 'ローカルシステムエラー',
     'ISError' => 'エラーが発生しました',
+    'id_required' => 'IDが必要です',
+    'payment_id_required' => '支払いIDが必要です',
+    'date_required' => '日付が必要です',
+    'insufficient_stock' => '在庫が不足しています',
 ];

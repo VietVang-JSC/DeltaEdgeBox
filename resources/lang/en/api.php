@@ -25,4 +25,8 @@ return [
     'served_update_failed' => 'Failed to update served status',
     'system_error' => 'Local system error',
     'ISError' => 'An error occurred',
+    'id_required' => 'ID is required',
+    'payment_id_required' => 'Payment ID is required',
+    'date_required' => 'Date is required',
+    'insufficient_stock' => 'Insufficient stock for one or more items',
 ];
