@@ -1391,11 +1391,19 @@ class PaymentController extends Controller
                         }
                     }
                     // Normalize detail_discount proportionally
-                    $origQty = $detail['detail_discount'] > 0 && $p > 0 ? round($detail['detail_discount'] / ($p * ($detail['discount_percent'] ?? 10) / 100)) : $q;
-                    if ($origQty > $q && $p > 0) {
+                    if ($detail['detail_discount'] > 0 && $p > 0) {
                         $discPct = (float) ($detail['discount_percent'] ?? 0);
-                        if ($discPct > 0) {
-                            $detail['detail_discount'] = round($p * $q * $discPct / 100);
+                        $expectedDisc = round($p * $q * $discPct / 100);
+                        if ($expectedDisc > 0 && $expectedDisc != (float) $detail['detail_discount']) {
+                            $detail['detail_discount'] = $expectedDisc;
+                        }
+                    }
+                    // Same for detail_discount_excluding_tax
+                    if ($detail['detail_discount_excluding_tax'] > 0 && $p > 0) {
+                        $discPct = (float) ($detail['discount_percent'] ?? 0);
+                        $expectedDisc = round($p * $q * $discPct / 100);
+                        if ($expectedDisc > 0 && $expectedDisc != (float) $detail['detail_discount_excluding_tax']) {
+                            $detail['detail_discount_excluding_tax'] = $expectedDisc;
                         }
                     }
                     if ($hasSenior) {
