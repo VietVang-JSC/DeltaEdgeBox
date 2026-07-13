@@ -240,6 +240,7 @@ Route::prefix('user/table')->middleware('edge.api.key')->group(function () {
 
 Route::prefix('user/booking')->group(function () {
     Route::get('/list', [\App\Http\Controllers\Api\BookingController::class, 'index']);
+    Route::get('/edit', [\App\Http\Controllers\Api\BookingController::class, 'show']);
     Route::post('/creat-booking', [\App\Http\Controllers\Api\BookingController::class, 'create']);
     Route::post('/update-booking', [\App\Http\Controllers\Api\BookingController::class, 'update']);
 });

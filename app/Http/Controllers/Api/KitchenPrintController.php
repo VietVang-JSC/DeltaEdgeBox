@@ -20,6 +20,8 @@ class KitchenPrintController extends Controller
             return $this->error('Table not found', 404);
         }
 
+        $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
+        app()->setLocale($language);
         $payload = $this->tablePrintPayload($table);
 
         $storeId = $table->store_id;
@@ -126,6 +128,8 @@ class KitchenPrintController extends Controller
 
     public function printNextWeb(Request $request)
     {
+        $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
+        app()->setLocale($language);
         $table = $this->findTable($request);
         if (!$table) {
             return $this->error('Table not found', 404);
