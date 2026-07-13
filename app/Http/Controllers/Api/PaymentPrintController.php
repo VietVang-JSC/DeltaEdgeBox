@@ -51,7 +51,7 @@ class PaymentPrintController extends Controller
         }
 
         $store = $payment->store;
-        $language = $request->input('language', 'vi');
+        $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
         app()->setLocale($language);
         $timeZone = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
 
@@ -198,7 +198,7 @@ class PaymentPrintController extends Controller
 
         $store = $payment->store;
         $storeId = $store ? $store->id : 1;
-        $language = $request->input('language', 'vi');
+        $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
         app()->setLocale($language);
 
         // Fetch default receipt printer details
@@ -366,7 +366,7 @@ class PaymentPrintController extends Controller
 
         $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
 
-        $language = $request->input('language', 'vi');
+        $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
         app()->setLocale($language);
 
         $tpl = 'invoice.template_invoice_' . $language . '_' . $paperSize;
