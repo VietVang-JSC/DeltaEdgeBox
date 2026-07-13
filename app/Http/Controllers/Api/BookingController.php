@@ -33,6 +33,34 @@ class BookingController extends Controller
         }
     }
 
+    public function show(Request $request)
+    {
+        try {
+            $storeId = $this->storeId($request);
+            $bookingCode = $request->input('booking_code');
+            if (!$bookingCode) {
+                return response()->json(['status' => false, 'message' => 'booking_code is required'], 400);
+            }
+            $booking = Booking::where('booking_code', $bookingCode)
+                ->where('store_id', $storeId)
+                ->with('customer')
+                ->first();
+            if (!$booking) {
+                return response()->json(['status' => false, 'message' => 'Booking not found'], 404);
+            }
+            $bookingData = $booking->toArray();
+            $bookingData['statusname'] = ['Chờ', 'Xác nhận', 'Đã đến', 'Hoàn thành', 'Hủy'][$booking->status] ?? $booking->status;
+            $bookingData['time_arrival'] = date("d/m/Y H:i", strtotime($booking->time_arrival));
+            return response()->json([
+                'status' => true,
+                'data' => ['data_bookings' => [$bookingData]],
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Edge booking show failed', ['error' => $th->getMessage()]);
+            return response()->json(['status' => false, 'message' => __('api.ISError')], 500);
+        }
+    }
+
     public function create(Request $request)
     {
         try {
