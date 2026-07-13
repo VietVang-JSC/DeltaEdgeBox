@@ -62,10 +62,12 @@ class SplitMergeInvoiceController extends Controller
                 $query->select('id', 'name', 'store_id');
             }]);
 
+            app()->setLocale($request->input('isCheckLanguage', 'vi'));
+
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
-                'message' => 'Lấy danh sách hóa đơn thành công',
+                'message' => __('api.invoice_list_success'),
                 'data' => $payments,
             ]);
         } catch (\Throwable $th) {
@@ -73,7 +75,7 @@ class SplitMergeInvoiceController extends Controller
             return response()->json([
                 'status' => false,
                 'status_code' => 500,
-                'message' => 'Đã có lỗi xảy ra',
+                'message' => __('api.ISError'),
                 'error' => $th->getMessage()
             ], 500);
         }
@@ -123,7 +125,7 @@ class SplitMergeInvoiceController extends Controller
         } catch (\Throwable $th) {
             DB::rollBack();
             Log::error('Edge splitInvoice failed: ' . $th->getMessage());
-            return response()->json(['status' => false, 'status_code' => 500, 'message' => 'Đã có lỗi xảy ra: ' . $th->getMessage()], 500);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError') . ': ' . $th->getMessage()], 500);
         }
     }
 
@@ -157,7 +159,7 @@ class SplitMergeInvoiceController extends Controller
         $checkTable = Table::where('store_id', $filters['store_id'])
             ->find($filters['target_table_id']);
         if (!$checkTable) {
-            return ['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy bàn đích'];
+            return ['status' => false, 'status_code' => 404, 'message' => __('api.table_not_found')];
         }
 
         $checkTable->update([
@@ -185,7 +187,7 @@ class SplitMergeInvoiceController extends Controller
             ->where('store_id', $filters['store_id'])
             ->find($filters['target_invoice_id']);
         if (!$checkTargetInvoice) {
-            return ['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy hóa đơn cần chia'];
+            return ['status' => false, 'status_code' => 404, 'message' => __('api.invoice_not_found')];
         }
 
         $itemOriginalInvoice = $this->getPaymentItems($originalInvoice);
@@ -360,26 +362,27 @@ class SplitMergeInvoiceController extends Controller
 
         DB::beginTransaction();
         try {
+            app()->setLocale($request->input('isCheckLanguage', 'vi'));
             $originalInvoice = Payment::where('store_id', $storeId)
                 ->find($filters['original_invoice_id']);
             if (!$originalInvoice) {
                 DB::rollBack();
-                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy hóa đơn gốc'], 404);
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => __('api.invoice_not_found')], 404);
             }
             if ($originalInvoice->status !== 0) { // Pending/Unpaid
                 DB::rollBack();
-                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Hóa đơn đã được thanh toán hoặc đã bị xóa'], 400);
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => __('api.invoice_inactive')], 400);
             }
 
             $targetInvoice = Payment::where('store_id', $storeId)
                 ->find($filters['target_invoice_id']);
             if (!$targetInvoice) {
                 DB::rollBack();
-                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Không tìm thấy hóa đơn tách'], 404);
+                return response()->json(['status' => false, 'status_code' => 404, 'message' => __('api.invoice_not_found')], 404);
             }
             if ($targetInvoice->status !== 0) { // Pending/Unpaid
                 DB::rollBack();
-                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'Hóa đơn đã được thanh toán hoặc đã bị xóa'], 400);
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => __('api.invoice_inactive')], 400);
             }
 
             $paramTargetInvoice = $this->handleData4MergeInvoice($originalInvoice, $targetInvoice);
@@ -404,11 +407,11 @@ class SplitMergeInvoiceController extends Controller
             $originalInvoice->delete();
 
             DB::commit();
-            return response()->json(['status' => true, 'status_code' => 200, 'message' => 'Ghép hóa đơn thành công']);
+            return response()->json(['status' => true, 'status_code' => 200, 'message' => __('api.merge_success')]);
         } catch (\Throwable $th) {
             DB::rollBack();
             Log::error('Edge mergeInvoice failed: ' . $th->getMessage());
-            return response()->json(['status' => false, 'status_code' => 500, 'message' => 'Đã có lỗi xảy ra: ' . $th->getMessage()], 500);
+            return response()->json(['status' => false, 'status_code' => 500, 'message' => __('api.ISError') . ': ' . $th->getMessage()], 500);
         }
     }
 

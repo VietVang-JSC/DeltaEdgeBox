@@ -644,21 +644,13 @@ class TableController extends Controller
 
             $table = Table::find($request->input('table_id'));
             if (!$table || !$table->payment_id) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Không tìm thấy bàn hoặc payment_id',
-                    'status_code' => 404,
-                ], 404);
+                return $this->error('api.table_or_payment_not_found', 404);
             }
 
             $details = PaymentDetail::where('payment_id', $table->payment_id)->get();
 
             if ($details->isEmpty()) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Không tìm thấy sản phẩm trong payment detail',
-                    'status_code' => 404,
-                ], 404);
+                return $this->error('api.detail_empty', 404);
             }
 
             $data = $details->map(function ($detail) {
@@ -700,11 +692,7 @@ class TableController extends Controller
             $table = Table::find($request->input('table_id'));
 
             if (!$table || !$table->payment_id) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Không tìm thấy bàn hoặc payment_id',
-                    'status_code' => 404,
-                ], 404);
+                return $this->error('api.table_or_payment_not_found', 404);
             }
 
             $served = $request->has('served') ? (bool) $request->input('served') : true;
@@ -715,12 +703,12 @@ class TableController extends Controller
                 ->update(['served' => $served ? 1 : 0]);
 
             if (!$updated) {
-                return $this->error('Cập nhật trạng thái phục vụ thất bại', 400);
+                return $this->error('api.served_update_failed', 400);
             }
 
             $this->processSyncAfterResponse();
 
-            return $this->success('Cập nhật trạng thái phục vụ thành công');
+            return $this->success('api.served_update_success');
         } catch (\Throwable $th) {
             Log::error('Edge served failed: ' . $th->getMessage());
             return $this->error('api.ISError', 500);
@@ -744,21 +732,21 @@ class TableController extends Controller
             $numberOfPeople = (int) $request->input('number_of_people');
 
             if (!$tableId) {
-                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'table_id is required'], 400);
+                return $this->error('api.table_id_required', 400);
             }
 
             $table = Table::find($tableId);
             if (!$table) {
-                return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Table not found'], 404);
+                return $this->error('api.table_not_found', 404);
             }
 
             $table->number_of_people = $numberOfPeople;
             $table->save();
 
-            return response()->json(['status' => true, 'status_code' => 200, 'message' => 'Cập nhật số lượng khách thành công']);
+            return $this->success('api.number_of_people_updated');
         } catch (\Throwable $th) {
             Log::error('Edge updateNumberOfPeople failed: ' . $th->getMessage());
-            return response()->json(['status' => false, 'status_code' => 500, 'message' => 'Cập nhật số lượng khách không thành công'], 500);
+            return $this->error('api.number_of_people_update_failed', 500);
         }
     }
 
