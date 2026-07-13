@@ -1384,7 +1384,9 @@ class PaymentController extends Controller
                     $u = (float) ($detail['unit_price_excluding_tax'] ?? 0);
                     $p = (float) ($detail['price'] ?? 0);
                     if ($u > 0) {
-                        $correct = $u * $q;
+                        $discPct = (float) ($detail['discount_percent'] ?? 0);
+                        $discountAmt = $discPct > 0 ? round($u * $q * $discPct / 100) : 0;
+                        $correct = ($u * $q) - $discountAmt;
                         $stored = (float) ($detail['discounted_price_excluding_tax'] ?? 0);
                         if ($stored !== $correct) {
                             $detail['discounted_price_excluding_tax'] = $correct;
