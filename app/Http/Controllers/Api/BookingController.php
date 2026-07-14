@@ -114,12 +114,15 @@ class BookingController extends Controller
     {
         try {
             $id = $request->input('id', $request->input('booking_id'));
-            if (!$id) {
-                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'booking_id is required'], 400);
+            $bookingCode = $request->input('booking_code');
+            if (!$id && !$bookingCode) {
+                return response()->json(['status' => false, 'status_code' => 400, 'message' => 'booking_id or booking_code is required'], 400);
             }
 
             $storeId = $this->storeId($request);
-            $booking = Booking::where('id', $id)->where('store_id', $storeId)->first();
+            $booking = $id
+                ? Booking::where('id', $id)->where('store_id', $storeId)->first()
+                : Booking::where('booking_code', $bookingCode)->where('store_id', $storeId)->first();
             if (!$booking) {
                 return response()->json(['status' => false, 'status_code' => 404, 'message' => 'Booking not found'], 404);
             }
