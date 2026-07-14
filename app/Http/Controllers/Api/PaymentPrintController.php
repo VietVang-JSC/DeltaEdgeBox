@@ -329,7 +329,8 @@ class PaymentPrintController extends Controller
         $filters['split_merge_item'] = $itemsInput['item'] ?? $itemsInput ?? [];
 
         $temporaryPayment = $this->buildSimplePayment($filters, $isTaxIncluded);
-
+        $temporaryPayment['amount_received'] = 0; 
+        
         $table = null;
         if ($payment && $payment->table) {
             $table = $payment->table;
