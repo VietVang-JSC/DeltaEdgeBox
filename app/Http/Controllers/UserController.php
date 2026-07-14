@@ -47,6 +47,9 @@ class UserController extends Controller
 
             // User info
             $user = JWTAuth::user()->load('store');
+            if ($user->store) {
+                $user->store->edge_box_api_key = config('edge_box.api_key');
+            }
 
             // Success
             return response()->json([
