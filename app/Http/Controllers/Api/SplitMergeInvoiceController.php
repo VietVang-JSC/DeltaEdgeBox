@@ -262,93 +262,104 @@ class SplitMergeInvoiceController extends Controller
         $total_tax_pre = $totals['total_tax']; // pre-discount tax (from items directly)
         $total_value = $totals['total_value'];
 
-        // Use original - remain for ALL values to ensure sum = original 100% (prevent rounding)
+        // Recalculate discount, surcharge, tax for Split Invoice (instead of subtraction)
         $typeDiscount = $originalInvoice->type_discount ?? 'amount';
-        $discountAmount = max(0, (float) ($originalInvoice->discount ?? 0) - (float) ($paramUpdateOriginalInvoice['discount'] ?? 0));
+        $discountPct = (float) ($originalInvoice->discount_percent ?? 0);
+        $discountAmount = (float) ($originalInvoice->discount ?? 0);
+
+        $scBaseTotalSplitFinal = $total_value - $total_tax_pre;
 
         if (($store->time_zone ?? null) === 'Asia/Manila') {
             $isSenior = (bool) ($filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false));
-            $inheritedSeniorAmount = max(0, (float) ($originalInvoice->senior_discount_amount ?? 0) - (float) ($paramUpdateOriginalInvoice['senior_discount_amount'] ?? 0));
-            if ($isSenior) {
-                $seniorAmount = (float) round(($total_value - $total_tax_pre) * 20 / 100);
-            } else {
-                $seniorAmount = 0;
+            $seniorAmount = $isSenior ? (float) round($scBaseTotalSplitFinal * 20 / 100) : 0;
+            if ($isSenior && $seniorAmount == 0) {
+                $isSenior = false;
             }
         } else {
             $seniorAmount = 0;
             $isSenior = false;
         }
         $isSeniorActive = $isSenior && $seniorAmount > 0;
-        $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
-        $surchargeAmount = max(0, (float) ($originalInvoice->surcharge ?? 0) - (float) ($paramUpdateOriginalInvoice['surcharge'] ?? 0));
-        
-        //store khong bao gom thue 
-        if (!$isTaxInc) {
-            $origItemsArrFix = json_decode($originalInvoice->items, true)['item'] ?? [];
-            $origSubtotalFix = 0;
-            foreach ($origItemsArrFix as $_i) {
-                $origSubtotalFix += (float) ($_i['price'] ?? 0) * (int) ($_i['quantity'] ?? 0);
-            }
-            $splitSubtotalFix = 0;
-            foreach ($filters['split_merge_item'] as $_i) {
-                $splitSubtotalFix += (float) ($_i['price'] ?? 0) * (int) ($_i['quantity'] ?? 0);
-            }
-            $splitRatioFix = $origSubtotalFix > 0 ? $splitSubtotalFix / $origSubtotalFix : 0;
+        $seniorDeduction = $isSeniorActive ? $seniorAmount : 0;
+        $afterSeniorSplit = $scBaseTotalSplitFinal - $seniorDeduction;
 
-            // Fallback discount: nếu tính bằng original-remain = 0 nhưng filters có giá trị
-            if ($discountAmount == 0) {
-                $discFromFilters = (float) ($filters['discount'] ?? 0);
-                if ($discFromFilters > 0) {
-                    $discountAmount = round($discFromFilters * $splitRatioFix);
-                }
+        // Recalculate discount amount
+        if ($typeDiscount === 'percent') {
+            $discountAmount = $isSeniorActive
+                ? round($afterSeniorSplit * $discountPct / 100)
+                : ($isTaxInc ? round($total_value * $discountPct / 100) : round($scBaseTotalSplitFinal * $discountPct / 100));
+        } else {
+            // Proportional amount discount
+            $origItems = json_decode($originalInvoice->items, true)['item'] ?? [];
+            $origTotal = 0;
+            foreach ($origItems as $k => $v) {
+                $origTotal += (float) ($v['price'] ?? 0) * (int) ($v['quantity'] ?? 0);
             }
-
-            // Fallback surcharge: nếu tính bằng original-remain = 0 nhưng filters có giá trị
-            if ($surchargeAmount == 0 && $surchargePercent == 0) {
-                $surchargeFromFilters = (float) ($filters['surcharge'] ?? 0);
-                if ($surchargeFromFilters > 0) {
-                    $surchargeAmount = round($surchargeFromFilters * $splitRatioFix);
-                }
+            $splitTotal = 0;
+            foreach ($filters['split_merge_item'] as $k => $v) {
+                $splitTotal += (float) ($v['price'] ?? 0) * (int) ($v['quantity'] ?? 0);
+            }
+            if ($origTotal > 0) {
+                $discountAmount = round(($originalInvoice->discount ?? 0) * $splitTotal / $origTotal);
             }
         }
-        // ─────────────────────────────────────────────────────────────────────────────
+
+        $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
+        $surchargeAmount = (float) ($originalInvoice->surcharge ?? 0);
+        if ($surchargePercent == 0 && $surchargeAmount > 0) {
+            $origItems = json_decode($originalInvoice->items, true)['item'] ?? [];
+            $origTotal = 0;
+            foreach ($origItems as $k => $v) {
+                $origTotal += (float) ($v['price'] ?? 0) * (int) ($v['quantity'] ?? 0);
+            }
+            $splitTotal = 0;
+            foreach ($filters['split_merge_item'] as $k => $v) {
+                $splitTotal += (float) ($v['price'] ?? 0) * (int) ($v['quantity'] ?? 0);
+            }
+            if ($origTotal > 0) {
+                $surchargeAmount = round(($originalInvoice->surcharge ?? 0) * $splitTotal / $origTotal);
+            }
+        }
 
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($originalInvoice->service_charge ?? 0));
-        // Calculate service charge for split bill independently (same formula as handleUpdateOriginalInvoice)
-        // Using subtraction (orig - remain) can result in 0 when original invoice has service_charge_amount=0
-        if ($serviceChargePercent > 0) {
-            $scBaseTotalForCharge = $total_value - $total_tax_pre;
-            if ($isSeniorActive) {
-                $chargeBaseSplit = max(0, $scBaseTotalForCharge - $seniorAmount - $discountAmount);
-            } elseif ($isTaxInc) {
-                $chargeBaseSplit = max(0, $total_value - $discountAmount);
-            } else {
-                $chargeBaseSplit = max(0, $scBaseTotalForCharge - $discountAmount);
-            }
-            $serviceChargeAmount = round($chargeBaseSplit * $serviceChargePercent / 100);
+        if ($isSeniorActive) {
+            $chargeBaseSplit = max(0, $scBaseTotalSplitFinal - $seniorDeduction - $discountAmount);
+        } elseif ($isTaxInc) {
+            $chargeBaseSplit = max(0, $total_value - $discountAmount);
         } else {
-            $serviceChargeAmount = 0;
+            $chargeBaseSplit = max(0, $scBaseTotalSplitFinal - $discountAmount);
         }
-        $total_tax = $isSeniorActive ? 0 : max(0, (float) ($originalInvoice->tax ?? 0) - (float) ($paramUpdateOriginalInvoice['total_tax'] ?? 0));
+        $serviceChargeAmount = round($chargeBaseSplit * $serviceChargePercent / 100);
 
-        // Fallback tax cho Tax Exclusive: nếu total_tax = 0 nhưng items có VAT → tính lại
-        if (!$isTaxInc && !$isSeniorActive && $total_tax == 0 && $total_tax_pre > 0) {
-            $splitSubtotalExclFix = $total_value - $total_tax_pre;
-            $newTax = 0;
-            foreach ($filters['split_merge_item'] as $_i) {
-                $_q = (int) ($_i['quantity'] ?? 0);
-                $_p = (float) ($_i['price'] ?? 0);
-                $_v = (float) ($_i['vat'] ?? 0);
-                if ($_v <= 0) continue;
-                $_lineBase = $_q * $_p;
-                $_ratio = $splitSubtotalExclFix > 0 ? $_lineBase / $splitSubtotalExclFix : 0;
-                $_lineDisc = round($discountAmount * $_ratio);
-                $newTax += round(($_lineBase - $_lineDisc) * $_v / 100);
+        // Recalculate tax
+        $total_tax = $total_tax_pre;
+        if (!$isSeniorActive && $discountAmount > 0) {
+            $newTotalTax = 0;
+            $totalBaseForTax = $isTaxInc ? $total_value : $scBaseTotalSplitFinal;
+            foreach ($filters['split_merge_item'] as $item) {
+                $quantity = (int) ($item['quantity'] ?? 1);
+                $price = (float) ($item['price'] ?? 0);
+                $vatRate = (float) ($item['vat'] ?? 0);
+                $lineBase = $quantity * $price;
+                $ratio = $totalBaseForTax > 0 ? $lineBase / $totalBaseForTax : 0;
+                $itemDisc = round($discountAmount * $ratio);
+                if ($isTaxInc) {
+                    $afterDiscIncl = $lineBase - $itemDisc;
+                    $vatDivisor = 1 + $vatRate / 100;
+                    $netExcl = $vatDivisor > 0 ? round($afterDiscIncl / $vatDivisor) : $afterDiscIncl;
+                    $newTotalTax += $afterDiscIncl - $netExcl;
+                } else {
+                    $afterDiscExcl = $lineBase - $itemDisc;
+                    $newTotalTax += round($afterDiscExcl * $vatRate / 100);
+                }
             }
-            $total_tax = $newTax;
+            $total_tax = $newTotalTax;
         }
 
-        $scBaseTotalSplitFinal = $total_value - $total_tax_pre;
+        if ($isSeniorActive) {
+            $total_tax = 0;
+        }
+
         $isNewSeniorDiscount = $isSeniorActive && empty($originalInvoice->is_senior_discount);
         if ($isSeniorActive) {
             $total_tax = 0;
@@ -606,20 +617,20 @@ class SplitMergeInvoiceController extends Controller
             $newTotalTax = 0;
             $totalBase = $isTaxInc ? $total_value : $scBaseTotal;
             foreach ($itemOriginalInvoice['item'] as $item) {
-                $q = (int) ($item['quantity'] ?? 1);
-                $p = (float) ($item['price'] ?? 0);
-                $v = (float) ($item['vat'] ?? 0);
-                $lineBase = $q * $p;
+                $quantity = (int) ($item['quantity'] ?? 1);
+                $price = (float) ($item['price'] ?? 0);
+                $vatRate = (float) ($item['vat'] ?? 0);
+                $lineBase = $quantity * $price;
                 $ratio = $totalBase > 0 ? $lineBase / $totalBase : 0;
                 $itemDisc = round($discountAmount * $ratio);
                 if ($isTaxInc) {
                     $afterDiscIncl = $lineBase - $itemDisc;
-                    $vatDiv = 1 + $v / 100;
-                    $netExcl = $vatDiv > 0 ? round($afterDiscIncl / $vatDiv) : $afterDiscIncl;
+                    $vatDivisor = 1 + $vatRate / 100;
+                    $netExcl = $vatDivisor > 0 ? round($afterDiscIncl / $vatDivisor) : $afterDiscIncl;
                     $newTotalTax += $afterDiscIncl - $netExcl;
                 } else {
                     $afterDiscExcl = $lineBase - $itemDisc;
-                    $newTotalTax += round($afterDiscExcl * $v / 100);
+                    $newTotalTax += round($afterDiscExcl * $vatRate / 100);
                 }
             }
             $total_tax = $newTotalTax;
