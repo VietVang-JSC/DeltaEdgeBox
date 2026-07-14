@@ -356,12 +356,14 @@ class SplitMergeInvoiceController extends Controller
         $splitSubtotalBefore = $billItem['summary']['subtotal_before'];
         $splitTotalInclVat = $billItem['summary']['total_incl_vat_before_discount'];
 
-        $isSenior = (bool) ($filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false));
+        $isSenior = isset($filters['is_senior_discount']) 
+            ? !empty($filters['is_senior_discount']) 
+            : !empty($originalInvoice->is_senior_discount);
         
         $splitExVatBase = ($isTaxInc && !$isSenior) ? $splitTotalInclVat : $splitSubtotalBefore;
 
-        $typeDiscount = $originalInvoice->type_discount ?? 'amount';
-        $discountPct = (float) ($originalInvoice->discount_percent ?? 0);
+        $typeDiscount = $filters['type_discount'] ?? ($originalInvoice->type_discount ?? 'amount');
+        $discountPct = (float) ($filters['discount_percent'] ?? ($originalInvoice->discount_percent ?? 0));
 
         $seniorRate = (float) config('params.senior_discount.rate', 20);
         $seniorAmount = $isSenior ? round($splitSubtotalBefore * $seniorRate / 100) : 0;
@@ -370,7 +372,9 @@ class SplitMergeInvoiceController extends Controller
 
         $discountVal = $typeDiscount === 'percent' ? $discountPct : 0;
         $discountAmount = 0;
-        if ($isSeniorActive && $typeDiscount === 'percent') {
+        if (isset($filters['discount']) && $typeDiscount === 'amount') {
+            $discountAmount = (float) $filters['discount'];
+        } elseif ($isSeniorActive && $typeDiscount === 'percent') {
             $discountAmount = round($afterSenior * $discountPct / 100);
         } elseif ($typeDiscount === 'percent') {
             $discountAmount = round($splitExVatBase * $discountPct / 100);
@@ -397,6 +401,8 @@ class SplitMergeInvoiceController extends Controller
         $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
         if ($surchargePercent > 0) {
             $surchargeAmount = round(max(0, $totalAfterDiscount) * $surchargePercent / 100);
+        } elseif (isset($filters['surcharge'])) {
+            $surchargeAmount = (float) $filters['surcharge'];
         } else {
             $surchargeAmount = max(0, (float) ($originalInvoice->surcharge ?? 0) - (float) ($paramUpdateOriginalInvoice['surcharge'] ?? 0));
         }
