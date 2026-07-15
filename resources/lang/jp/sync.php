@@ -1,0 +1,26 @@
+<?php
+
+return [
+    'success_queue_reset_retry' => 'キュー項目 #:id は再試行のために保留中状態にリセットされました。',
+    'success_queue_prioritized' => 'キュー項目 #:id は優先されました。',
+    'success_queue_dismissed' => 'キュー項目 #:id は除外されました。',
+    'success_conflict_resolved' => "競合 #:id は ':strategy' として解決されました。",
+    'err_invalid_queue_id' => '無効な同期キューIDです。',
+    'err_queue_not_found' => '同期キュー項目が見つかりません。',
+    'err_only_failed_retried' => '「失敗」または「再試行中」の項目のみ再試行できます。',
+    'err_only_pending_prioritized' => '保留中の項目のみ優先できます。',
+    'err_only_failed_dismissed' => '「失敗」の項目のみ除外できます。',
+    'err_invalid_conflict_id' => '無効な競合IDまたは解決戦略です。',
+    'err_conflict_not_found' => '競合が見つかりません。',
+    'err_conflict_already_resolved' => '競合 #:id は既に解決されています。',
+    'err_table_not_allowed' => "テーブル ':table' はクラウド同期の解決が許可されていません。",
+    'err_keep_local_missing' => 'ローカルを保持できません: 競合解決のための同期キュー項目がありません。',
+    'err_keep_local_not_found' => 'ローカルを保持できません: 同期キュー項目 #:id が見つかりませんでした。',
+    'err_keep_local_changed' => 'ローカルを保持できません: 同期キュー項目は別のプロセスによって変更されました。',
+    'err_keep_local_status' => 'ローカルを保持できません: 同期キュー項目のステータスは再試行できません。',
+    'err_invalid_cloud_data' => '無効なクラウドデータJSONです。',
+    'err_apply_cloud_data_empty' => 'クラウドデータを適用できません: cloud_data、table_name、またはrecord_idが空です。',
+    'err_no_safe_fields' => 'セキュリティフィルタリング後、適用可能な安全なクラウドフィールドがありません。',
+    'err_local_record_not_found' => 'ローカルレコードが見つかりません。',
+    'err_server_error' => 'サーバーエラー: :error',
+];

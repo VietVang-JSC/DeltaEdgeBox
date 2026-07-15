@@ -18,7 +18,7 @@ class LocalizationMiddleware
     public function handle(Request $request, Closure $next)
     {
         // 1. Detect language from query parameter, request payload, or headers, default is 'vi'
-        $locale = $request->input('isCheckLanguage') ?: $request->header('isCheckLanguage') ?: 'vi';
+        $locale = $request->input('isCheckLanguage') ?: $request->header('isCheckLanguage') ?: $request->header('Accept-Language') ?: 'vi';
         app()->setLocale($locale);
 
         $response = $next($request);
