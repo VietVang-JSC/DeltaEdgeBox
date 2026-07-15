@@ -1,0 +1,26 @@
+<?php
+
+return [
+    'success_queue_reset_retry' => 'Item đồng bộ #:id đã được đặt lại thành chờ xử lý để thử lại.',
+    'success_queue_prioritized' => 'Item đồng bộ #:id đã được ưu tiên.',
+    'success_queue_dismissed' => 'Item đồng bộ #:id đã được bỏ qua (dismissed).',
+    'success_conflict_resolved' => "Xung đột #:id đã được giải quyết bằng ':strategy'.",
+    'err_invalid_queue_id' => 'ID hàng đợi đồng bộ không hợp lệ.',
+    'err_queue_not_found' => 'Không tìm thấy item trong hàng đợi đồng bộ.',
+    'err_only_failed_retried' => 'Chỉ các item \'thất bại\' hoặc \'đang thử lại\' mới có thể được thử lại.',
+    'err_only_pending_prioritized' => 'Chỉ các item đang chờ mới có thể được ưu tiên.',
+    'err_only_failed_dismissed' => 'Chỉ các item \'thất bại\' mới có thể bị bỏ qua.',
+    'err_invalid_conflict_id' => 'ID xung đột hoặc chiến lược giải quyết không hợp lệ.',
+    'err_conflict_not_found' => 'Không tìm thấy xung đột.',
+    'err_conflict_already_resolved' => 'Xung đột #:id đã được giải quyết.',
+    'err_table_not_allowed' => "Bảng ':table' không được phép giải quyết đồng bộ Cloud.",
+    'err_keep_local_missing' => 'Không thể giữ Local: thiếu item trong hàng đợi đồng bộ để giải quyết xung đột.',
+    'err_keep_local_not_found' => 'Không thể giữ Local: không tìm thấy item #:id trong hàng đợi đồng bộ.',
+    'err_keep_local_changed' => 'Không thể giữ Local: item trong hàng đợi đồng bộ đã bị thay đổi bởi một tiến trình khác.',
+    'err_keep_local_status' => 'Không thể giữ Local: trạng thái của item trong hàng đợi đồng bộ không thể thử lại.',
+    'err_invalid_cloud_data' => 'Dữ liệu Cloud JSON không hợp lệ.',
+    'err_apply_cloud_data_empty' => 'Không thể áp dụng dữ liệu Cloud: cloud_data, table_name, hoặc record_id bị trống.',
+    'err_no_safe_fields' => 'Không có trường Cloud nào an toàn để áp dụng sau khi lọc bảo mật.',
+    'err_local_record_not_found' => 'Không tìm thấy bản ghi Local.',
+    'err_server_error' => 'Lỗi máy chủ: :error',
+];

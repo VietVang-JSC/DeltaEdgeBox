@@ -1,0 +1,26 @@
+<?php
+
+return [
+    'success_queue_reset_retry' => 'Queue item #:id has been reset to pending for retry.',
+    'success_queue_prioritized' => 'Queue item #:id has been prioritized.',
+    'success_queue_dismissed' => 'Queue item #:id has been dismissed.',
+    'success_conflict_resolved' => "Conflict #:id resolved as ':strategy'.",
+    'err_invalid_queue_id' => 'Invalid queue item ID.',
+    'err_queue_not_found' => 'Queue item not found.',
+    'err_only_failed_retried' => 'Only \'failed\' or \'retrying\' items can be retried.',
+    'err_only_pending_prioritized' => 'Only pending items can be prioritized.',
+    'err_only_failed_dismissed' => 'Only \'failed\' items can be dismissed.',
+    'err_invalid_conflict_id' => 'Invalid conflict ID or resolution strategy.',
+    'err_conflict_not_found' => 'Conflict not found.',
+    'err_conflict_already_resolved' => 'Conflict #:id is already resolved.',
+    'err_table_not_allowed' => "Table ':table' is not allowed for cloud sync resolution.",
+    'err_keep_local_missing' => 'Cannot keep local: sync queue item is missing for conflict resolution.',
+    'err_keep_local_not_found' => 'Cannot keep local: sync queue item #:id was not found.',
+    'err_keep_local_changed' => 'Cannot keep local: sync queue item was changed by another process.',
+    'err_keep_local_status' => 'Cannot keep local: sync queue item status is not retryable.',
+    'err_invalid_cloud_data' => 'Invalid cloud_data JSON.',
+    'err_apply_cloud_data_empty' => 'Cannot apply cloud data: cloud_data, table_name, or record_id is empty.',
+    'err_no_safe_fields' => 'No safe cloud fields to apply after security filtering.',
+    'err_local_record_not_found' => 'Local record not found.',
+    'err_server_error' => 'Server error: :error',
+];

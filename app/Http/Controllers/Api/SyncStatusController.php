@@ -305,7 +305,7 @@ class SyncStatusController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Queue item #{$id} has been reset to pending for retry.",
+                'message' => __('sync.success_queue_reset_retry', ['id' => $id]),
             ]);
         } catch (\Throwable $th) {
             Log::error('[SyncAction] retryQueueItem: unexpected error', [
@@ -313,7 +313,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
-            return response()->json(['success' => false, 'message' => 'Server error: ' . $th->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_server_error', ['error' => $th->getMessage()])], 500);
         }
     }
 
@@ -326,20 +326,20 @@ class SyncStatusController extends Controller
         Log::info('[SyncAction] prioritizeQueueItem: received request', ['queue_id' => $id]);
 
         if ($id <= 0) {
-            return response()->json(['success' => false, 'message' => 'Invalid queue item ID'], 422);
+            return response()->json(['success' => false, 'message' => __('sync.err_invalid_queue_id')], 422);
         }
 
         try {
             $item = DB::table('sync_queues')->where('id', $id)->first();
 
             if (!$item) {
-                return response()->json(['success' => false, 'message' => 'Queue item not found'], 404);
+                return response()->json(['success' => false, 'message' => __('sync.err_queue_not_found')], 404);
             }
 
             if ($item->status !== 'pending') {
                 return response()->json([
                     'success' => false,
-                    'message' => "Only pending items can be prioritized. Current status: '{$item->status}'.",
+                    'message' => __('sync.err_only_pending_prioritized'),
                 ], 422);
             }
 
@@ -357,14 +357,14 @@ class SyncStatusController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Queue item #{$id} has been prioritized.",
+                'message' => __('sync.success_queue_prioritized', ['id' => $id]),
             ]);
         } catch (\Throwable $th) {
             Log::error('[SyncAction] prioritizeQueueItem: unexpected error', [
                 'id' => $id,
                 'error' => $th->getMessage(),
             ]);
-            return response()->json(['success' => false, 'message' => 'Server error: ' . $th->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_server_error', ['error' => $th->getMessage()])], 500);
         }
     }
 
@@ -379,7 +379,7 @@ class SyncStatusController extends Controller
 
         if ($id <= 0) {
             Log::warning('[SyncAction] dismissFailedItem: invalid id', ['id' => $id]);
-            return response()->json(['success' => false, 'message' => 'Invalid queue item ID'], 422);
+            return response()->json(['success' => false, 'message' => __('sync.err_invalid_queue_id')], 422);
         }
 
         try {
@@ -387,7 +387,7 @@ class SyncStatusController extends Controller
 
             if (!$item) {
                 Log::warning('[SyncAction] dismissFailedItem: item not found', ['id' => $id]);
-                return response()->json(['success' => false, 'message' => 'Queue item not found'], 404);
+                return response()->json(['success' => false, 'message' => __('sync.err_queue_not_found')], 404);
             }
 
             if ($item->status !== 'failed') {
@@ -397,7 +397,7 @@ class SyncStatusController extends Controller
                 ]);
                 return response()->json([
                     'success' => false,
-                    'message' => "Only 'failed' items can be dismissed. Current status: '{$item->status}'.",
+                    'message' => __('sync.err_only_failed_dismissed'),
                 ], 422);
             }
 
@@ -416,7 +416,7 @@ class SyncStatusController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Queue item #{$id} has been dismissed.",
+                'message' => __('sync.success_queue_dismissed', ['id' => $id]),
             ]);
         } catch (\Throwable $th) {
             Log::error('[SyncAction] dismissFailedItem: unexpected error', [
@@ -424,7 +424,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
-            return response()->json(['success' => false, 'message' => 'Server error: ' . $th->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_server_error', ['error' => $th->getMessage()])], 500);
         }
     }
 
@@ -451,7 +451,7 @@ class SyncStatusController extends Controller
                 'id' => $id,
                 'resolution' => $resolution,
             ]);
-            return response()->json(['success' => false, 'message' => 'Invalid conflict ID or resolution strategy'], 422);
+            return response()->json(['success' => false, 'message' => __('sync.err_invalid_conflict_id')], 422);
         }
 
         try {
@@ -459,7 +459,7 @@ class SyncStatusController extends Controller
 
             if (!$conflict) {
                 Log::warning('[SyncAction] resolveConflict: conflict not found', ['id' => $id]);
-                return response()->json(['success' => false, 'message' => 'Conflict not found'], 404);
+                return response()->json(['success' => false, 'message' => __('sync.err_conflict_not_found')], 404);
             }
 
             if ($conflict->resolution_status !== 'unresolved') {
@@ -469,7 +469,7 @@ class SyncStatusController extends Controller
                 ]);
                 return response()->json([
                     'success' => false,
-                    'message' => "Conflict #{$id} is already '{$conflict->resolution_status}'.",
+                    'message' => __('sync.err_conflict_already_resolved', ['id' => $id]),
                 ], 422);
             }
 
@@ -481,7 +481,7 @@ class SyncStatusController extends Controller
                 ]);
                 return response()->json([
                     'success' => false,
-                    'message' => "Table '{$conflict->table_name}' is not allowed for conflict resolution.",
+                    'message' => __('sync.err_table_not_allowed', ['table' => $conflict->table_name]),
                 ], 403);
             }
 
@@ -507,7 +507,7 @@ class SyncStatusController extends Controller
                         ]);
                         return response()->json([
                             'success' => false,
-                            'message' => "Cannot keep local: sync queue item is missing for conflict #{$id}. Use 'skip' instead.",
+                            'message' => __('sync.err_keep_local_missing'),
                         ], 422);
                     }
 
@@ -524,7 +524,7 @@ class SyncStatusController extends Controller
                         ]);
                         return response()->json([
                             'success' => false,
-                            'message' => "Cannot keep local: sync queue item #{$conflict->sync_queue_id} was not found.",
+                            'message' => __('sync.err_keep_local_not_found', ['id' => $conflict->sync_queue_id]),
                         ], 404);
                     }
 
@@ -555,7 +555,7 @@ class SyncStatusController extends Controller
                             ]);
                             return response()->json([
                                 'success' => false,
-                                'message' => 'Cannot keep local: sync queue item was changed by another process. Please reload and try again.',
+                                'message' => __('sync.err_keep_local_changed'),
                             ], 409);
                         }
 
@@ -573,7 +573,7 @@ class SyncStatusController extends Controller
                         ]);
                         return response()->json([
                             'success' => false,
-                            'message' => "Cannot keep local: sync queue item status '{$queueItem->status}' is not retryable.",
+                            'message' => __('sync.err_keep_local_status'),
                         ], 422);
                     }
                 } elseif ($resolution === 'keep_cloud') {
@@ -587,7 +587,7 @@ class SyncStatusController extends Controller
                             ]);
                             return response()->json([
                                 'success' => false,
-                                'message' => 'Invalid cloud_data JSON.',
+                                'message' => __('sync.err_invalid_cloud_data'),
                             ], 422);
                         }
                     } else {
@@ -604,7 +604,7 @@ class SyncStatusController extends Controller
                         ]);
                         return response()->json([
                             'success' => false,
-                            'message' => "Cannot apply cloud data: cloud_data, table_name, or record_id is empty.",
+                            'message' => __('sync.err_apply_cloud_data_empty'),
                         ], 422);
                     }
 
@@ -620,7 +620,7 @@ class SyncStatusController extends Controller
                         ]);
                         return response()->json([
                             'success' => false,
-                            'message' => "No safe cloud fields to apply after security filtering.",
+                            'message' => __('sync.err_no_safe_fields'),
                         ], 422);
                     }
 
@@ -638,7 +638,7 @@ class SyncStatusController extends Controller
                         ]);
                         return response()->json([
                             'success' => false,
-                            'message' => 'Local record not found.',
+                            'message' => __('sync.err_local_record_not_found'),
                         ], 404);
                     }
 
@@ -676,7 +676,7 @@ class SyncStatusController extends Controller
                     ]);
                     return response()->json([
                         'success' => false,
-                        'message' => "Conflict #{$id} was already resolved by another request.",
+                        'message' => __('sync.err_conflict_already_resolved', ['id' => $id]),
                     ], 409); // 409 Conflict
                 }
 
@@ -690,7 +690,7 @@ class SyncStatusController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => "Conflict #{$id} resolved as '{$strategy}'.",
+                    'message' => __('sync.success_conflict_resolved', ['id' => $id, 'strategy' => $strategy]),
                     'new_status' => $newStatus,
                 ]);
             } catch (\Throwable $inner) {
@@ -708,7 +708,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
-            return response()->json(['success' => false, 'message' => 'Server error: ' . $th->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_server_error', ['error' => $th->getMessage()])], 500);
         }
     }
 }
