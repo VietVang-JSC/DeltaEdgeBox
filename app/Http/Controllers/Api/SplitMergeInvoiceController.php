@@ -615,6 +615,7 @@ class SplitMergeInvoiceController extends Controller
 
     private function handleUpdateOriginalInvoice($itemOriginalInvoice, $original_invoice, $filters = [])
     {
+        Log::debug("handleUpdateOriginalInvoice DBG - Filters received: " . json_encode($filters));
         $storeOrig = Store::find($original_invoice->store_id);
         $isTaxInc = $storeOrig->is_tax_included ?? 0;
 
@@ -687,7 +688,7 @@ class SplitMergeInvoiceController extends Controller
         $discountAmount = $billItem['summary']['discount_total'];
         $valuetotal = $totalWithVat;
 
-        return [
+        $result = [
             'id' => $original_invoice->id,
             'status' => $original_invoice->status,
             'valuetotal' => max(0, $valuetotal),
@@ -707,6 +708,9 @@ class SplitMergeInvoiceController extends Controller
             'sub_total_before_discount' => round($billItem['summary']['subtotal_before']),
             'total_incl_vat_before_discount' => $billItem['summary']['total_incl_vat_before_discount'],
         ];
+
+        Log::debug("handleUpdateOriginalInvoice DBG - Result: " . json_encode($result));
+        return $result;
     }
 
     private function updateTableListitemAfterSplit(int $table_id, array $remainingItems)
