@@ -389,8 +389,8 @@ class SplitMergeInvoiceController extends Controller
 
         // Allocate final discount to items for correct JSON payload
         $billItem = $isTaxInc
-            ? $this->allocateDiscountTaxIncluded($itemsDecoded['item'], $discountAmount, $typeDiscount)
-            : $this->allocateDiscountTaxExcluded($itemsDecoded['item'], $discountAmount, $typeDiscount);
+            ? $this->allocateDiscountTaxIncluded($itemsDecoded['item'], $typeDiscount === 'percent' ? $discountPct : $discountAmount, $typeDiscount)
+            : $this->allocateDiscountTaxExcluded($itemsDecoded['item'], $typeDiscount === 'percent' ? $discountPct : $discountAmount, $typeDiscount);
 
         $totalAfterDiscount = $afterSenior - $discountAmount;
         $total_tax = $isSeniorActive ? 0 : $billItem['summary']['total_vat'];
@@ -425,8 +425,9 @@ class SplitMergeInvoiceController extends Controller
             "items" => $items,
             "discount" => $discountAmount,
             "type_discount" => $typeDiscount,
-            "discount_percent" => $typeDiscount === 'percent' ? (float) ($originalInvoice->discount_percent ?? 0) : null,
+            "discount_percent" => $typeDiscount === 'percent' ? $discountPct : null,
             "surcharge" => $surchargeAmount,
+            "surcharge_percent" => $surchargePercent,
             "payment_method" => $filters['payment_method'] ?? 'cash',
             "status" => 1, // Paid
             "surcharge_reason" => $filters['surcharge_reason'] ?? null,
@@ -629,7 +630,7 @@ class SplitMergeInvoiceController extends Controller
         $surchargePercent = $original_invoice->surcharge_percent ?? null;
         $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
         
-        if ($surchargePercent === null && $surchargeAmount > 0) {
+        if (empty($surchargePercent) && $surchargeAmount > 0) {
             $origItems = json_decode($original_invoice->items, true)['item'] ?? [];
             $origTotal = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $origItems));
             $remainTotal = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $itemOriginalInvoice['item']));
@@ -778,8 +779,9 @@ class SplitMergeInvoiceController extends Controller
             "items" => $items,
             "discount" => $discountAmount,
             "type_discount" => $typeDiscount,
-            "discount_percent" => $typeDiscount === 'percent' ? (float) ($originalInvoice->discount_percent ?? 0) : null,
+            "discount_percent" => $typeDiscount === 'percent' ? $discountPct : null,
             "surcharge" => $surchargeAmount,
+            "surcharge_percent" => $surchargePercent,
             "payment_method" => $filters['payment_method'] ?? 'cash',
             "status" => 0, // Pending/Unpaid
             "surcharge_reason" => $filters['surcharge_reason'] ?? null,
