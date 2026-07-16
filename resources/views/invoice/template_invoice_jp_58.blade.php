@@ -304,12 +304,19 @@
                     @foreach ($payment['payment_details'] as $item)
                         @php
                             $tax = $item['products']['vat'];
+                            $itemVat = $tax / 100;
+                            $totalItemPrice = $is_tax_included == 1 ? $item['total_price'] : round($item['total_price'] / (1 + $itemVat));
                             if(array_key_exists($tax, $taxArray)){
-                                $taxArray[$tax]['total_price'] += $item['total_price'];
+                                $taxArray[$tax]['total_price'] += $totalItemPrice;
                                 $taxArray[$tax]['tax_amount'] += $item['tax_amount'];
                             } else {
-                                $taxArray[$tax]['total_price'] = $item['total_price'];
+                                $taxArray[$tax]['total_price'] = $totalItemPrice;
                                 $taxArray[$tax]['tax_amount'] = $item['tax_amount'];
+                            }
+                            $taxNote = '';
+                            if($tax < 10){
+                                $taxNote = '※' ;
+                                $checkTaxNote = true;
                             }
                         @endphp
                         <tr class="font-size-tr">
@@ -320,7 +327,7 @@
                                 @endif
                             </td>
                             <td class="txt-right">{{ number_format($item['quantity']) }}</td>
-                            <td class="txt-right">¥{{ number_format($item['total_price']) }}</td>
+                            <td class="txt-right">¥{{ number_format($totalItemPrice) }}</td>
                         </tr>
                     @endforeach
                 @endif
@@ -389,13 +396,11 @@
                 <td class="font-weight-nomarl txt-left">{{ isset($isUnpaid) && $isUnpaid == true ? 'ご請求額' : '合計' }}</td>
                 <td class="txt-right">¥{{ number_format($total) }}</td>
             </tr>
-            @if (!empty($change))
+            @if (!empty($amount_received))
                 <tr class="item">
                     <td class="font-weight-nomarl txt-left">お預かり</td>
                     <td class="txt-right">¥{{ number_format($amount_received) }}</td>
                 </tr>
-            @endif
-            @if (!empty($change))
                 <tr class="item">
                     <td class="font-weight-nomarl txt-left">お釣り</td>
                     <td class="txt-right">¥{{ number_format($change) }}</td>
