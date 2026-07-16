@@ -396,7 +396,12 @@ class SplitMergeInvoiceController extends Controller
         $total_tax = $isSeniorActive ? 0 : $billItem['summary']['total_vat'];
         
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($originalInvoice->service_charge ?? 0));
-        $serviceChargeAmount = round(max(0, $totalAfterDiscount) * $serviceChargePercent / 100);
+        $storeModel = Store::find($filters['store_id']);
+        if (($storeModel->time_zone ?? null) === 'Asia/Manila') {
+            $serviceChargeAmount = round(max(0, $totalAfterDiscount) * $serviceChargePercent / 100);
+        } else {
+            $serviceChargeAmount = 0;
+        }
         
         $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
         if ($surchargePercent > 0) {
@@ -752,7 +757,11 @@ class SplitMergeInvoiceController extends Controller
         $total_tax = $isSeniorActive ? 0 : $billItem['summary']['total_vat'];
         
         $serviceChargePercent = (float) ($filters['service_charge'] ?? ($originalInvoice->service_charge ?? 0));
-        $serviceChargeAmount = round(max(0, $totalAfterDiscount) * $serviceChargePercent / 100);
+        if (($store->time_zone ?? null) === 'Asia/Manila') {
+            $serviceChargeAmount = round(max(0, $totalAfterDiscount) * $serviceChargePercent / 100);
+        } else {
+            $serviceChargeAmount = 0;
+        }
         
         $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
         $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
