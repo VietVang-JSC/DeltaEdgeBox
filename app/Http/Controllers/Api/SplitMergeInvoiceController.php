@@ -321,6 +321,9 @@ class SplitMergeInvoiceController extends Controller
 
     private function createInvoiceFromOriginal($filters, $originalInvoice)
     {
+        Log::debug("createInvoiceFromOriginal DBG - Starting split. Filters: " . json_encode($filters));
+        Log::debug("createInvoiceFromOriginal DBG - Original payment ID: " . $originalInvoice->id . ", details: " . json_encode($originalInvoice->toArray()));
+
         $itemOriginalInvoice = $this->getPaymentItems($originalInvoice);
         // Load printed_quantity from payment_details (items JSON doesn't store it)
         $paymentDetails = $originalInvoice->details()->get();
@@ -338,6 +341,7 @@ class SplitMergeInvoiceController extends Controller
         }
 
         $paramUpdateOriginalInvoice = $this->handleUpdateOriginalInvoice($itemOriginalInvoice, $originalInvoice, $filters);
+        Log::debug("createInvoiceFromOriginal DBG - Recalculated Parent (paramUpdateOriginalInvoice): " . json_encode($paramUpdateOriginalInvoice));
         $this->updatePaymentLocal($paramUpdateOriginalInvoice);
 
         if (!empty($originalInvoice->table_id)) {
@@ -448,6 +452,7 @@ class SplitMergeInvoiceController extends Controller
             "total_incl_vat_before_discount" => max(0, (float) ($originalInvoice->total_incl_vat_before_discount ?? 0) - (float) ($paramUpdateOriginalInvoice['total_incl_vat_before_discount'] ?? 0)),
         ];
 
+        Log::debug("createInvoiceFromOriginal DBG - Recalculated Child (paramCreatePayment): " . json_encode($paramCreatePayment));
         $createPayment = $this->createPaymentLocal($paramCreatePayment);
         if (!$createPayment['status']) {
             return $createPayment;
