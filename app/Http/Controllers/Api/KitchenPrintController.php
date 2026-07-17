@@ -153,7 +153,7 @@ class KitchenPrintController extends Controller
         }
 
         try {
-            $products = $this->listPrintableItems($table, false);
+            $products = $this->listPrintableItems($table, true);
             if (empty($products)) {
                 return response()->json(['status' => false, 'status_code' => 404, 'message' => 'No items to print', 'error_code' => 'no_items'], 404);
             }
@@ -201,7 +201,7 @@ class KitchenPrintController extends Controller
 
         try {
             // Retrieve printable kitchen items. Printed state is updated after client-side print succeeds.
-            $products = $this->listPrintableItems($table, false);
+            $products = $this->listPrintableItems($table, true);
             if (empty($products)) {
                 return response()->json([
                     'status' => false,
