@@ -141,7 +141,7 @@ class SplitMergeInvoiceController extends Controller
         }
 
         $paramUpdateOriginalInvoice = $this->handleUpdateOriginalInvoice($itemOriginalInvoice, $originalInvoice, $filters);
-        $this->updatePaymentLocal($paramUpdateOriginalInvoice);
+        $this->updatePaymentLocal($paramUpdateOriginalInvoice, true);
 
         if (!empty($originalInvoice->table_id)) {
             $this->updateTableListitemAfterSplit($originalInvoice->table_id, $itemOriginalInvoice);
@@ -200,7 +200,7 @@ class SplitMergeInvoiceController extends Controller
         }
 
         $paramUpdateOriginalInvoice = $this->handleUpdateOriginalInvoice($itemOriginalInvoice, $originalInvoice, $filters);
-        $this->updatePaymentLocal($paramUpdateOriginalInvoice);
+        $this->updatePaymentLocal($paramUpdateOriginalInvoice, true);
 
         if (!empty($originalInvoice->table_id)) {
             $this->updateTableListitemAfterSplit($originalInvoice->table_id, $itemOriginalInvoice);
@@ -342,7 +342,7 @@ class SplitMergeInvoiceController extends Controller
 
         $paramUpdateOriginalInvoice = $this->handleUpdateOriginalInvoice($itemOriginalInvoice, $originalInvoice, $filters);
         Log::debug("createInvoiceFromOriginal DBG - Recalculated Parent (paramUpdateOriginalInvoice): " . json_encode($paramUpdateOriginalInvoice));
-        $this->updatePaymentLocal($paramUpdateOriginalInvoice);
+        $this->updatePaymentLocal($paramUpdateOriginalInvoice, true);
 
         if (!empty($originalInvoice->table_id)) {
             $this->updateTableListitemAfterSplit($originalInvoice->table_id, $itemOriginalInvoice);
@@ -619,10 +619,10 @@ class SplitMergeInvoiceController extends Controller
         $storeOrig = Store::find($original_invoice->store_id);
         $isTaxInc = $storeOrig->is_tax_included ?? 0;
 
-        $typeDiscount = $filters['type_discount'] ?? ($original_invoice->type_discount ?? 'amount');
+        $typeDiscount = $original_invoice->type_discount ?? 'amount';
         $discountValue = $typeDiscount === 'percent'
-            ? (float) ($filters['discount_percent'] ?? ($original_invoice->discount_percent ?? 0))
-            : ((float) ($filters['discount'] ?? ($original_invoice->discount ?? 0)) * array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $itemOriginalInvoice['item'])) / max(1, $original_invoice->sub_total_before_discount ?? array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], json_decode($original_invoice->items, true)['item'] ?? []))));
+            ? (float) ($original_invoice->discount_percent ?? 0)
+            : ((float) ($original_invoice->discount ?? 0) * array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $itemOriginalInvoice['item'])) / max(1, $original_invoice->sub_total_before_discount ?? array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], json_decode($original_invoice->items, true)['item'] ?? []))));
 
         $billItem = $isTaxInc
             ? $this->allocateDiscountTaxIncluded($itemOriginalInvoice['item'], $discountValue, $typeDiscount)
@@ -633,8 +633,8 @@ class SplitMergeInvoiceController extends Controller
         $totalWithVat = $billItem['summary']['total_with_vat'];
         $itemOriginalInvoice['total_tax'] = $total_tax;
 
-        $surchargePercent = isset($filters['surcharge_percent']) ? $filters['surcharge_percent'] : ($original_invoice->surcharge_percent ?? null);
-        $surchargeAmount = isset($filters['surcharge']) ? (float) $filters['surcharge'] : (float) ($original_invoice->surcharge ?? 0);
+        $surchargePercent = $original_invoice->surcharge_percent ?? null;
+        $surchargeAmount = (float) ($original_invoice->surcharge ?? 0);
 
         if (empty($surchargePercent) && $surchargeAmount > 0) {
             $origItems = json_decode($original_invoice->items, true)['item'] ?? [];
@@ -647,9 +647,9 @@ class SplitMergeInvoiceController extends Controller
             }
         }
 
-        $serviceCharge = (int) ($filters['service_charge'] ?? ($original_invoice->service_charge ?? $storeOrig->service_charge ?? 0));
+        $serviceCharge = (int) ($original_invoice->service_charge ?? $storeOrig->service_charge ?? 0);
         $serviceChargeAmount = (float) ($original_invoice->service_charge_amount ?? 0);
-        $isSeniorActive = isset($filters['is_senior_discount']) ? !empty($filters['is_senior_discount']) : !empty($original_invoice->is_senior_discount);
+        $isSeniorActive = !empty($original_invoice->is_senior_discount);
         $seniorAmount = (float) ($original_invoice->senior_discount_amount ?? 0);
 
         if (($storeOrig->time_zone ?? null) === 'Asia/Manila') {
@@ -724,93 +724,63 @@ class SplitMergeInvoiceController extends Controller
     private function handleUpdateNewInvoice($filters, $originalInvoice = null)
     {
         $store = Store::find($filters['store_id']);
-        $isTaxInc = $store ? ($store->is_tax_included ?? false) : false;
+        $isTaxInc = $store ? (bool) ($store->is_tax_included ?? false) : false;
+        $totals = $this->computeTotalsFromItems($filters['split_merge_item'], $isTaxInc);
 
-        $itemsDecoded = ['item' => $filters['split_merge_item']];
-        $isSenior = (bool) ($filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false));
+        $items = [
+            'item' => $filters['split_merge_item'],
+            'discountPayment' => 0,
+            'reasonSurcharge' => null,
+            'surcharge' => 0,
+            'total_tax' => $totals['total_tax'],
+        ];
 
-        $typeDiscount = $filters['type_discount'] ?? ($originalInvoice->type_discount ?? 'amount');
-        $discountPct = (float) ($filters['discount_percent'] ?? ($originalInvoice->discount_percent ?? 0));
-        $discountAmount = $typeDiscount === 'percent' ? $discountPct : (float) ($filters['discount'] ?? ($originalInvoice->discount ?? 0));
-
-        // Subtraction fallback is fully removed. Using independent calculation.
-        $billItem = $isTaxInc
-            ? $this->allocateDiscountTaxIncluded($itemsDecoded['item'], $discountAmount, $typeDiscount)
-            : $this->allocateDiscountTaxExcluded($itemsDecoded['item'], $discountAmount, $typeDiscount);
-
-        $splitSubtotalBefore = $billItem['summary']['subtotal_before'];
-        $splitTotalInclVat = $billItem['summary']['total_incl_vat_before_discount'];
-
-        $splitExVatBase = ($isTaxInc && !$isSenior) ? $splitTotalInclVat : $splitSubtotalBefore;
-
-        $seniorRate = (float) config('params.senior_discount.rate', 20);
-        $seniorAmount = $isSenior ? round($splitSubtotalBefore * $seniorRate / 100) : 0;
-        $isSeniorActive = $isSenior && $seniorAmount > 0;
-        $afterSenior = $splitExVatBase - $seniorAmount;
-
-        if ($isSeniorActive && $typeDiscount === 'percent') {
-            $discountAmount = round($afterSenior * $discountPct / 100);
-        } elseif ($typeDiscount === 'percent') {
-            $discountAmount = round($splitExVatBase * $discountPct / 100);
+        $splitDiscount = 0;
+        $splitTypeDiscount = 'amount';
+        $splitDiscountPercent = null;
+        if ($originalInvoice) {
+            $splitTypeDiscount = $originalInvoice->type_discount ?? 'amount';
+            if ($splitTypeDiscount === 'percent') {
+                $splitDiscountPercent = (float) ($originalInvoice->discount_percent ?? 0);
+            } else {
+                $origItems = json_decode($originalInvoice->items, true)['item'] ?? [];
+                $origTotal = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $origItems));
+                $splitTotal = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $filters['split_merge_item']));
+                if ($origTotal > 0) {
+                    $splitDiscount = round(($originalInvoice->discount ?? 0) * $splitTotal / $origTotal);
+                }
+            }
         }
-
-        // Re-allocate with correct discountAmount
-        $billItem = $isTaxInc
-            ? $this->allocateDiscountTaxIncluded($itemsDecoded['item'], $typeDiscount === 'percent' ? $discountPct : $discountAmount, $typeDiscount)
-            : $this->allocateDiscountTaxExcluded($itemsDecoded['item'], $typeDiscount === 'percent' ? $discountPct : $discountAmount, $typeDiscount);
-
-        $totalAfterDiscount = $afterSenior - $discountAmount;
-        $total_tax = $isSeniorActive ? 0 : $billItem['summary']['total_vat'];
-
-        $serviceChargePercent = (float) ($filters['service_charge'] ?? ($originalInvoice->service_charge ?? 0));
-        $serviceChargeAmount = round(max(0, $totalAfterDiscount) * $serviceChargePercent / 100);
-
-        $surchargePercent = (float) ($filters['surcharge_percent'] ?? ($originalInvoice->surcharge_percent ?? 0));
-        $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
-        if ($surchargePercent > 0) {
-            $surchargeAmount = round(max(0, $totalAfterDiscount) * $surchargePercent / 100);
-        }
-
-        $valuetotal = max(0, $totalAfterDiscount + ($isTaxInc && !$isSeniorActive ? 0 : $total_tax) + $serviceChargeAmount + $surchargeAmount);
-
-        $dataItem = [];
-        $dataItem['item'] = $billItem['items'];
-        $dataItem['discountPayment'] = $discountAmount;
-        $dataItem['reasonSurcharge'] = $filters['reasonSurcharge'] ?? null;
-        $dataItem['surcharge'] = $surchargeAmount;
-        $dataItem['total_tax'] = $total_tax;
-        $items = json_encode($dataItem);
 
         $userId = $filters['user_id'] ?? ($originalInvoice ? $originalInvoice->user_id : 1);
+        $adminId = $filters['admin_id'] ?? ($originalInvoice ? $originalInvoice->admin_id : 1);
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
         return [
             "reason" => $filters['reason'] ?? null,
             "customer_id" => $filters['customer_id'] ?? null,
-            "items" => $items,
-            "discount" => $discountAmount,
-            "type_discount" => $typeDiscount,
-            "discount_percent" => $typeDiscount === 'percent' ? $discountPct : null,
-            "surcharge" => $surchargeAmount,
-            "surcharge_percent" => $surchargePercent,
+            "items" => json_encode($items),
+            "discount" => $splitDiscount,
+            "type_discount" => $splitTypeDiscount,
+            "discount_percent" => $splitDiscountPercent,
+            "surcharge" => $filters['surcharge'] ?? 0,
+            "surcharge_percent" => $filters['surcharge_percent'] ?? null,
             "payment_method" => $filters['payment_method'] ?? 'cash',
             "status" => 0, // Pending/Unpaid
             "surcharge_reason" => $filters['surcharge_reason'] ?? null,
             "amount_received" => $filters['amount_received'] ?? null,
-            "admin_id" => $filters['admin_id'] ?? 1,
+            "admin_id" => $adminId,
             "user_id" => $userId,
             "payment_code" => $paymentCode,
             "store_id" => $filters['store_id'],
             "table_id" => $filters['target_table_id'],
-            "valuetotal" => $valuetotal,
-            "total_tax" => $total_tax,
-            "is_senior_discount" => $isSenior,
-            "senior_discount_amount" => $seniorAmount,
-            "service_charge" => $serviceChargePercent,
-            "service_charge_amount" => $serviceChargeAmount,
+            "valuetotal" => $totals['total_value'],
+            "total_tax" => $totals['total_tax'],
+            "is_senior_discount" => $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false),
+            "senior_discount_amount" => $filters['senior_discount_amount'] ?? ($originalInvoice->senior_discount_amount ?? 0),
+            "service_charge" => $filters['service_charge'] ?? ($originalInvoice->service_charge ?? null),
         ];
     }
-
     private function handlePaymentData(&$filters)
     {
         try {
@@ -1021,9 +991,11 @@ class SplitMergeInvoiceController extends Controller
         return ['status' => true, 'payment' => $payment];
     }
 
-    private function updatePaymentLocal(&$data)
+    private function updatePaymentLocal(&$data, bool $splitInvoice = false)
     {
-        $this->handlePaymentData($data);
+        if (!$splitInvoice) {
+            $this->handlePaymentData($data);
+        }
         
         $payment = Payment::find($data['id']);
         if (!$payment) {
