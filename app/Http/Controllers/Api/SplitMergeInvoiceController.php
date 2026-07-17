@@ -89,6 +89,23 @@ class SplitMergeInvoiceController extends Controller
         $filters = $request->all();
         $storeId = (int) $request->input('store_id', config('app.store_id'));
         $filters['store_id'] = $storeId;
+        $filters['_split_trace_id'] = sprintf(
+            'split-%s-%s',
+            now()->format('YmdHisv'),
+            bin2hex(random_bytes(3))
+        );
+        Log::info('EDGE_SPLIT_TRACE request.received', [
+            'trace_id' => $filters['_split_trace_id'],
+            'store_id' => $storeId,
+            'original_invoice_id' => $filters['original_invoice_id'] ?? null,
+            'create_payment' => !empty($filters['create_payment']),
+            'target_table_id' => $filters['target_table_id'] ?? null,
+            'target_invoice_id' => $filters['target_invoice_id'] ?? null,
+            'source_sha1' => sha1_file(__FILE__),
+            'source_mtime' => date('c', filemtime(__FILE__)),
+            'php_sapi' => PHP_SAPI,
+            'process_id' => getmypid(),
+        ]);
         $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
         app()->setLocale($language);
 
@@ -142,6 +159,15 @@ class SplitMergeInvoiceController extends Controller
 
         $paramUpdateOriginalInvoice = $this->handleUpdateOriginalInvoice($itemOriginalInvoice, $originalInvoice, $filters);
         $this->updatePaymentLocal($paramUpdateOriginalInvoice, true);
+        $savedParent = Payment::find($originalInvoice->id);
+        if ($savedParent) {
+            $savedParentData = $savedParent->toArray();
+            $savedParentData['_split_trace_id'] = $filters['_split_trace_id'] ?? null;
+            Log::info(
+                'EDGE_SPLIT_TRACE parent.saved',
+                $this->paymentCalculationLogContext($savedParentData, Store::find($originalInvoice->store_id))
+            );
+        }
 
         if (!empty($originalInvoice->table_id)) {
             $this->updateTableListitemAfterSplit($originalInvoice->table_id, $itemOriginalInvoice);
@@ -201,6 +227,15 @@ class SplitMergeInvoiceController extends Controller
 
         $paramUpdateOriginalInvoice = $this->handleUpdateOriginalInvoice($itemOriginalInvoice, $originalInvoice, $filters);
         $this->updatePaymentLocal($paramUpdateOriginalInvoice, true);
+        $savedParent = Payment::find($originalInvoice->id);
+        if ($savedParent) {
+            $savedParentData = $savedParent->toArray();
+            $savedParentData['_split_trace_id'] = $filters['_split_trace_id'] ?? null;
+            Log::info(
+                'EDGE_SPLIT_TRACE parent.saved',
+                $this->paymentCalculationLogContext($savedParentData, Store::find($originalInvoice->store_id))
+            );
+        }
 
         if (!empty($originalInvoice->table_id)) {
             $this->updateTableListitemAfterSplit($originalInvoice->table_id, $itemOriginalInvoice);
@@ -343,6 +378,15 @@ class SplitMergeInvoiceController extends Controller
         $paramUpdateOriginalInvoice = $this->handleUpdateOriginalInvoice($itemOriginalInvoice, $originalInvoice, $filters);
         Log::debug("createInvoiceFromOriginal DBG - Recalculated Parent (paramUpdateOriginalInvoice): " . json_encode($paramUpdateOriginalInvoice));
         $this->updatePaymentLocal($paramUpdateOriginalInvoice, true);
+        $savedParent = Payment::find($originalInvoice->id);
+        if ($savedParent) {
+            $savedParentData = $savedParent->toArray();
+            $savedParentData['_split_trace_id'] = $filters['_split_trace_id'] ?? null;
+            Log::info(
+                'EDGE_SPLIT_TRACE parent.saved',
+                $this->paymentCalculationLogContext($savedParentData, Store::find($originalInvoice->store_id))
+            );
+        }
 
         if (!empty($originalInvoice->table_id)) {
             $this->updateTableListitemAfterSplit($originalInvoice->table_id, $itemOriginalInvoice);
@@ -451,8 +495,13 @@ class SplitMergeInvoiceController extends Controller
             "service_charge_amount" => $serviceChargeAmount,
             "sub_total_before_discount" => max(0, (float) ($originalInvoice->sub_total_before_discount ?? 0) - (float) ($paramUpdateOriginalInvoice['sub_total_before_discount'] ?? 0)),
             "total_incl_vat_before_discount" => max(0, (float) ($originalInvoice->total_incl_vat_before_discount ?? 0) - (float) ($paramUpdateOriginalInvoice['total_incl_vat_before_discount'] ?? 0)),
+            "_split_trace_id" => $filters['_split_trace_id'] ?? null,
         ];
 
+        Log::info(
+            'EDGE_SPLIT_TRACE child.prepared',
+            $this->paymentCalculationLogContext($paramCreatePayment, $store)
+        );
         Log::debug("createInvoiceFromOriginal DBG - Recalculated Child (paramCreatePayment): " . json_encode($paramCreatePayment));
         $createPayment = $this->createPaymentLocal($paramCreatePayment);
         if (!$createPayment['status']) {
@@ -785,8 +834,60 @@ class SplitMergeInvoiceController extends Controller
             "is_senior_discount" => $filters['is_senior_discount'] ?? ($originalInvoice->is_senior_discount ?? false),
             "senior_discount_amount" => $filters['senior_discount_amount'] ?? ($originalInvoice->senior_discount_amount ?? 0),
             "service_charge" => $filters['service_charge'] ?? ($originalInvoice->service_charge ?? null),
+            "_split_trace_id" => $filters['_split_trace_id'] ?? null,
         ];
     }
+
+    private function paymentCalculationLogContext(array $data, ?Store $store = null): array
+    {
+        $itemsData = $data['items'] ?? [];
+        $itemsData = is_string($itemsData) ? json_decode($itemsData, true) : $itemsData;
+        $items = [];
+
+        foreach (($itemsData['item'] ?? []) as $key => $item) {
+            $items[$key] = [
+                'quantity' => $item['quantity'] ?? null,
+                'price' => $item['price'] ?? null,
+                'vat' => $item['vat'] ?? null,
+                'TotalPrice' => $item['TotalPrice'] ?? null,
+                'sub_total_excl_vat' => $item['sub_total_excl_vat'] ?? null,
+                'sub_total_incl_vat' => $item['sub_total_incl_vat'] ?? null,
+                'discount_percent' => $item['discount_percent'] ?? null,
+                'discount_allocated_excl_vat' => $item['discount_allocated_excl_vat'] ?? null,
+                'discount_allocated_incl_vat' => $item['discount_allocated_incl_vat'] ?? null,
+                'detail_discount' => $item['detail_discount'] ?? null,
+                'tax_amount' => $item['tax_amount'] ?? null,
+                'net_excl_vat' => $item['net_excl_vat'] ?? null,
+                'total_with_vat_after_discount' => $item['total_with_vat_after_discount'] ?? null,
+            ];
+        }
+
+        return [
+            'trace_id' => $data['_split_trace_id'] ?? null,
+            'payment_id' => $data['id'] ?? null,
+            'payment_code' => $data['payment_code'] ?? null,
+            'store_id' => $data['store_id'] ?? null,
+            'store_time_zone' => $store?->time_zone,
+            'is_tax_included' => $store?->is_tax_included,
+            'type_discount' => $data['type_discount'] ?? null,
+            'discount_percent' => $data['discount_percent'] ?? null,
+            'discount' => $data['discount'] ?? null,
+            'surcharge_percent' => $data['surcharge_percent'] ?? null,
+            'surcharge' => $data['surcharge'] ?? null,
+            'service_charge' => $data['service_charge'] ?? null,
+            'service_charge_amount' => $data['service_charge_amount'] ?? null,
+            'is_senior_discount' => $data['is_senior_discount'] ?? null,
+            'senior_discount_amount' => $data['senior_discount_amount'] ?? null,
+            'total_tax' => $data['total_tax'] ?? ($data['tax'] ?? null),
+            'valuetotal' => $data['valuetotal'] ?? ($data['total'] ?? null),
+            'amount_received' => $data['amount_received'] ?? null,
+            'json_discountPayment' => $itemsData['discountPayment'] ?? null,
+            'json_surcharge' => $itemsData['surcharge'] ?? null,
+            'json_total_tax' => $itemsData['total_tax'] ?? null,
+            'items' => $items,
+        ];
+    }
+
     private function handlePaymentData(&$filters)
     {
         try {
@@ -795,6 +896,13 @@ class SplitMergeInvoiceController extends Controller
             }
             $store = Store::find($filters['store_id']) ?: Store::first();
             $is_tax_included = $store ? ($store->is_tax_included ?? false) : false;
+
+            if (!empty($filters['_split_trace_id'])) {
+                Log::info(
+                    'EDGE_SPLIT_TRACE handlePaymentData.before',
+                    $this->paymentCalculationLogContext($filters, $store)
+                );
+            }
             
             $items_decode = is_string($filters['items']) ? json_decode($filters['items'], true) : $filters['items'];
 
@@ -919,6 +1027,13 @@ class SplitMergeInvoiceController extends Controller
             $items_decode['total_tax'] = $filters['total_tax'];
             
             $filters['items'] = json_encode($items_decode);
+
+            if (!empty($filters['_split_trace_id'])) {
+                Log::info(
+                    'EDGE_SPLIT_TRACE handlePaymentData.after',
+                    $this->paymentCalculationLogContext($filters, $store)
+                );
+            }
         } catch (\Throwable $th) {
             Log::error("Error in handlePaymentData Edge: " . $th->getMessage());
             throw $th;
@@ -927,7 +1042,22 @@ class SplitMergeInvoiceController extends Controller
 
     private function createPaymentLocal(&$data)
     {
+        $store = Store::find($data['store_id']);
+        if (!empty($data['_split_trace_id'])) {
+            Log::info(
+                'EDGE_SPLIT_TRACE createPaymentLocal.before',
+                $this->paymentCalculationLogContext($data, $store)
+            );
+        }
+
         $this->handlePaymentData($data);
+
+        if (!empty($data['_split_trace_id'])) {
+            Log::info(
+                'EDGE_SPLIT_TRACE createPaymentLocal.after',
+                $this->paymentCalculationLogContext($data, $store)
+            );
+        }
         
         $amountReceived = isset($data['amount_received']) ? round((float) $data['amount_received']) : null;
         $storeTz = \App\Models\Store::whereKey($data['store_id'])->value('time_zone') ?: config('edge_box.timezone', 'Asia/Manila');
@@ -961,6 +1091,15 @@ class SplitMergeInvoiceController extends Controller
             'sub_total_before_discount' => (float) ($data['sub_total_before_discount'] ?? 0),
             'total_incl_vat_before_discount' => (float) ($data['total_incl_vat_before_discount'] ?? 0),
         ]);
+
+        if (!empty($data['_split_trace_id'])) {
+            $savedPayment = $payment->toArray();
+            $savedPayment['_split_trace_id'] = $data['_split_trace_id'];
+            Log::info(
+                'EDGE_SPLIT_TRACE createPaymentLocal.saved',
+                $this->paymentCalculationLogContext($savedPayment, $store)
+            );
+        }
 
         $productList = json_decode($payment->items, true);
         foreach ($productList['item'] as $key => $value) {
