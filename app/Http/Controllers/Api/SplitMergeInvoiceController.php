@@ -811,8 +811,148 @@ class SplitMergeInvoiceController extends Controller
         ];
     }
 
-    private function createPaymentLocal($data)
+    private function handlePaymentData(&$filters)
     {
+        try {
+            if (!empty($filters['_skip_recalc'])) {
+                return;
+            }
+            $store = Store::find($filters['store_id']) ?: Store::first();
+            $is_tax_included = $store ? ($store->is_tax_included ?? false) : false;
+            
+            $items_decode = is_string($filters['items']) ? json_decode($filters['items'], true) : $filters['items'];
+
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($items_decode)) {
+                $items_decode = $filters['items'];
+            }
+
+            if (empty($items_decode) || empty($items_decode['item'])) {
+                throw new \Exception(__('api.items_empty'));
+            }
+
+            $originalOrder = array_keys($items_decode['item']);
+
+            uasort($items_decode['item'], function ($a, $b) {
+                $totalA = $a['price'] * $a['quantity'];
+                $totalB = $b['price'] * $b['quantity'];
+                return $totalB <=> $totalA;
+            });
+
+            if (!isset($filters['discount'])) {
+                $filters['discount'] = 0;
+            }
+
+            $totalDiscount = (float)($filters['discount'] ?? 0);
+            $typeDiscount = $filters['type_discount'] ?? 'amount';
+            if ($typeDiscount == 'percent') {
+                $totalDiscount = (float)($filters['discount_percent'] ?? 0);
+            } else {
+                $filters['discount_percent'] = null;
+            }
+            
+            $billItem = $is_tax_included 
+                ? $this->allocateDiscountTaxIncluded($items_decode['item'], $totalDiscount, $typeDiscount) 
+                : $this->allocateDiscountTaxExcluded($items_decode['item'], $totalDiscount, $typeDiscount);
+                
+            $items_decode['item'] = array_replace(array_flip($originalOrder), $billItem['items']);
+            $filters['total_tax'] = $billItem['summary']['total_vat'];
+            $filters['sub_total_before_discount'] = round($billItem['summary']['subtotal_before']);
+            $filters['discount'] = $billItem['summary']['discount_total'];
+            $filters['total_incl_vat_before_discount'] = $billItem['summary']['total_incl_vat_before_discount'];
+            $filters['valuetotal'] = round($billItem['summary']['total_with_vat'] + ($filters['surcharge'] ?? 0));
+
+            $timezone = $store ? ($store->time_zone ?? null) : null;
+            if ($timezone == 'Asia/Manila') {
+                if (!isset($filters['service_charge'])) {
+                    $filters['service_charge'] = $store->service_charge ?? 0;
+                }
+
+                $baseForSurcharge = $is_tax_included
+                    ? $billItem['summary']['total_with_vat']
+                    : ($billItem['summary']['subtotal_after'] ?? $billItem['summary']['total_with_vat']);
+
+                if (isset($filters['surcharge_percent']) && (float)$filters['surcharge_percent'] > 0) {
+                    $filters['surcharge'] = round($baseForSurcharge * $filters['surcharge_percent'] / 100);
+                }
+
+                $filters['service_charge_amount'] = round($baseForSurcharge * $filters['service_charge'] / 100);
+
+                $filters['valuetotal'] = round($billItem['summary']['total_with_vat'] + $filters['service_charge_amount'] + ($filters['surcharge'] ?? 0));
+
+                // Senior Discount (RA 9994) — tính TRƯỚC discount
+                if (!empty($filters['is_senior_discount'])) {
+                    $subtotal_before = round($billItem['summary']['subtotal_before']);
+                    $seniorRate = config('params.senior_discount.rate', 20);
+                    $seniorDiscountAmount = round($subtotal_before * $seniorRate / 100);
+                    $filters['senior_discount_amount'] = $seniorDiscountAmount;
+
+                    $afterSenior = $subtotal_before - $seniorDiscountAmount;
+
+                    // Recalculate discount on afterSenior (RA 9994: discount applies after senior)
+                    if ($typeDiscount === 'percent') {
+                        $billItem['summary']['discount_total'] = round($afterSenior * $totalDiscount / 100);
+                    }
+                    $filters['discount'] = $billItem['summary']['discount_total'];
+
+                    $totalAfterDiscount = $afterSenior - $billItem['summary']['discount_total'];
+
+                    $filters['total_tax'] = 0; // VAT exempt
+
+                    $filters['service_charge_amount'] = round(max(0, $totalAfterDiscount) * $filters['service_charge'] / 100);
+
+                    if (isset($filters['surcharge_percent']) && (float)$filters['surcharge_percent'] > 0) {
+                        $filters['surcharge'] = round(max(0, $totalAfterDiscount) * $filters['surcharge_percent'] / 100);
+                    }
+
+                    $filters['valuetotal'] = round(max(0, $totalAfterDiscount)
+                        + $filters['service_charge_amount']
+                        + ($filters['surcharge'] ?? 0));
+                }
+            } else {
+                // Các store khác (Ví dụ Store VN): reset các trường Senior và Service Charge về 0, surcharge là flat amount
+                $filters['is_senior_discount'] = false;
+                $filters['senior_discount_amount'] = 0;
+                $filters['service_charge'] = 0;
+                $filters['service_charge_amount'] = 0;
+                
+                // Surcharge là flat amount
+                $surchargeAmount = (float) ($filters['surcharge'] ?? 0);
+                $filters['surcharge'] = $surchargeAmount;
+                $filters['surcharge_percent'] = 0;
+
+                // Chiết khấu (discount) tính bình thường theo flat hoặc percent
+                $discountAmount = 0;
+                if ($typeDiscount === 'percent') {
+                    $discountAmount = round($filters['sub_total_before_discount'] * ($filters['discount_percent'] ?? 0) / 100);
+                } else {
+                    $discountAmount = (float) $filters['discount'];
+                }
+                $filters['discount'] = $discountAmount;
+                
+                // Thuế VAT
+                $total_tax = $filters['total_tax'];
+
+                // valuetotal = total_with_vat + surcharge
+                $valuetotal = round($billItem['summary']['total_with_vat'] + $surchargeAmount);
+                $filters['valuetotal'] = $valuetotal;
+            }
+
+            // Đồng bộ lại vào JSON items
+            $items_decode['discountPayment'] = $filters['discount'];
+            $items_decode['surcharge'] = $filters['surcharge'];
+            $items_decode['total_tax'] = $filters['total_tax'];
+            
+            $filters['items'] = json_encode($items_decode);
+        } catch (\Throwable $th) {
+            Log::error("Error in handlePaymentData Edge: " . $th->getMessage());
+            throw $th;
+        }
+    }
+
+    private function createPaymentLocal(&$data)
+    {
+        $this->handlePaymentData($data);
+        
         $amountReceived = isset($data['amount_received']) ? round((float) $data['amount_received']) : null;
         $storeTz = \App\Models\Store::whereKey($data['store_id'])->value('time_zone') ?: config('edge_box.timezone', 'Asia/Manila');
         $payment = Payment::create([
@@ -881,8 +1021,10 @@ class SplitMergeInvoiceController extends Controller
         return ['status' => true, 'payment' => $payment];
     }
 
-    private function updatePaymentLocal($data)
+    private function updatePaymentLocal(&$data)
     {
+        $this->handlePaymentData($data);
+        
         $payment = Payment::find($data['id']);
         if (!$payment) {
             throw new \RuntimeException('Payment not found: ' . $data['id']);

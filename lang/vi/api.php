@@ -102,5 +102,6 @@ return [
     'error while saving data' => 'Lỗi khi lưu dữ liệu',
     'Table reset successfully' => 'Đặt lại bàn thành công',
     'Failed to reset the table' => 'Đặt lại bàn không thành công',
-    'invoice_log_save_failed' => 'Lưu nhật ký của hóa đơn không thành công'
+    'invoice_log_save_failed' => 'Lưu nhật ký của hóa đơn không thành công',
+    'items_empty' => 'Danh sách sản phẩm không được trống',
 ];

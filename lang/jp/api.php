@@ -81,6 +81,6 @@ return [
     'error while saving data' => 'データ保存時にエラーが発生しました',
     'Table reset successfully' => 'テーブルのリセットに成功しました',
     'Failed to reset the table' => 'テーブルのリセットに失敗しました',
-    'invoice_log_save_failed' => '請求書のログの保存に失敗しました', 
-
+    'invoice_log_save_failed' => '請求書のログの保存に失敗しました',
+    'items_empty' => '商品リストは空にできません',
 ];

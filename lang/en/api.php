@@ -83,6 +83,6 @@ return [
     'error while saving data' => 'error while saving data',
     'Table reset successfully' => 'Table reset successfully',
     'Failed to reset the table' => 'Failed to reset the table',
-    'invoice_log_save_failed' => 'Failed to save the invoice log', 
-
+    'invoice_log_save_failed' => 'Failed to save the invoice log',
+    'items_empty' => 'Product list cannot be empty',
 ];
