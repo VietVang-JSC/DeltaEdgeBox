@@ -18,7 +18,25 @@ class LocalizationMiddleware
     public function handle(Request $request, Closure $next)
     {
         // 1. Detect language from query parameter, request payload, or headers, default is 'vi'
-        $locale = $request->input('isCheckLanguage') ?: $request->header('isCheckLanguage') ?: $request->header('Accept-Language') ?: 'vi';
+        $rawLocale = $request->input('isCheckLanguage') ?: $request->header('isCheckLanguage') ?: $request->header('Accept-Language') ?: 'vi';
+        
+        $locale = 'vi';
+        if ($rawLocale) {
+            $parts = explode(',', $rawLocale);
+            $first = trim($parts[0]);
+            $subParts = explode(';', $first);
+            $langWithRegion = trim($subParts[0]);
+            $langParts = preg_split('/[-_]/', $langWithRegion);
+            $primaryLang = strtolower(trim($langParts[0]));
+            
+            if ($primaryLang === 'ja') {
+                $primaryLang = 'jp';
+            }
+            
+            if (in_array($primaryLang, ['vi', 'en', 'jp'])) {
+                $locale = $primaryLang;
+            }
+        }
         app()->setLocale($locale);
 
         $response = $next($request);

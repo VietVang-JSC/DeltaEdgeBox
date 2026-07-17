@@ -119,8 +119,8 @@ class KitchenPrintController extends Controller
         $payload['setting_print_kitchen'] = $settingPrintKitchen;
 
         // Mark all items as printed after successful generation
-        try { $this->listPrintableItems($table, true); }
-        catch (\Throwable $th) { Log::warning('printAll markPrinted failed', ['error' => $th->getMessage()]); }
+        // try { $this->listPrintableItems($table, true); }
+        // catch (\Throwable $th) { Log::warning('printAll markPrinted failed', ['error' => $th->getMessage()]); }
 
         return $this->success($payload);
     }
@@ -502,7 +502,9 @@ class KitchenPrintController extends Controller
     {
         if (!$table->payment || !$table->listitem) {
             return [];
-        }
+        }// Mark all items as printed after successful generation
+        // try { $this->listPrintableItems($table, true); }
+        // catch (\Throwable $th) { Log::warning('printAll markPrinted failed', ['error' => $th->getMessage()]); }
 
         $decoded = json_decode($table->listitem, true) ?: [];
         $rawItems = $decoded['item'] ?? $decoded ?? [];
