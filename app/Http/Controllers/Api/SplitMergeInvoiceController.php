@@ -414,7 +414,8 @@ class SplitMergeInvoiceController extends Controller
         $valuetotal = max(0, $totalAfterDiscount + ($isTaxInc && !$isSeniorActive ? 0 : $total_tax) + $serviceChargeAmount + $surchargeAmount);
 
         $dataItem = [];
-        $dataItem['item'] = $billItem['items']; // items with allocated values
+        // Match Cloud: createPaymentLocal/handlePaymentData owns the final item allocation.
+        $dataItem['item'] = $filters['split_merge_item'];
         $dataItem['discountPayment'] = $discountAmount;
         $dataItem['reasonSurcharge'] = $filters['reasonSurcharge'] ?? null;
         $dataItem['surcharge'] = $surchargeAmount;
@@ -687,6 +688,11 @@ class SplitMergeInvoiceController extends Controller
 
         $discountAmount = $billItem['summary']['discount_total'];
         $valuetotal = $totalWithVat;
+
+        // Keep the JSON summary consistent with the recalculated payment columns.
+        $itemOriginalInvoice['discountPayment'] = $discountAmount;
+        $itemOriginalInvoice['surcharge'] = $surchargeAmount;
+        $itemOriginalInvoice['total_tax'] = $total_tax;
 
         $result = [
             'id' => $original_invoice->id,
