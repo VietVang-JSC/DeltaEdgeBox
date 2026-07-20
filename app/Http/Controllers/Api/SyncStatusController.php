@@ -704,11 +704,16 @@ class SyncStatusController extends Controller
             }
         } catch (\Throwable $th) {
             Log::error('[SyncAction] resolveConflict: unexpected error', [
-                'id' => $id,
+                'conflict_id' => $id,
+                'resolution' => $resolution,
+                'table_name' => isset($conflict->table_name) ? $conflict->table_name : null,
+                'record_id' => isset($conflict->record_id) ? $conflict->record_id : null,
+                'sync_queue_id' => isset($conflict->sync_queue_id) ? $conflict->sync_queue_id : null,
+                'exception' => get_class($th),
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
-            return response()->json(['success' => false, 'message' => __('sync.err_server_error')], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_conflict_resolution_failed')], 500);
         }
     }
 }
