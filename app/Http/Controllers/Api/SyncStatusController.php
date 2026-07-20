@@ -313,7 +313,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
-            return response()->json(['success' => false, 'message' => __('sync.err_server_error', ['error' => $th->getMessage()])], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_server_error')], 500);
         }
     }
 
@@ -364,7 +364,7 @@ class SyncStatusController extends Controller
                 'id' => $id,
                 'error' => $th->getMessage(),
             ]);
-            return response()->json(['success' => false, 'message' => __('sync.err_server_error', ['error' => $th->getMessage()])], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_server_error')], 500);
         }
     }
 
@@ -424,7 +424,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
-            return response()->json(['success' => false, 'message' => __('sync.err_server_error', ['error' => $th->getMessage()])], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_server_error')], 500);
         }
     }
 
@@ -708,7 +708,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
-            return response()->json(['success' => false, 'message' => __('sync.err_server_error', ['error' => $th->getMessage()])], 500);
+            return response()->json(['success' => false, 'message' => __('sync.err_server_error')], 500);
         }
     }
 }

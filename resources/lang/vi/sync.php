@@ -22,5 +22,5 @@ return [
     'err_apply_cloud_data_empty' => 'Không thể áp dụng dữ liệu Cloud: cloud_data, table_name, hoặc record_id bị trống.',
     'err_no_safe_fields' => 'Không có trường Cloud nào an toàn để áp dụng sau khi lọc bảo mật.',
     'err_local_record_not_found' => 'Không tìm thấy bản ghi Local.',
-    'err_server_error' => 'Lỗi máy chủ: :error',
+    'err_server_error' => 'Đã xảy ra lỗi máy chủ. Vui lòng thử lại sau.',
 ];

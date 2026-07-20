@@ -22,5 +22,5 @@ return [
     'err_apply_cloud_data_empty' => 'クラウドデータを適用できません: cloud_data、table_name、またはrecord_idが空です。',
     'err_no_safe_fields' => 'セキュリティフィルタリング後、適用可能な安全なクラウドフィールドがありません。',
     'err_local_record_not_found' => 'ローカルレコードが見つかりません。',
-    'err_server_error' => 'サーバーエラー: :error',
+    'err_server_error' => 'サーバーエラーが発生しました。しばらくしてからもう一度お試しください。',
 ];
