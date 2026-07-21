@@ -1121,7 +1121,7 @@ class SplitMergeInvoiceController extends Controller
                 'printed_quantity' => $value['printed_quantity'] ?? 0,
                 'price' => $detailPrice,
                 'total' => $detailTotal,
-                'note' => $value['note'] ?? '',
+                'note' => $this->buildPaymentDetailNote($value),
                 'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
                 'optional_products' => !empty($value['optional_products']) ? json_encode($value['optional_products']) : null,
                 'detail_discount' => (float) ($value['detail_discount'] ?? 0),
@@ -1198,18 +1198,7 @@ class SplitMergeInvoiceController extends Controller
                     'printed_quantity' => $value['printed_quantity'] ?? 0,
                     'price' => $detailPrice,
                     'total' => $detailTotal,
-                    'note' => (function () use ($value) {
-                        $parts = [];
-                        if (!empty($value['note']))
-                            $parts[] = $value['note'];
-                        if (!empty($value['product_types']) && is_array($value['product_types'])) {
-                            foreach ($value['product_types'] as $pt) {
-                                if (!empty($pt['productTypeValue']))
-                                    $parts[] = $pt['productTypeValue'];
-                            }
-                        }
-                        return !empty($parts) ? implode(', ', $parts) : null;
-                    })(),
+                    'note' => $this->buildPaymentDetailNote($value),
                     'product_extra' => !empty($value['extra_product_list']) ? json_encode($value['extra_product_list']) : null,
                     'optional_products' => !empty($value['optional_products']) ? json_encode($value['optional_products']) : null,
                     'detail_discount' => (float) ($value['detail_discount'] ?? 0),
@@ -1389,6 +1378,24 @@ class SplitMergeInvoiceController extends Controller
             'service_charge' => $serviceChargePercent,
             'service_charge_amount' => $serviceChargeAmount,
         ];
+    }
+
+    private function buildPaymentDetailNote(array $item): ?string
+    {
+        $parts = [];
+        if (!empty($item['note'])) {
+            $parts[] = $item['note'];
+        }
+
+        if (!empty($item['product_types']) && is_array($item['product_types'])) {
+            foreach ($item['product_types'] as $productType) {
+                if (!empty($productType['productTypeValue'])) {
+                    $parts[] = $productType['productTypeValue'];
+                }
+            }
+        }
+
+        return !empty($parts) ? implode(', ', $parts) : null;
     }
 
     private function refreshPaymentWithDetails($id)
