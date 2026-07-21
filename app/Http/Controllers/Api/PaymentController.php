@@ -7,6 +7,7 @@ use App\Models\Inventory;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\PaymentMethod;
+use App\Models\PaymentStatus;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\Table;
@@ -23,6 +24,30 @@ class PaymentController extends Controller
     private const STATUS_PAYMENT_ACTIVE = 1;
     private const STATUS_PAYMENT_PENDING = 0;
 
+    private function resolvePaymentMethodName($paymentMethod, $storeId)
+    {
+        if ($paymentMethod === null || $paymentMethod === '') {
+            return null;
+        }
+
+        if (!is_numeric($paymentMethod)) {
+            return $paymentMethod;
+        }
+
+        $methodValue = (int) $paymentMethod;
+        $method = PaymentMethod::where('value', $methodValue)
+            ->where('store_id', $storeId)
+            ->first();
+        if ($method) {
+            return $method->name;
+        }
+
+        if (PaymentStatus::where('value', $methodValue)->exists()) {
+            return __('api.payment_status.' . $methodValue);
+        }
+
+        return $paymentMethod;
+    }
     public function createPayment(Request $request)
     {
         app()->setLocale($request->input('isCheckLanguage', 'vi'));
@@ -1376,18 +1401,8 @@ class PaymentController extends Controller
                 $data['updated_at_formatted'] = \Carbon\Carbon::parse($data['updated_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
             }
             $data['total_tax'] = $data['tax'] ?? 0;
-            // Map payment method name for custom methods
             $pmVal = $data['payment_method'] ?? null;
-            $data['payment_method_name'] = null;
-            if ($pmVal && !isset([1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1][(int) $pmVal])) {
-                $pm = \App\Models\PaymentMethod::where('value', $pmVal)->where('store_id', $data['store_id'])->first();
-                if ($pm)
-                    $data['payment_method_name'] = $pm->name;
-            }
-            if (!$data['payment_method_name']) {
-                $names = [1 => 'Tiền mặt', 2 => 'Chuyển khoản', 3 => 'Thẻ tín dụng', 4 => 'Thẻ ghi nợ', 5 => 'Ví điện tử', 6 => 'Khác'];
-                $data['payment_method_name'] = $names[(int) $pmVal] ?? $pmVal;
-            }
+            $data['payment_method_name'] = $this->resolvePaymentMethodName($pmVal, $data['store_id'] ?? $storeId);
             // Compute valuetotal from components to avoid ex-VAT display
             $totalDb = $data['total'] ?? 0;
             $estimatedTotal = $totalDb + ($data['tax'] ?? 0) + ($data['surcharge'] ?? 0) + ($data['service_charge_amount'] ?? 0);
@@ -1573,8 +1588,8 @@ class PaymentController extends Controller
             $paymentMethodNames = [
                 1 => 'Tiền mặt',
                 2 => 'Chuyển khoản',
-                3 => 'Thẻ tín dụng',
-                4 => 'Thẻ ghi nợ',
+                3 => 'Thanh toán bằng mã QR',
+                4 => 'Thẻ tín dụng',
                 5 => 'Ví điện tử',
                 6 => 'Khác',
                 'cash' => 'Tiền mặt',
@@ -1609,6 +1624,7 @@ class PaymentController extends Controller
                     $map = array_flip($paymentMethodNames);
                     $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int) $data['payment_method'] : 0);
                 }
+                $data['payment_method_name'] = $this->resolvePaymentMethodName($data['payment_method'] ?? null, $data['store_id'] ?? $storeId);
                 $store = $p->store;
                 $tz = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
                 $data['created_at'] = \Carbon\Carbon::parse($data['created_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
