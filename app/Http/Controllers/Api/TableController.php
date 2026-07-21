@@ -755,6 +755,7 @@ class TableController extends Controller
     public function getPaymentMethods(Request $request)
     {
         try {
+            app()->setLocale($request->header('Accept-Language', $request->input('isCheckLanguage', 'vi')));
             $storeId = $this->storeId($request);
             $statuses = PaymentStatus::select(
                 'payment_status.id as ref_id',
