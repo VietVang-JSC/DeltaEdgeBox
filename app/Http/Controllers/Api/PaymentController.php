@@ -24,6 +24,11 @@ class PaymentController extends Controller
     private const STATUS_PAYMENT_ACTIVE = 1;
     private const STATUS_PAYMENT_PENDING = 0;
 
+    private function setRequestLocale(Request $request)
+    {
+        app()->setLocale($request->header('Accept-Language', $request->input('isCheckLanguage', 'vi')));
+    }
+
     private function resolvePaymentMethodName($paymentMethod, $storeId)
     {
         if ($paymentMethod === null || $paymentMethod === '') {
@@ -1367,12 +1372,14 @@ class PaymentController extends Controller
         $id = $request->input('id');
         if (!$id)
             return response()->json(['status' => false, 'message' => __('api.id_required')], 400);
+        $this->setRequestLocale($request);
         return $this->getPaymentDetail($id);
     }
 
     public function getPaymentDetail($id)
     {
         try {
+            $this->setRequestLocale(request());
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
             $payment = Payment::with(['details.product', 'user', 'customer', 'table'])->where('store_id', $storeId)->where('id', $id)->first();
             if (!$payment) {
@@ -1547,6 +1554,7 @@ class PaymentController extends Controller
     public function getAllPaymentForUserNewPaginate(Request $request)
     {
         try {
+            $this->setRequestLocale($request);
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
             $page = (int) $request->input('page', 1);
             $pageSize = (int) $request->input('pageSize', 15);
