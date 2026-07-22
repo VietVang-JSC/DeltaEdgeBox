@@ -79,11 +79,12 @@ class PaymentController extends Controller
                 }
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
                 $userId = (int) $request->input('user_id', 1);
-                $paymentTime = $this->storeNow($storeId);
+                $paymentTime = now();
+                $paymentCodeTime = $this->storeNow($storeId);
                 $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
 
                 $payment = Payment::create([
-                    'payment_code' => $request->input('payment_code') ?: 'EDGE-' . $paymentTime->format('YmdHis') . '-' . random_int(1000, 9999),
+                    'payment_code' => $request->input('payment_code') ?: 'EDGE-' . $paymentCodeTime->format('YmdHis') . '-' . random_int(1000, 9999),
                     'store_id' => $storeId,
                     'table_id' => $tableId,
                     'customer_id' => $request->input('customer_id'),
@@ -204,7 +205,7 @@ class PaymentController extends Controller
                     $status = $requestedStatus;
                 }
                 $userId = (int) $request->input('user_id', $payment->user_id ?: 1);
-                $paymentTime = $this->storeNow($storeId);
+                $paymentTime = now();
 
                 $updates = [];
 
@@ -1342,7 +1343,7 @@ class PaymentController extends Controller
             } elseif ($type === 'table') {
                 $query->whereNotNull('table_id');
             }
-            $payments = $query->orderBy('updated_at', 'desc')->get();
+            $payments = $query->orderBy('id', 'asc')->get();
             return response()->json([
                 'status' => true,
                 'data' => $payments,
