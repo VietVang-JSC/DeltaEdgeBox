@@ -31,7 +31,8 @@ class EdgeManagerController extends Controller
             'set-store-id' => fn() => $this->setStoreId($request),
             'gen-key' => fn() => $this->generateKey(),
             'sync-now' => fn() => $this->runCommand('sync:worker', ['--batch' => 50]),
-            'sync-master' => fn() => $this->runCommand('edge:sync-master', ['--force' => true]),
+            'sync-master' => fn() => $this->runCommand('edge:sync-master'),
+            'migrate-open-payments' => fn() => $this->runCommand('edge:migrate-open-payments'),
             'set-interval' => fn() => $this->setInterval($request),
             'backup-db' => fn() => $this->backupDatabase(),
             'reset-db' => fn() => $this->resetDatabase(),
@@ -231,7 +232,7 @@ class EdgeManagerController extends Controller
         return back()->with('success', "New API key generated: $key");
     }
 
-    private function runCommand(string $command, array $params): \Illuminate\Http\RedirectResponse
+    private function runCommand(string $command, array $params = []): \Illuminate\Http\RedirectResponse
     {
         try {
             Artisan::call($command, $params);

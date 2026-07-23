@@ -42,6 +42,15 @@ class OpenPaymentMigrationService
         }
 
         $resolvable = $this->countResolvablePayments($resolvedPayments, $storeId);
+        /*
+        - cloud_open_payments: Tổng số đơn hàng đang mở (chưa thanh toán)
+        - resolvable/resolved: Số lượng đơn hàng có thể/đã cập nhật trạng thái
+         + là các đơn hàng ở edge đang chưa thanh toán or status !=0 thì cloud sẽ cập nhật lại 
+        - imported: các hóa đươn mới hoàn toàn (edge chưa có)
+        -linked: kiểm tra xem edge đã có hóa đơn đó chưa, có rồi thì liên kết id 
+        -mapped_payments: Số lượng hóa đơn đã ánh xạ ID thành công giữa máy Edge và Cloud để gửi đăng ký mapping.
+        -mapped_payment_details: Số lượng chi tiết món ăn (payment details) đã ánh xạ ID thành công giữa máy Edge và Cloud.
+        */
 
         if ($dryRun) {
             return [
