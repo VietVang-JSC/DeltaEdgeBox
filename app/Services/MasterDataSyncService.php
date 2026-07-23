@@ -6,6 +6,8 @@ use App\Models\Table;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\PaymentMethod;
+use App\Models\PaymentStatus;
+use App\Models\StorePaymentSetting;
 use App\Models\Printer;
 use App\Models\ProductTimePrice;
 use App\Models\Store;
@@ -252,21 +254,26 @@ class MasterDataSyncService
             /*
             | PAYMENT METHODS â€” sync Ä‘á»™c láº­p
             */
+            $paymentMethodIdMap = [];
             try {
                 DB::beginTransaction();
-                foreach ($data['payment_methods'] ?? [] as $paymentMethod) {
-                    PaymentMethod::withTrashed()->updateOrCreate(
-                        [
-                            'store_id' => !empty($paymentMethod['store_id']) ? $paymentMethod['store_id'] : $this->storeId,
-                            'value' => $paymentMethod['value'],
-                        ],
-                        [
-                            'name' => $paymentMethod['name'],
-                            'created_at' => $paymentMethod['created_at'] ?? now(),
-                            'updated_at' => $paymentMethod['updated_at'] ?? now(),
-                            'deleted_at' => $paymentMethod['deleted_at'] ?? null,
-                        ]
-                    );
+                if (array_key_exists('payment_methods', $data)) {
+                    PaymentMethod::where('store_id', $this->storeId)->delete();
+                    foreach ($data['payment_methods'] as $paymentMethod) {
+                        $localPaymentMethod = PaymentMethod::withTrashed()->updateOrCreate(
+                            [
+                                'store_id' => $this->storeId,
+                                'value' => $paymentMethod['value'],
+                            ],
+                            [
+                                'name' => $paymentMethod['name'],
+                                'created_at' => $paymentMethod['created_at'] ?? now(),
+                                'updated_at' => $paymentMethod['updated_at'] ?? now(),
+                                'deleted_at' => $paymentMethod['deleted_at'] ?? null,
+                            ]
+                        );
+                        $paymentMethodIdMap[(int) $paymentMethod['id']] = (int) $localPaymentMethod->id;
+                    }
                 }
                 DB::commit();
                 $syncResults['payment_methods'] = count($data['payment_methods'] ?? []);
@@ -276,6 +283,66 @@ class MasterDataSyncService
                 $syncErrors['payment_methods'] = $e->getMessage();
             }
 
+            /*
+            | PAYMENT STATUS / STORE SETTINGS - Cloud-owned reference data
+            */
+            try {
+                DB::beginTransaction();
+                if (array_key_exists('payment_status', $data)) {
+                    PaymentStatus::query()->delete();
+                    foreach ($data['payment_status'] as $paymentStatus) {
+                        PaymentStatus::create([
+                            'id' => $paymentStatus['id'],
+                            'value' => $paymentStatus['value'],
+                            'name' => $paymentStatus['name'],
+                            'created_at' => $paymentStatus['created_at'] ?? now(),
+                            'updated_at' => $paymentStatus['updated_at'] ?? now(),
+                        ]);
+                    }
+                }
+                DB::commit();
+                $syncResults['payment_status'] = count($data['payment_status'] ?? []);
+            } catch (\Exception $e) {
+                $this->rollbackIfNeeded();
+                Log::error('Sync payment_status failed: ' . $e->getMessage());
+                $syncErrors['payment_status'] = $e->getMessage();
+            }
+
+            try {
+                DB::beginTransaction();
+                if (array_key_exists('store_payment_settings', $data)) {
+                    StorePaymentSetting::where('store_id', $this->storeId)->delete();
+                    foreach ($data['store_payment_settings'] as $setting) {
+                        $refId = $setting['type'] === 'method'
+                            ? ($paymentMethodIdMap[(int) $setting['ref_id']] ?? null)
+                            : (int) $setting['ref_id'];
+
+                        if ($refId === null) {
+                            Log::warning('Skipped store payment setting with unknown payment method', [
+                                'store_id' => $this->storeId,
+                                'cloud_ref_id' => $setting['ref_id'],
+                            ]);
+                            continue;
+                        }
+
+                        StorePaymentSetting::create([
+                            'store_id' => $this->storeId,
+                            'type' => $setting['type'],
+                            'ref_id' => $refId,
+                            'is_show' => $setting['is_show'] ?? true,
+                            'sort_rank' => $setting['sort_rank'] ?? 0,
+                            'created_at' => $setting['created_at'] ?? now(),
+                            'updated_at' => $setting['updated_at'] ?? now(),
+                        ]);
+                    }
+                }
+                DB::commit();
+                $syncResults['store_payment_settings'] = count($data['store_payment_settings'] ?? []);
+            } catch (\Exception $e) {
+                $this->rollbackIfNeeded();
+                Log::error('Sync store_payment_settings failed: ' . $e->getMessage());
+                $syncErrors['store_payment_settings'] = $e->getMessage();
+            }
             /*
             | STORE â€” sync Ä‘á»™c láº­p
             */
@@ -933,6 +1000,8 @@ class MasterDataSyncService
             'printers' => $this->formatSyncTime(Printer::where('store_id', $this->storeId)->max('updated_at')),
             // Small reference table: fetch fully to avoid store-specific methods being hidden by old/global watermarks.
             'payment_methods' => null,
+            'payment_status' => null,
+            'store_payment_settings' => null,
             'product_time_prices' => $this->formatSyncTime(ProductTimePrice::where('store_id', $this->storeId)->max('updated_at')),
             'store' => $this->formatSyncTime(Store::where('id', $this->storeId)->max('updated_at')),
             'users' => $this->formatSyncTime(User::where('store_id', $this->storeId)->max('updated_at')),

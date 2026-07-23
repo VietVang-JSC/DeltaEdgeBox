@@ -298,11 +298,34 @@
                     @foreach ($payment['payment_details'] as $item)
                         @php
                             $tax = $item['products']['vat'];
+                            $itemVat = $tax / 100;
+                            $isSeniorExempt = ($seniorDiscount ?? 0) > 0;
+                            $totalItemPrice = $is_tax_included == 1 ? ($isSeniorExempt ? round($item['total_price'] / (1 + $itemVat)) : $item['total_price']) : round($item['total_price'] / (1 + $itemVat));
+                            $productExtra = [];
+                            if(!empty($item['product_extra'])){
+                                $productExtra = json_decode($item['product_extra'], true);
+                            }
+                            $itemQuantity = $item['quantity'];
+                            $extraLines = [];
+                            $extrasTotal = 0;
+                            if (!empty($productExtra) && !$isSeniorExempt) {
+                                foreach ($productExtra as $extraItem) {
+                                    $extraUnitPrice = (float) ($extraItem['price'] ?? 0);
+                                    $extraLineTotal = $extraUnitPrice * $itemQuantity;
+                                    $extrasTotal += $extraLineTotal;
+                                    $extraLines[] = [
+                                        'title' => $extraItem['title'] ?? '',
+                                        'price' => $extraUnitPrice,
+                                        'total' => $extraLineTotal,
+                                    ];
+                                }
+                            }
+                            $baseTotal = $isSeniorExempt ? $totalItemPrice : max(0, $totalItemPrice - $extrasTotal);
                             if(array_key_exists($tax, $taxArray)){
-                                $taxArray[$tax]['total_price'] += $item['total_price'];
+                                $taxArray[$tax]['total_price'] += $totalItemPrice;
                                 $taxArray[$tax]['tax_amount'] += $item['tax_amount'];
                             } else {
-                                $taxArray[$tax]['total_price'] = $item['total_price'];
+                                $taxArray[$tax]['total_price'] = $totalItemPrice;
                                 $taxArray[$tax]['tax_amount'] = $item['tax_amount'];
                             }
                             $taxNote = '';
@@ -314,13 +337,26 @@
                         <tr class="font-size-tr">
                             <td class="text-break-container">
                         {{ $item['products']['title'] }} {{ $taxNote }}
+                                @if(!empty($item['products']['product_types']))
+                                    @foreach ($item['products']['product_types'] as $pt)
+                                        <div>{{ $pt['productTypeValue'] ?? $pt['name'] ?? '' }}</div>
+                                    @endforeach
+                                @endif
+
                         @if(!empty($item['note']))
                             <div>{{ $item['note'] }}</div>
                         @endif
                     </td>
-                            <td class="txt-right">{{ number_format($item['quantity']) }}</td>
-                            <td class="txt-right">{!! $currencySymbol !!}{{ number_format($item['total_price']) }}</td>
+                            <td class="txt-right">{{ number_format($itemQuantity) }}</td>
+                            <td class="txt-right">{!! $currencySymbol !!}{{ number_format($baseTotal) }}</td>
                         </tr>
+                        @foreach ($extraLines as $extraLine)
+                        <tr class="font-size-tr">
+                            <td class="text-break-container">+ {{ $extraLine['title'] }}</td>
+                            <td class="txt-right">{{ number_format($itemQuantity) }}</td>
+                            <td class="txt-right">{!! $currencySymbol !!}{{ number_format($extraLine['total']) }}</td>
+                        </tr>
+                        @endforeach
                     @endforeach
                 @endif
             </tbody>
@@ -388,13 +424,11 @@
                 <td class="font-weight-nomarl txt-left">{{ isset($isUnpaid) && $isUnpaid == true ? 'ご請求額' : '合計' }}</td>
                 <td class="txt-right">{!! $currencySymbol !!}{{ number_format($total) }}</td>
             </tr>
-            @if (!empty($change))
+            @if (!empty($amount_received))
                 <tr class="item">
                     <td class="font-weight-nomarl txt-left">お預かり</td>
                     <td class="txt-right">{!! $currencySymbol !!}{{ number_format($amount_received) }}</td>
                 </tr>
-            @endif
-            @if (!empty($change))
                 <tr class="item">
                     <td class="font-weight-nomarl txt-left">お釣り</td>
                     <td class="txt-right">{!! $currencySymbol !!}{{ number_format($change) }}</td>

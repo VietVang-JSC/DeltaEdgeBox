@@ -22,5 +22,6 @@ return [
     'err_apply_cloud_data_empty' => 'Cannot apply cloud data: cloud_data, table_name, or record_id is empty.',
     'err_no_safe_fields' => 'No safe cloud fields to apply after security filtering.',
     'err_local_record_not_found' => 'Local record not found.',
-    'err_server_error' => 'Server error: :error',
+    'err_conflict_resolution_failed' => 'An error occurred while resolving the conflict. Please contact the technical support team for assistance.',
+    'err_server_error' => 'A server error occurred. Please try again later.',
 ];

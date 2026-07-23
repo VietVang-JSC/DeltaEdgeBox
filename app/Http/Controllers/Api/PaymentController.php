@@ -7,6 +7,7 @@ use App\Models\Inventory;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\PaymentMethod;
+use App\Models\PaymentStatus;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\Table;
@@ -23,6 +24,35 @@ class PaymentController extends Controller
     private const STATUS_PAYMENT_ACTIVE = 1;
     private const STATUS_PAYMENT_PENDING = 0;
 
+    private function setRequestLocale(Request $request)
+    {
+        app()->setLocale($request->header('Accept-Language', $request->input('isCheckLanguage', 'vi')));
+    }
+
+    private function resolvePaymentMethodName($paymentMethod, $storeId)
+    {
+        if ($paymentMethod === null || $paymentMethod === '') {
+            return null;
+        }
+
+        if (!is_numeric($paymentMethod)) {
+            return $paymentMethod;
+        }
+
+        $methodValue = (int) $paymentMethod;
+        $method = PaymentMethod::where('value', $methodValue)
+            ->where('store_id', $storeId)
+            ->first();
+        if ($method) {
+            return $method->name;
+        }
+
+        if (PaymentStatus::where('value', $methodValue)->exists()) {
+            return __('api.payment_status.' . $methodValue);
+        }
+
+        return $paymentMethod;
+    }
     public function createPayment(Request $request)
     {
         app()->setLocale($request->input('isCheckLanguage', 'vi'));
@@ -49,11 +79,12 @@ class PaymentController extends Controller
                 }
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
                 $userId = (int) $request->input('user_id', 1);
-                $paymentTime = $this->storeNow($storeId);
+                $paymentTime = now();
+                $paymentCodeTime = $this->storeNow($storeId);
                 $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
 
                 $payment = Payment::create([
-                    'payment_code' => $request->input('payment_code') ?: 'EDGE-' . $paymentTime->format('YmdHis') . '-' . random_int(1000, 9999),
+                    'payment_code' => $request->input('payment_code') ?: 'EDGE-' . $paymentCodeTime->format('YmdHis') . '-' . random_int(1000, 9999),
                     'store_id' => $storeId,
                     'table_id' => $tableId,
                     'customer_id' => $request->input('customer_id'),
@@ -174,7 +205,7 @@ class PaymentController extends Controller
                     $status = $requestedStatus;
                 }
                 $userId = (int) $request->input('user_id', $payment->user_id ?: 1);
-                $paymentTime = $this->storeNow($storeId);
+                $paymentTime = now();
 
                 $updates = [];
 
@@ -227,17 +258,11 @@ class PaymentController extends Controller
                 }
 
                 if (empty($itemsInput)) {
-                    $store = Store::whereKey($storeId)->first();
-                    if (($store->time_zone ?? null) === 'Asia/Manila') {
-                        if ($request->has('is_senior_discount')) {
-                            $updates['is_senior_discount'] = filter_var($request->input('is_senior_discount'), FILTER_VALIDATE_BOOLEAN);
-                        }
-                        if ($request->has('senior_discount_amount')) {
-                            $updates['senior_discount_amount'] = (float) $request->input('senior_discount_amount');
-                        }
-                    } else {
-                        $updates['is_senior_discount'] = false;
-                        $updates['senior_discount_amount'] = 0;
+                    if ($request->has('is_senior_discount')) {
+                        $updates['is_senior_discount'] = filter_var($request->input('is_senior_discount'), FILTER_VALIDATE_BOOLEAN);
+                    }
+                    if ($request->has('senior_discount_amount')) {
+                        $updates['senior_discount_amount'] = (float) $request->input('senior_discount_amount');
                     }
                 }
 
@@ -324,6 +349,7 @@ class PaymentController extends Controller
         $rawItems = $this->decodeRawItems($itemsInput);
         $store = Store::whereKey($storeId)->first();
         $isTaxIncluded = (bool) ($store->is_tax_included ?? false);
+        
         $typeDiscount = ($input['type_discount'] ?? 'amount') ?: 'amount';
         $discountValue = $typeDiscount === 'percent'
             ? (float) ($input['discount_percent'] ?? $input['discount'] ?? 0)
@@ -335,59 +361,71 @@ class PaymentController extends Controller
 
         $items = $bill['items'];
         $summary = $bill['summary'];
-        $discountTotal = (float) ($summary['discount_total'] ?? 0);
+        
         $taxTotal = (float) ($summary['total_vat'] ?? 0);
+        $subTotalBeforeDiscount = round($summary['subtotal_before'] ?? 0);
+        $discountTotal = (float) ($summary['discount_total'] ?? 0);
+        $totalInclVatBeforeDiscount = (float) ($summary['total_incl_vat_before_discount'] ?? 0);
+
         $surcharge = (float) ($input['surcharge'] ?? 0);
         $surchargeReason = $input['surcharge_reason'] ?? $input['reasonSurcharge'] ?? null;
         $surchargePercent = $this->nullableNumber($input['surcharge_percent'] ?? null);
-        $serviceCharge = (int) ($input['service_charge'] ?? 0);
+
+        $serviceCharge = (float) ($input['service_charge'] ?? 0);
         $serviceChargeAmount = (float) ($input['service_charge_amount'] ?? 0);
+        
         $seniorDiscount = filter_var($input['is_senior_discount'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $seniorDiscountAmount = (float) ($input['senior_discount_amount'] ?? 0);
-        if (!$seniorDiscount) { $seniorDiscountAmount = 0; }
-        $total = (float) ($summary['total_with_vat'] ?? 0) + $surcharge;
-        $baseForCharge = $isTaxIncluded
-            ? (float) ($summary['total_with_vat'] ?? 0)
-            : (float) ($summary['subtotal_after'] ?? $summary['total_with_vat'] ?? 0);
-        if ($serviceCharge > 0 && $serviceChargeAmount == 0) {
-            $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
+        if (!$seniorDiscount) {
+            $seniorDiscountAmount = 0;
         }
 
-        if (!array_key_exists('service_charge', $input) && isset($store->service_charge)) {
-            $serviceCharge = (int) $store->service_charge;
-            $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
-        }
+        // Cloud logic: $filters['valuetotal'] = round($billItem['summary']['total_with_vat'] + ($filters['surcharge'] ?? 0));
+        $valueTotal = round(($summary['total_with_vat'] ?? 0) + $surcharge);
 
-        if ($surchargePercent !== null) {
-            $surcharge = $baseForCharge * $surchargePercent / 100;
-        }
-
-        $serviceChargeAmount = round($baseForCharge * $serviceCharge / 100);
-        $total = (float) ($summary['total_with_vat'] ?? 0) + $serviceChargeAmount + $surcharge;
-
-        if (($store->time_zone ?? null) === 'Asia/Manila' && $seniorDiscount) {
-            $rate = (float) config('params.senior_discount.rate', 20);
-            $seniorDiscountAmount = round((float) ($summary['subtotal_before'] ?? 0) * $rate / 100);
-            $afterSenior = (float) ($summary['subtotal_before'] ?? 0) - $seniorDiscountAmount;
-
-            if ($typeDiscount === 'percent') {
-                $discountTotal = round($afterSenior * $discountValue / 100);
+        if (($store->time_zone ?? config('app.timezone')) === 'Asia/Manila') {
+            
+            if (!array_key_exists('service_charge', $input) && isset($store->service_charge)) {
+                $serviceCharge = (float) $store->service_charge;
             }
 
-            $totalAfterDiscount = max(0, $afterSenior - $discountTotal);
-            $taxTotal = 0;
-            foreach ($items as &$item) { $item['tax_amount'] = 0; }
-            unset($item);
-            $serviceChargeAmount = round($totalAfterDiscount * $serviceCharge / 100);
+            $baseForSurcharge = $isTaxIncluded
+                ? (float) ($summary['total_with_vat'] ?? 0)
+                : (float) ($summary['subtotal_after'] ?? ($summary['total_with_vat'] ?? 0));
 
             if ($surchargePercent !== null) {
-                $surcharge = $totalAfterDiscount * $surchargePercent / 100;
+                $surcharge = round($baseForSurcharge * $surchargePercent / 100);
             }
 
-            $total = $totalAfterDiscount + $serviceChargeAmount + $surcharge;
-        }
+            $serviceChargeAmount = round($baseForSurcharge * $serviceCharge / 100);
 
-        $finalTotal = round($total);
+            $valueTotal = round(($summary['total_with_vat'] ?? 0) + $serviceChargeAmount + $surcharge);
+
+            if ($seniorDiscount) {
+                $rate = (float) config('params.senior_discount.rate', 20);
+                $seniorDiscountAmount = round($subTotalBeforeDiscount * $rate / 100);
+                $afterSenior = $subTotalBeforeDiscount - $seniorDiscountAmount;
+
+                if ($typeDiscount === 'percent') {
+                    $discountTotal = round($afterSenior * $discountValue / 100);
+                }
+
+                $totalAfterDiscount = max(0, $afterSenior - $discountTotal);
+                $taxTotal = 0;
+                foreach ($items as &$item) {
+                    $item['tax_amount'] = 0;
+                }
+                unset($item);
+
+                $serviceChargeAmount = round(max(0, $totalAfterDiscount) * $serviceCharge / 100);
+
+                if ($surchargePercent !== null) {
+                    $surcharge = round(max(0, $totalAfterDiscount) * $surchargePercent / 100);
+                }
+
+                $valueTotal = round(max(0, $totalAfterDiscount) + $serviceChargeAmount + $surcharge);
+            }
+        }
 
         $payload = [
             'item' => $items,
@@ -400,10 +438,10 @@ class PaymentController extends Controller
         return [
             'items' => $items,
             'items_payload' => json_encode($payload),
-            'total' => round($total),
+            'total' => $valueTotal,
             'discount' => $discountTotal,
             'tax' => $taxTotal,
-            'final_total' => $finalTotal,
+            'final_total' => $valueTotal,
             'surcharge' => $surcharge,
             'surcharge_reason' => $surchargeReason,
             'surcharge_percent' => $surchargePercent ?? 0,
@@ -413,8 +451,8 @@ class PaymentController extends Controller
             'discount_percent' => $typeDiscount === 'percent' ? (int) $discountValue : 0,
             'is_senior_discount' => $seniorDiscount,
             'senior_discount_amount' => $seniorDiscountAmount,
-            'sub_total_before_discount' => (float) ($summary['subtotal_before'] ?? 0),
-            'total_incl_vat_before_discount' => (float) ($summary['total_incl_vat_before_discount'] ?? 0),
+            'sub_total_before_discount' => $subTotalBeforeDiscount,
+            'total_incl_vat_before_discount' => $totalInclVatBeforeDiscount,
         ];
     }
 
@@ -698,7 +736,7 @@ class PaymentController extends Controller
         foreach ($items as $item) {
             // Check if product requires inventory tracking
             $product = Product::find($item['product_id']);
-            if ($product && (int)($product->inventory_required ?? 0) === 0) {
+            if ($product && (int) ($product->inventory_required ?? 0) === 0) {
                 continue;
             }
 
@@ -853,8 +891,12 @@ class PaymentController extends Controller
                 $trashed = Payment::whereKey($paymentId)->withTrashed()->first();
                 if ($trashed && $trashed->table_id) {
                     Table::whereKey($trashed->table_id)->where('store_id', $storeId)->update([
-                        'status' => 1, 'payment_id' => null, 'listitem' => null,
-                        'user_id' => null, 'lock_time' => null, 'number_of_people' => 0,
+                        'status' => 1,
+                        'payment_id' => null,
+                        'listitem' => null,
+                        'user_id' => null,
+                        'lock_time' => null,
+                        'number_of_people' => 0,
                     ]);
                 }
                 return response()->json([
@@ -941,7 +983,8 @@ class PaymentController extends Controller
                     }
                     $payment->save();
                     Log::info('Edge delete: removed from items JSON', [
-                        'payment_id' => $payment->id, 'product_key' => $productKey,
+                        'payment_id' => $payment->id,
+                        'product_key' => $productKey,
                     ]);
                     // Update Table listitem in ALL paths
                     $tblId = $tableId ?: $payment->table_id;
@@ -1146,13 +1189,13 @@ class PaymentController extends Controller
             Log::info('Edge getSaleToday: resolved store_id', ['store_id' => $storeId]);
 
             $today = now()->toDateString();
-            
+
             // Lấy các payment trong ngày để tính discount
             $paymentInfo = Payment::whereDate('created_at', $today)
                 ->where('status', '!=', -1)
                 ->where('store_id', $storeId)
                 ->get();
-                
+
             Log::info('Edge getSaleToday: fetched active payments for today', [
                 'date' => $today,
                 'count' => $paymentInfo->count()
@@ -1166,7 +1209,7 @@ class PaymentController extends Controller
                     $tmp = json_decode($payment->items);
                     if (is_object($tmp) && property_exists($tmp, 'discountPayment')) {
                         $discount = str_replace(",", "", $tmp->discountPayment);
-                        $totalDiscount += (int)$discount;
+                        $totalDiscount += (int) $discount;
                     }
                 }
             }
@@ -1176,12 +1219,12 @@ class PaymentController extends Controller
             // Lấy danh sách payment methods
             $methods = PaymentMethod::where('store_id', $storeId)->get();
             $methodValues = $methods->pluck('value')
-                ->map(fn ($value) => (int) $value)
-                ->filter(fn ($value) => $value > 0)
+                ->map(fn($value) => (int) $value)
+                ->filter(fn($value) => $value > 0)
                 ->unique()
                 ->values()
                 ->all();
-            
+
             Log::info('Edge getSaleToday: fetched payment methods', [
                 'methods_count' => $methods->count(),
                 'method_values' => $methodValues
@@ -1199,7 +1242,7 @@ class PaymentController extends Controller
             ];
 
             foreach ($methodValues as $val) {
-                $valInt = (int)$val;
+                $valInt = (int) $val;
                 $selectExpressions[] = DB::raw("COALESCE(SUM(CASE WHEN payment_method = $valInt AND status = 1 THEN total ELSE 0 END), 0) as payment_method_$valInt");
             }
 
@@ -1224,7 +1267,7 @@ class PaymentController extends Controller
                 ->whereDate('payment_details.created_at', $today)
                 ->where('payments.store_id', $storeId)
                 ->sum('payment_details.quantity');
-            
+
             $totalUnpaidProducts = PaymentDetail::join('payments', 'payment_details.payment_id', '=', 'payments.id')
                 ->where('payments.status', '=', 0)
                 ->whereDate('payment_details.created_at', $today)
@@ -1246,9 +1289,9 @@ class PaymentController extends Controller
             // Map payment method names
             $payment_method_customer = [];
             foreach ($methods as $method) {
-                $val = (int)$method->value;
+                $val = (int) $method->value;
                 $payment_method_customer[] = [
-                    'id' => (string)$method->id,
+                    'id' => (string) $method->id,
                     'name' => $method->name,
                     'total_amount' => $saleData["payment_method_$val"] ?? 0,
                 ];
@@ -1256,7 +1299,7 @@ class PaymentController extends Controller
 
             // Gộp dữ liệu
             $saleData['totalDicount'] = $totalDiscount;
-            $saleData['productsSoldToday'] = (string)$productsSoldToday;
+            $saleData['productsSoldToday'] = (string) $productsSoldToday;
             $saleData['productsCancelledToday'] = $productsCancelledToday;
             $saleData['totalUnpaidProducts'] = $totalUnpaidProducts;
             $saleData['payment_method_customer'] = $payment_method_customer;
@@ -1300,7 +1343,7 @@ class PaymentController extends Controller
             } elseif ($type === 'table') {
                 $query->whereNotNull('table_id');
             }
-            $payments = $query->orderBy('updated_at', 'desc')->get();
+            $payments = $query->orderBy('id', 'asc')->get();
             return response()->json([
                 'status' => true,
                 'data' => $payments,
@@ -1328,13 +1371,16 @@ class PaymentController extends Controller
     public function getPaymentDetailByRequest(Request $request)
     {
         $id = $request->input('id');
-        if (!$id) return response()->json(['status' => false, 'message' => __('api.id_required')], 400);
+        if (!$id)
+            return response()->json(['status' => false, 'message' => __('api.id_required')], 400);
+        $this->setRequestLocale($request);
         return $this->getPaymentDetail($id);
     }
 
     public function getPaymentDetail($id)
     {
         try {
+            $this->setRequestLocale(request());
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
             $payment = Payment::with(['details.product', 'user', 'customer', 'table'])->where('store_id', $storeId)->where('id', $id)->first();
             if (!$payment) {
@@ -1363,17 +1409,8 @@ class PaymentController extends Controller
                 $data['updated_at_formatted'] = \Carbon\Carbon::parse($data['updated_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
             }
             $data['total_tax'] = $data['tax'] ?? 0;
-            // Map payment method name for custom methods
             $pmVal = $data['payment_method'] ?? null;
-            $data['payment_method_name'] = null;
-            if ($pmVal && !isset([1=>1,2=>1,3=>1,4=>1,5=>1][(int)$pmVal])) {
-                $pm = \App\Models\PaymentMethod::where('value', $pmVal)->where('store_id', $data['store_id'])->first();
-                if ($pm) $data['payment_method_name'] = $pm->name;
-            }
-            if (!$data['payment_method_name']) {
-                $names = [1=>'Tiền mặt',2=>'Chuyển khoản',3=>'Thẻ tín dụng',4=>'Thẻ ghi nợ',5=>'Ví điện tử',6=>'Khác'];
-                $data['payment_method_name'] = $names[(int)$pmVal] ?? $pmVal;
-            }
+            $data['payment_method_name'] = $this->resolvePaymentMethodName($pmVal, $data['store_id'] ?? $storeId);
             // Compute valuetotal from components to avoid ex-VAT display
             $totalDb = $data['total'] ?? 0;
             $estimatedTotal = $totalDb + ($data['tax'] ?? 0) + ($data['surcharge'] ?? 0) + ($data['service_charge_amount'] ?? 0);
@@ -1518,6 +1555,7 @@ class PaymentController extends Controller
     public function getAllPaymentForUserNewPaginate(Request $request)
     {
         try {
+            $this->setRequestLocale($request);
             $storeId = config('edge_box.store_id') ?? Store::first()?->id ?? 1;
             $page = (int) $request->input('page', 1);
             $pageSize = (int) $request->input('pageSize', 15);
@@ -1559,8 +1597,8 @@ class PaymentController extends Controller
             $paymentMethodNames = [
                 1 => 'Tiền mặt',
                 2 => 'Chuyển khoản',
-                3 => 'Thẻ tín dụng',
-                4 => 'Thẻ ghi nợ',
+                3 => 'Thanh toán bằng mã QR',
+                4 => 'Thẻ tín dụng',
                 5 => 'Ví điện tử',
                 6 => 'Khác',
                 'cash' => 'Tiền mặt',
@@ -1593,8 +1631,9 @@ class PaymentController extends Controller
                 $data['valuetotal'] = $data['final_total'] ?? max($totalFromDb, $estimatedTotal);
                 if (is_string($data['payment_method'])) {
                     $map = array_flip($paymentMethodNames);
-                    $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int)$data['payment_method'] : 0);
+                    $data['payment_method'] = $map[$data['payment_method']] ?? (is_numeric($data['payment_method']) ? (int) $data['payment_method'] : 0);
                 }
+                $data['payment_method_name'] = $this->resolvePaymentMethodName($data['payment_method'] ?? null, $data['store_id'] ?? $storeId);
                 $store = $p->store;
                 $tz = $store ? ($store->time_zone ?? config('app.timezone')) : config('app.timezone');
                 $data['created_at'] = \Carbon\Carbon::parse($data['created_at'])->setTimezone($tz)->format('d-m-Y H:i:s');
@@ -1648,7 +1687,7 @@ class PaymentController extends Controller
             Log::info('Edge getRevenueToDayByAdminId: resolved store_id', ['store_id' => $storeId]);
 
             $today = now()->toDateString();
-            
+
             // Tính tổng total của các payment có status = 1 (đã thanh toán) trong ngày hôm nay
             $totalRevenue = Payment::where('store_id', $storeId)
                 ->where('status', 1)
@@ -1664,7 +1703,7 @@ class PaymentController extends Controller
                 'status' => true,
                 'status_code' => 200,
                 'message' => __('api.revenue_get'),
-                'revenue' => (float)$totalRevenue,
+                'revenue' => (float) $totalRevenue,
             ], 200);
 
         } catch (\Throwable $th) {
@@ -1732,7 +1771,7 @@ class PaymentController extends Controller
                 'status' => true,
                 'status_code' => 200,
                 'message' => __('api.revenue_get'),
-                'revenue' => (float)$totalRevenue,
+                'revenue' => (float) $totalRevenue,
             ], 200);
 
         } catch (\Throwable $th) {
@@ -1804,7 +1843,7 @@ class PaymentController extends Controller
                 'status' => true,
                 'status_code' => 200,
                 'message' => __('api.revenue_get'),
-                'revenue' => (float)$totalRevenue,
+                'revenue' => (float) $totalRevenue,
             ], 200);
 
         } catch (\Throwable $th) {

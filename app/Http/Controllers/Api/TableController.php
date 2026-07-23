@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
+use App\Models\PaymentMethod;
+use App\Models\PaymentStatus;
 use App\Models\Table;
 use App\Models\User;
 use App\Models\Store;
@@ -753,20 +755,52 @@ class TableController extends Controller
     public function getPaymentMethods(Request $request)
     {
         try {
+            app()->setLocale($request->header('Accept-Language', $request->input('isCheckLanguage', 'vi')));
             $storeId = $this->storeId($request);
-            $methods = \App\Models\PaymentMethod::where('store_id', $storeId)->get();
-            if ($methods->isEmpty()) {
-                $methods = \App\Models\PaymentMethod::where('store_id', 0)->orWhereNull('store_id')->get();
-            }
-
-            $data = $methods->map(function ($method) {
-                return [
-                    'id' => (int) $method->id,
-                    'value' => (string) $method->value,
-                    'name' => (string) $method->name,
-                ];
+            $statuses = PaymentStatus::select(
+                'payment_status.id as ref_id',
+                'payment_status.name',
+                'payment_status.value',
+                DB::raw("'status' as type"),
+                DB::raw('COALESCE(store_payment_settings.is_show, 1) as is_show'),
+                DB::raw('COALESCE(store_payment_settings.sort_rank, payment_status.id) as sort_rank')
+            )->leftJoin('store_payment_settings', function ($join) use ($storeId) {
+                $join->on('payment_status.id', '=', 'store_payment_settings.ref_id')
+                    ->where('store_payment_settings.store_id', $storeId)
+                    ->where('store_payment_settings.type', 'status');
             });
 
+            $methods = PaymentMethod::select(
+                'payment_methods.id as ref_id',
+                'payment_methods.name',
+                'payment_methods.value',
+                DB::raw("'method' as type"),
+                DB::raw('COALESCE(store_payment_settings.is_show, 1) as is_show'),
+                DB::raw('COALESCE(store_payment_settings.sort_rank, payment_methods.id + 100) as sort_rank')
+            )->where('payment_methods.store_id', $storeId)
+                ->leftJoin('store_payment_settings', function ($join) use ($storeId) {
+                    $join->on('payment_methods.id', '=', 'store_payment_settings.ref_id')
+                        ->where('store_payment_settings.store_id', $storeId)
+                        ->where('store_payment_settings.type', 'method');
+                });
+
+            $data = $statuses->unionAll($methods)
+                ->orderBy('sort_rank')
+                ->get()
+                ->filter(fn($item) => (int) $item->is_show === 1)
+                ->values()
+                ->map(function ($item) {
+                    return [
+                        'ref_id' => (int) $item->ref_id,
+                        'value' => (int) $item->value,
+                        'name' => $item->type === 'status'
+                            ? __('api.payment_status.' . $item->value)
+                            : (string) $item->name,
+                        'type' => (string) $item->type,
+                        'is_show' => (int) $item->is_show,
+                        'sort_rank' => (int) $item->sort_rank,
+                    ];
+                });
             return response()->json([
                 'status' => true,
                 'status_code' => 200,

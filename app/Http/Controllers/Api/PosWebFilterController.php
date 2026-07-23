@@ -32,6 +32,7 @@ class PosWebFilterController extends Controller
             $value = $productCodeQuery['value'] ?? '';
 
             $query = Product::query()
+                ->with(['timePrices', 'types', 'product_types', 'combo_products', 'product_extras'])
                 ->where(function ($q) use ($storeId) {
                     $q->whereNull('store_id')->orWhere('store_id', $storeId);
                 })
@@ -247,7 +248,7 @@ class PosWebFilterController extends Controller
         $isTaxIncluded = $store ? (int) ($store->is_tax_included ?? 0) : 0;
 
         $query = Product::query()
-            ->with(['timePrices', 'types', 'product_types'])
+            ->with(['timePrices', 'types', 'product_types', 'combo_products', 'product_extras'])
             ->where(function ($query) use ($storeId) {
                 $query->whereNull('store_id')->orWhere('store_id', $storeId);
             })

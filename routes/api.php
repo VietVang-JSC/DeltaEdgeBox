@@ -84,6 +84,7 @@ Route::prefix('edge')
     ->middleware('edge.api.key')
     ->group(function () {
         Route::post('/master-sync', [MasterSyncController::class, 'sync']);
+        Route::post('/migrate-open-payments', [MasterSyncController::class, 'migrateOpenPayments']);
         Route::get('/last-master-sync', [MasterSyncController::class, 'lastMasterSync']);
     });
 
