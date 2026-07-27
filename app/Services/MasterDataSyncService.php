@@ -1129,7 +1129,11 @@ class MasterDataSyncService
         if (!empty($cloudImageUrl) && !filter_var($cloudImageUrl, FILTER_VALIDATE_URL) && !str_contains($cloudImageUrl, '/storage/product-images/')) {
             $cloudBaseUrl = rtrim(config('app.cloud_api_url', env('CLOUD_API_URL', '')), '/');
             if (!empty($cloudBaseUrl)) {
-                $cloudImageUrl = $cloudBaseUrl . '/storage/' . ltrim($cloudImageUrl, '/');
+                if (str_starts_with($cloudImageUrl, 'image/') || str_contains($cloudImageUrl, 'default_product')) {
+                    $cloudImageUrl = $cloudBaseUrl . '/' . ltrim($cloudImageUrl, '/');
+                } else {
+                    $cloudImageUrl = $cloudBaseUrl . '/storage/' . ltrim($cloudImageUrl, '/');
+                }
             }
         }
         if (!empty($cloudImageUrl) && filter_var($cloudImageUrl, FILTER_VALIDATE_URL) && !str_contains($cloudImageUrl, '/storage/product-images/')) {
