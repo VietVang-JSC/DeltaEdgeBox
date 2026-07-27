@@ -325,12 +325,14 @@ class PosWebFilterController extends Controller
             $days = $tp->days_of_week;
 
             if (is_array($days) && in_array($currentDay, $days) && $currentTime >= $tp->start_time && $currentTime <= $tp->end_time) {
-                $matchedPrice = $tp->price_after_tax ?? $tp->price ?? null;
-                return [$product, $matchedPrice];
+                $matchedPrice = $tp->price ?? null;
+                $matchedPriceAfterTax = $tp->price_after_tax ?? $matchedPrice;
+
+                return [$product, $matchedPrice, $matchedPriceAfterTax];
             }
         }
 
-        return [$product, null];
+        return [$product, null, null];
     }
 
     private function productPayload(Product $product, string $timezone = null, ?int $isTaxIncluded = null): array
@@ -341,25 +343,18 @@ class PosWebFilterController extends Controller
             $isTaxIncluded = $isTaxIncluded ?? ($store ? (int) ($store->is_tax_included ?? 0) : 0);
         }
         $availableFrames = [];
-        [$product, $matchedPrice] = $this->applyTimePrice($product, $timezone, $availableFrames);
+        [$product, $matchedPrice, $matchedPriceAfterTax] = $this->applyTimePrice($product, $timezone, $availableFrames);
 
         $payload = $product->toArray();
-        // Make image a full URL the browser can load from edge box
-        if (!empty($payload['image'])) {
-            if (str_starts_with($payload['image'], '/storage/')) {
-                $payload['image'] = url($payload['image']);
-            } elseif (!str_starts_with($payload['image'], 'http')) {
-                $payload['image'] = url('storage/' . ltrim($payload['image'], '/'));
-            }
-        }
+        $payload['image'] = $this->productImageUrl($payload['image'] ?? null);
         $payload['product_code'] = $payload['product_code'] ?? $payload['code'] ?? (string) $product->id;
         $payload['title'] = $payload['title'] ?? $payload['name'] ?? '';
-        $payload['price_after_tax'] = $matchedPrice !== null
-            ? ($isTaxIncluded ? $matchedPrice : ($matchedPrice * (1 + ($product->vat ?? 0) / 100)))
+        $payload['price_after_tax'] = $matchedPriceAfterTax !== null
+            ? $matchedPriceAfterTax
             : ($product->price_after_tax ?? $product->price ?? 0);
         $payload['unit_price'] = $matchedPrice !== null ? $matchedPrice : ($product->price ?? 0);
         $payload['price'] = $matchedPrice !== null
-            ? $matchedPrice
+            ? ($isTaxIncluded == 0 ? $matchedPrice : $matchedPriceAfterTax)
             : ($isTaxIncluded == 0 ? ($product->price ?? 0) : ($product->price_after_tax ?? 0));
         $payload['vat'] = $payload['vat'] ?? 0;
         $payload['tax_name'] = $this->taxName($payload['vat']);
@@ -370,6 +365,7 @@ class PosWebFilterController extends Controller
             if (isset($extra['product']) && is_array($extra['product'])) {
                 $extra['product']['product_code'] = $extra['product']['code'] ?? ($extra['product']['product_code'] ?? '');
                 $extra['product']['title'] = $extra['product']['title'] ?? ($extra['product']['name'] ?? '');
+                $extra['product']['image'] = $this->productImageUrl($extra['product']['image'] ?? null);
                 $extra['product']['price_after_tax'] = $extra['product']['price_after_tax'] ?? ($extra['product']['price'] ?? 0);
                 $extra['product']['inventory_required'] = (int) ($extra['product']['inventory_required'] ?? 0);
             }
@@ -380,6 +376,7 @@ class PosWebFilterController extends Controller
             if (isset($cp['product']) && is_array($cp['product'])) {
                 $cp['product']['product_code'] = $cp['product']['code'] ?? ($cp['product']['product_code'] ?? '');
                 $cp['product']['title'] = $cp['product']['title'] ?? ($cp['product']['name'] ?? '');
+                $cp['product']['image'] = $this->productImageUrl($cp['product']['image'] ?? null);
             }
         }
         unset($cp);
@@ -414,6 +411,27 @@ class PosWebFilterController extends Controller
         }
 
         return $payload;
+    }
+
+    private function productImageUrl(?string $image): string
+    {
+        if (empty($image)) {
+            return url('image/default_product.png');
+        }
+
+        if (str_starts_with($image, '/storage/')) {
+            return url($image);
+        }
+
+        if (str_starts_with($image, 'http')) {
+            return $image;
+        }
+
+        if (str_starts_with($image, 'image/') || str_contains($image, 'default_product')) {
+            return url(ltrim($image, '/'));
+        }
+
+        return url('storage/' . ltrim($image, '/'));
     }
 
     //xu ly tax name giong cloud hien tai tai file ETaxName.php
