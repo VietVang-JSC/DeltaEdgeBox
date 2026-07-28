@@ -871,7 +871,7 @@ class MasterDataSyncService
                                     Payment::updateOrCreate(
                                         ['id' => $paymentId],
                                         [
-                                            'paid_date'                    => $pmt['paid_date'] ?? $pmt['created_at'] ?? now(),
+                                            'paid_date'                    => $this->normalizeSqliteDateTime($pmt['paid_date'] ?? $pmt['created_at'] ?? now()),
                                             'store_id'                     => $pmt['store_id'],
                                             'table_id'                     => $pmt['table_id'] ?? null,
                                             'customer_id'                  => $pmt['customer_id'] ?? 0,
@@ -898,8 +898,8 @@ class MasterDataSyncService
                                             'parent_id'                    => $pmt['parent_id'] ?? null,
                                             'sub_total_before_discount'    => $pmt['sub_total_before_discount'] ?? $pmt['sub_total'] ?? 0,
                                             'total_incl_vat_before_discount' => $pmt['total_incl_vat_before_discount'] ?? 0,
-                                            'created_at'                   => $pmt['created_at'] ?? now(),
-                                            'updated_at'                   => $pmt['updated_at'] ?? now(),
+                                            'created_at'                   => $this->normalizeSqliteDateTime($pmt['created_at'] ?? now()),
+                                            'updated_at'                   => $this->normalizeSqliteDateTime($pmt['updated_at'] ?? now()),
                                         ]
                                     );
     
@@ -1017,6 +1017,13 @@ class MasterDataSyncService
             'customers' => $this->formatSyncTime(Customer::where('store_id', $this->storeId)->max('updated_at')),
             'payments' => $this->formatSyncTime(Payment::where('store_id', $this->storeId)->max('updated_at')),
         ];
+    }
+
+    private function normalizeSqliteDateTime($value): string
+    {
+        return Carbon::parse($value)
+            ->setTimezone(config('app.timezone'))
+            ->format('Y-m-d H:i:s');
     }
 
     private function formatSyncTime($value): ?string
