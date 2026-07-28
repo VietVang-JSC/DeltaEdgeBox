@@ -567,7 +567,7 @@ class PosWebFilterController extends Controller
             $pageSize = (int) ($pagination['pageSize'] ?? 15);
             $currentPage = (int) ($pagination['currentPage'] ?? 1);
             $total = $paymentsQuery->count();
-            $payments = $paymentsQuery->orderBy($column, $direction)
+            $payments = $this->applyPaymentOrdering($paymentsQuery, $column, $direction)
                 ->skip(($currentPage - 1) * $pageSize)
                 ->take($pageSize)
                 ->get();
@@ -580,11 +580,29 @@ class PosWebFilterController extends Controller
             ];
         }
 
-        return $paymentsQuery->orderBy($column, $direction)
+        return $this->applyPaymentOrdering($paymentsQuery, $column, $direction)
             ->get()
             ->map(fn(Payment $payment) => $this->paymentPayload($payment))
             ->values()
             ->all();
+    }
+
+    private function applyPaymentOrdering($query, string $column, string $direction)
+    {
+        $direction = strtoupper($direction);
+        if (!in_array($direction, ['ASC', 'DESC'], true)) {
+            $direction = 'DESC';
+        }
+
+        if (in_array($column, ['updated_at', 'created_at', 'paid_date'], true)) {
+            return $query
+                ->orderByRaw("datetime({$column}) {$direction}")
+                ->orderByDesc('id');
+        }
+
+        return $query
+            ->orderBy($column, $direction)
+            ->orderByDesc('id');
     }
 
     private function tables(int $storeId): array
@@ -890,13 +908,13 @@ class PosWebFilterController extends Controller
                 }
 
                 // Order by
-                if (!empty($params['payments']['clauses']['orderby'])) {
-                    $orderBy = $params['payments']['clauses']['orderby'];
-                    $paymentQuery->orderBy(
-                        $orderBy['column'] ?? 'updated_at',
-                        $orderBy['value'] ?? 'DESC'
-                    );
-                }
+                $orderBy = $params['payments']['clauses']['orderby']
+                    ?? ['column' => 'updated_at', 'value' => 'DESC'];
+                $paymentQuery = $this->applyPaymentOrdering(
+                    $paymentQuery,
+                    $orderBy['column'] ?? 'updated_at',
+                    $orderBy['value'] ?? 'DESC'
+                );
 
                 // Pagination
                 $pageSize = $params['payments']['clauses']['pagination']['pageSize'] ?? 15;
@@ -950,13 +968,13 @@ class PosWebFilterController extends Controller
                 }
 
                 // Order by
-                if (!empty($params['data_payment']['clauses']['orderby'])) {
-                    $orderBy = $params['data_payment']['clauses']['orderby'];
-                    $paymentQuery->orderBy(
-                        $orderBy['column'] ?? 'updated_at',
-                        $orderBy['value'] ?? 'DESC'
-                    );
-                }
+                $orderBy = $params['data_payment']['clauses']['orderby']
+                    ?? ['column' => 'updated_at', 'value' => 'DESC'];
+                $paymentQuery = $this->applyPaymentOrdering(
+                    $paymentQuery,
+                    $orderBy['column'] ?? 'updated_at',
+                    $orderBy['value'] ?? 'DESC'
+                );
 
                 // Pagination
                 $pageSize = $params['data_payment']['clauses']['pagination']['pageSize'] ?? 15;

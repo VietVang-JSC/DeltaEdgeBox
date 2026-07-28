@@ -1540,7 +1540,8 @@ class PaymentController extends Controller
             $payments = Payment::with('details')
                 ->where('store_id', $storeId)
                 ->where('status', 0)
-                ->orderBy('updated_at', 'desc')
+                ->orderByRaw('datetime(updated_at) desc')
+                ->orderByDesc('id')
                 ->get();
             return response()->json([
                 'status' => true,
@@ -1589,7 +1590,8 @@ class PaymentController extends Controller
 
             $total = $paymentsQuery->count();
             $totalPages = max(1, ceil($total / $pageSize));
-            $payments = $paymentsQuery->orderBy('updated_at', 'desc')
+            $payments = $paymentsQuery->orderByRaw('datetime(updated_at) desc')
+                ->orderByDesc('id')
                 ->skip(($page - 1) * $pageSize)
                 ->take($pageSize)
                 ->get();
