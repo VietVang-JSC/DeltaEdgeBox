@@ -275,16 +275,13 @@ class PaymentController extends Controller
                 $payment->save();
 
                 if (!empty($itemsInput) && isset($calculation)) {
-                    $payment->details()->delete();
-                    foreach ($calculation['items'] as $item) {
-                        PaymentDetail::create($this->buildPaymentDetailAttributes(
-                            $payment,
-                            $item,
-                            $storeId,
-                            (int) $request->input('admin_id', $payment->admin_id ?: $userId),
-                            $paymentTime
-                        ));
-                    }
+                    $this->reconcilePaymentDetails(
+                        $payment,
+                        $calculation['items'],
+                        $storeId,
+                        (int) $request->input('admin_id', $payment->admin_id ?: $userId),
+                        $paymentTime
+                    );
 
                     if ($oldStatus !== self::STATUS_PAYMENT_ACTIVE && $status === self::STATUS_PAYMENT_ACTIVE) {
                         $this->deductInventoryForPayment($payment, array_values($calculation['items']), $storeId, $userId);
@@ -631,6 +628,43 @@ class PaymentController extends Controller
         }
 
         return (float) $value;
+    }
+
+    private function reconcilePaymentDetails(Payment $payment, array $items, int $storeId, int $adminId, $timestamp): void
+    {
+        $existingByKey = [];
+
+        foreach ($payment->details()->lockForUpdate()->orderByDesc('id')->get() as $detail) {
+            $key = trim((string) ($detail->product_key ?: $detail->product_id));
+
+            if (isset($existingByKey[$key])) {
+                $detail->delete();
+                continue;
+            }
+
+            $existingByKey[$key] = $detail;
+        }
+
+        foreach ($items as $item) {
+            $key = trim((string) ($item['product_key'] ?? $item['product_id'] ?? $item['id'] ?? ''));
+            $item['product_key'] = $key;
+            $attributes = $this->buildPaymentDetailAttributes($payment, $item, $storeId, $adminId, $timestamp);
+
+            if (isset($existingByKey[$key])) {
+                $detail = $existingByKey[$key];
+                unset($attributes['created_at']);
+                $detail->fill($attributes);
+                $detail->save();
+                unset($existingByKey[$key]);
+                continue;
+            }
+
+            PaymentDetail::create($attributes);
+        }
+
+        foreach ($existingByKey as $detail) {
+            $detail->delete();
+        }
     }
 
     private function buildPaymentDetailAttributes(Payment $payment, array $item, int $storeId, int $adminId, $timestamp): array
