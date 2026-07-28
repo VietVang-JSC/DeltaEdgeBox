@@ -20,12 +20,16 @@ class SyncQueue extends Model
         'retry_count',
         'max_retries',
         'last_error',
+        'failure_type',
+        'error_code',
+        'retryable',
         'next_retry_at',
         'synced_at',
         'response_code',
     ];
 
     protected $casts = [
+        'retryable' => 'boolean',
         'next_retry_at' => 'datetime',
         'synced_at' => 'datetime',
     ];

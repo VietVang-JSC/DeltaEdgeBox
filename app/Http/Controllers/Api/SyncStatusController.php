@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\SyncConflict;
+use App\Models\SyncQueue;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -205,8 +207,37 @@ class SyncStatusController extends Controller
     }
 
     /**
-     * Danh sách bảng được phép resolve conflict.
+     * Move the queue out of the active lifecycle after Cloud confirms conflict resolution.
      */
+    private function markConflictQueueTerminal(SyncQueue $queue, string $status, string $strategy): void
+    {
+        $wasOutstanding = in_array($queue->status, ['pending', 'retrying', 'syncing', 'failed', 'dismissed'], true);
+        $queue->update([
+            'status' => $status,
+            'retry_count' => 0,
+            'last_error' => null,
+            'failure_type' => null,
+            'error_code' => null,
+            'retryable' => null,
+            'next_retry_at' => null,
+            'response_code' => 200,
+            'synced_at' => now(),
+        ]);
+
+        if ($wasOutstanding) {
+            DB::table('sync_metadata')
+                ->where('store_id', $queue->store_id)
+                ->where('pending_records_count', '>', 0)
+                ->decrement('pending_records_count');
+        }
+
+        Log::info('[SyncAction] conflict queue moved to terminal status', [
+            'sync_queue_id' => $queue->id,
+            'status' => $status,
+            'strategy' => $strategy,
+        ]);
+    }
+
     private function allowedConflictTables(): array
     {
         return [
@@ -291,6 +322,10 @@ class SyncStatusController extends Controller
                 'retry_count' => 0,
                 'priority' => 2, // reset về pending và đẩy lên ưu tiên cao để xử lý ngay
                 'last_error' => null,
+                'failure_type' => null,
+                'error_code' => null,
+                'retryable' => null,
+                'response_code' => null,
                 'next_retry_at' => null,
                 'updated_at' => now(),
             ]);
@@ -455,7 +490,7 @@ class SyncStatusController extends Controller
         }
 
         try {
-            $conflict = DB::table('sync_conflicts')->where('id', $id)->first();
+            $conflict = SyncConflict::find($id);
 
             if (!$conflict) {
                 Log::warning('[SyncAction] resolveConflict: conflict not found', ['id' => $id]);
@@ -498,166 +533,83 @@ class SyncStatusController extends Controller
                 $newStatus = 'resolved';
                 $strategy = $resolution;
 
-                if ($resolution === 'keep_local') {
-                    // Chặn nếu không có sync_queue_id để retry
-                    if (empty($conflict->sync_queue_id)) {
+                if (empty($conflict->sync_queue_id) || empty($conflict->cloud_conflict_id)) {
+                    DB::rollBack();
+                    Log::warning('[SyncAction] resolveConflict: queue or cloud conflict link is missing', [
+                        'conflict_id' => $id,
+                        'sync_queue_id' => $conflict->sync_queue_id,
+                        'cloud_conflict_id' => $conflict->cloud_conflict_id,
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => __('sync.err_keep_local_missing'),
+                    ], 422);
+                }
+
+                $queueItem = SyncQueue::whereKey($conflict->sync_queue_id)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $queueItem) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => __('sync.err_keep_local_not_found', ['id' => $conflict->sync_queue_id]),
+                    ], 404);
+                }
+
+                if ($resolution === 'keep_cloud') {
+                    $cloudData = is_string($conflict->cloud_data)
+                        ? json_decode($conflict->cloud_data, true)
+                        : (array) $conflict->cloud_data;
+                    if (! is_array($cloudData) || empty($cloudData)) {
                         DB::rollBack();
-                        Log::warning('[SyncAction] resolveConflict keep_local: sync_queue_id missing', [
-                            'conflict_id' => $id,
-                        ]);
+
                         return response()->json([
                             'success' => false,
-                            'message' => __('sync.err_keep_local_missing'),
+                            'message' => __('sync.err_invalid_cloud_data'),
                         ], 422);
                     }
 
-                    // Reset sync_queue item về pending với ưu tiên cao
-                    $queueItem = DB::table('sync_queues')
-                        ->where('id', $conflict->sync_queue_id)
-                        ->first(['id', 'status']);
-
-                    if (!$queueItem) {
-                        DB::rollBack();
-                        Log::warning('[SyncAction] resolveConflict keep_local: sync queue item not found', [
-                            'conflict_id' => $id,
-                            'sync_queue_id' => $conflict->sync_queue_id,
-                        ]);
-                        return response()->json([
-                            'success' => false,
-                            'message' => __('sync.err_keep_local_not_found', ['id' => $conflict->sync_queue_id]),
-                        ], 404);
-                    }
-
-                    if ($queueItem->status === 'pending') {
-                        Log::info('[SyncAction] resolveConflict keep_local: queue item already pending', [
-                            'conflict_id' => $id,
-                            'sync_queue_id' => $conflict->sync_queue_id,
-                        ]);
-                    } elseif (in_array($queueItem->status, ['failed', 'retrying', 'dismissed'], true)) {
-                        $resetCount = DB::table('sync_queues')
-                            ->where('id', $conflict->sync_queue_id)
-                            ->where('status', $queueItem->status)
-                            ->update([
-                                'status' => 'pending',
-                                'retry_count' => 0,
-                                'priority' => 2, // urgent
-                                'last_error' => null,
-                                'next_retry_at' => null,
-                                'updated_at' => now(),
-                            ]);
-
-                        if ($resetCount === 0) {
-                            DB::rollBack();
-                            Log::warning('[SyncAction] resolveConflict keep_local: resetCount is 0', [
-                                'conflict_id' => $id,
-                                'sync_queue_id' => $conflict->sync_queue_id,
-                                'previous_status' => $queueItem->status,
-                            ]);
-                            return response()->json([
-                                'success' => false,
-                                'message' => __('sync.err_keep_local_changed'),
-                            ], 409);
-                        }
-
-                        Log::info('[SyncAction] resolveConflict keep_local: queue item reset to pending', [
-                            'sync_queue_id' => $conflict->sync_queue_id,
-                            'previous_status' => $queueItem->status,
-                            'rows_updated' => $resetCount,
-                        ]);
-                    } else {
-                        DB::rollBack();
-                        Log::warning('[SyncAction] resolveConflict keep_local: queue status is not retryable', [
-                            'conflict_id' => $id,
-                            'sync_queue_id' => $conflict->sync_queue_id,
-                            'status' => $queueItem->status,
-                        ]);
-                        return response()->json([
-                            'success' => false,
-                            'message' => __('sync.err_keep_local_status'),
-                        ], 422);
-                    }
-                } elseif ($resolution === 'keep_cloud') {
-                    // Parse cloud_data
-                    if (is_string($conflict->cloud_data)) {
-                        $cloudData = json_decode($conflict->cloud_data, true);
-                        if (json_last_error() !== JSON_ERROR_NONE) {
-                            DB::rollBack();
-                            Log::warning('[SyncAction] resolveConflict keep_cloud: json decode failed', [
-                                'conflict_id' => $id,
-                            ]);
-                            return response()->json([
-                                'success' => false,
-                                'message' => __('sync.err_invalid_cloud_data'),
-                            ], 422);
-                        }
-                    } else {
-                        $cloudData = (array) $conflict->cloud_data;
-                    }
-
-                    if (empty($cloudData) || empty($conflict->table_name) || empty($conflict->record_id)) {
-                        DB::rollBack();
-                        Log::warning('[SyncAction] resolveConflict keep_cloud: insufficient data', [
-                            'conflict_id' => $id,
-                            'has_cloud_data' => !empty($cloudData),
-                            'table_name' => $conflict->table_name,
-                            'record_id' => $conflict->record_id,
-                        ]);
-                        return response()->json([
-                            'success' => false,
-                            'message' => __('sync.err_apply_cloud_data_empty'),
-                        ], 422);
-                    }
-
-                    // Lọc field an toàn (whitelist + blocklist)
                     $safeData = $this->filterSafeCloudData($conflict->table_name, $cloudData);
-
                     if (empty($safeData)) {
                         DB::rollBack();
-                        Log::warning('[SyncAction] resolveConflict keep_cloud: no safe fields to apply after filtering', [
-                            'conflict_id' => $id,
-                            'table_name' => $conflict->table_name,
-                            'original_fields' => array_keys($cloudData),
-                        ]);
+
                         return response()->json([
                             'success' => false,
                             'message' => __('sync.err_no_safe_fields'),
                         ], 422);
                     }
 
-                    // Check if local record exists
-                    $exists = DB::table($conflict->table_name)
+                    $affected = DB::table($conflict->table_name)
                         ->where('id', $conflict->record_id)
-                        ->exists();
-
-                    if (!$exists) {
+                        ->update($safeData);
+                    if ($affected === 0 && ! DB::table($conflict->table_name)->where('id', $conflict->record_id)->exists()) {
                         DB::rollBack();
-                        Log::warning('[SyncAction] resolveConflict keep_cloud: local record not found', [
-                            'conflict_id' => $id,
-                            'table_name' => $conflict->table_name,
-                            'record_id' => $conflict->record_id,
-                        ]);
+
                         return response()->json([
                             'success' => false,
                             'message' => __('sync.err_local_record_not_found'),
                         ], 404);
                     }
 
-                    $affected = DB::table($conflict->table_name)
-                        ->where('id', $conflict->record_id)
-                        ->update($safeData);
-
-                    Log::info('[SyncAction] resolveConflict keep_cloud: local record updated with safe cloud data', [
+                    Log::info('[SyncAction] resolveConflict keep_cloud: local record updated', [
+                        'conflict_id' => $id,
                         'table_name' => $conflict->table_name,
                         'record_id' => $conflict->record_id,
                         'applied_fields' => array_keys($safeData),
-                        'filtered_fields' => array_diff(array_keys($cloudData), array_keys($safeData)),
-                        'rows_updated' => $affected,
                     ]);
-                } else {
-                    // skip
+                } elseif ($resolution === 'skip') {
                     $newStatus = 'skipped';
                 }
 
+                $this->syncService->resolveCloudConflict($conflict, $queueItem, $resolution);
+                $this->markConflictQueueTerminal(
+                    $queueItem,
+                    $resolution === 'keep_local' ? 'synced' : 'dismissed',
+                    $resolution
+                );
                 // Chống race condition: conditional update WHERE resolution_status = 'unresolved'
                 $affected = DB::table('sync_conflicts')
                     ->where('id', $id)
