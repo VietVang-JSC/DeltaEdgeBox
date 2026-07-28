@@ -1161,6 +1161,8 @@ class SplitMergeInvoiceController extends Controller
             'senior_discount_amount' => $data['senior_discount_amount'] ?? $payment->senior_discount_amount,
             'service_charge' => $data['service_charge'] ?? $payment->service_charge,
             'service_charge_amount' => $data['service_charge_amount'] ?? $payment->service_charge_amount,
+            'sub_total_before_discount' => $data['sub_total_before_discount'] ?? $payment->sub_total_before_discount,
+            'total_incl_vat_before_discount' => $data['total_incl_vat_before_discount'] ?? $payment->total_incl_vat_before_discount,
         ]);
 
         $productList = json_decode($data['items'], true);
@@ -1214,7 +1216,54 @@ class SplitMergeInvoiceController extends Controller
         if (!empty($listPaymentDetail)) {
             PaymentDetail::where('payment_id', $data['id'])->whereIn('product_key', array_values($listPaymentDetail))->delete();
         }
+
+        if (!empty($data['_split_trace_id'])) {
+            $this->logSplitPaymentInvariantWarnings($payment->fresh(), $data);
+        }
+
         return $payment;
+    }
+
+    private function logSplitPaymentInvariantWarnings(Payment $payment, array $data): void
+    {
+        $items = json_decode($payment->items, true)['item'] ?? [];
+        $itemQuantity = array_sum(array_map(
+            static fn (array $item): int => (int) ($item['quantity'] ?? 0),
+            $items
+        ));
+        $detailQuantity = (int) $payment->details()->sum('quantity');
+        $mismatches = [];
+
+        $checks = [
+            'quantity' => [$itemQuantity, $detailQuantity],
+            'sub_total_before_discount' => [
+                (float) ($data['sub_total_before_discount'] ?? $payment->sub_total_before_discount),
+                (float) $payment->sub_total_before_discount,
+            ],
+            'total_tax' => [
+                (float) ($data['total_tax'] ?? $payment->tax),
+                (float) $payment->tax,
+            ],
+            'valuetotal' => [
+                (float) ($data['valuetotal'] ?? $payment->final_total),
+                (float) $payment->final_total,
+            ],
+        ];
+
+        foreach ($checks as $field => [$expected, $actual]) {
+            if (abs($expected - $actual) > 0.01) {
+                $mismatches[$field] = compact('expected', 'actual');
+            }
+        }
+
+        if (!empty($mismatches)) {
+            Log::warning('EDGE_SPLIT_TRACE payment.invariant_mismatch', [
+                'trace_id' => $data['_split_trace_id'],
+                'payment_id' => $payment->id,
+                'payment_code' => $payment->payment_code,
+                'mismatches' => $mismatches,
+            ]);
+        }
     }
 
     private function handleData4TargetInvoice($filters, $targetInvoice)
