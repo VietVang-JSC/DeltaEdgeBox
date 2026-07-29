@@ -284,9 +284,13 @@
                     @php
                         $productExtra = [];
                         $products = $item['products'] ?? [];
-                        $itemVat = ($products['vat'] ?? 0) / 100;
-                        $totalItemPrice = $is_tax_included == 1 ? (($seniorDiscount ?? 0) > 0 ? round($item['total_price']/(1+$itemVat)) : $item['total_price']) : round($item['total_price']/(1+$itemVat));
-                        $itemQuantity = $item['quantity'];
+                        $pricing = \App\Services\ReceiptItemPricing::resolve(
+                            $item,
+                            (bool) $is_tax_included,
+                            (float) ($seniorDiscount ?? 0)
+                        );
+                        $totalItemPrice = $pricing['line_total'];
+                        $itemQuantity = $pricing['quantity'];
                         if(!empty($item['product_extra'])){
                             $productExtra = json_decode($item['product_extra'], true);
                         }

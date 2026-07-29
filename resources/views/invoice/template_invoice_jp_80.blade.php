@@ -298,14 +298,19 @@
                     @foreach ($payment['payment_details'] as $item)
                         @php
                             $tax = $item['products']['vat'];
-                            $itemVat = $tax / 100;
+                            $pricing = \App\Services\ReceiptItemPricing::resolve(
+                                $item,
+                                (bool) $is_tax_included,
+                                (float) ($seniorDiscount ?? 0)
+                            );
                             $isSeniorExempt = ($seniorDiscount ?? 0) > 0;
-                            $totalItemPrice = $is_tax_included == 1 ? ($isSeniorExempt ? round($item['total_price'] / (1 + $itemVat)) : $item['total_price']) : round($item['total_price'] / (1 + $itemVat));
+                            $totalItemPrice = $pricing['line_total'];
+                            $itemTax = $pricing['tax_amount'];
                             $productExtra = [];
                             if(!empty($item['product_extra'])){
                                 $productExtra = json_decode($item['product_extra'], true);
                             }
-                            $itemQuantity = $item['quantity'];
+                            $itemQuantity = $pricing['quantity'];
                             $extraLines = [];
                             $extrasTotal = 0;
                             if (!empty($productExtra) && !$isSeniorExempt) {
@@ -323,10 +328,10 @@
                             $baseTotal = $isSeniorExempt ? $totalItemPrice : max(0, $totalItemPrice - $extrasTotal);
                             if(array_key_exists($tax, $taxArray)){
                                 $taxArray[$tax]['total_price'] += $totalItemPrice;
-                                $taxArray[$tax]['tax_amount'] += $item['tax_amount'];
+                                $taxArray[$tax]['tax_amount'] += $itemTax;
                             } else {
                                 $taxArray[$tax]['total_price'] = $totalItemPrice;
-                                $taxArray[$tax]['tax_amount'] = $item['tax_amount'];
+                                $taxArray[$tax]['tax_amount'] = $itemTax;
                             }
                             $taxNote = '';
                             if($tax < 10){
