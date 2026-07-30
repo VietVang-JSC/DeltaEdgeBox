@@ -57,6 +57,7 @@ class TableController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'id' => ['required', 'integer', 'min:1'],
+            'user_id' => $this->userValidationRules($request),
         ]);
 
         if ($validator->fails()) {
@@ -166,6 +167,7 @@ class TableController extends Controller
         $validator = Validator::make($request->all(), [
             'id' => ['required', 'integer', 'min:1'],
             'listitem' => ['required'],
+            'user_id' => $this->userValidationRules($request),
         ]);
 
         if ($validator->fails()) {
@@ -233,6 +235,7 @@ class TableController extends Controller
         $validator = Validator::make($request->all(), [
             'old_id_table' => ['required', 'integer', 'min:1'],
             'new_id_table' => ['required', 'integer', 'min:1', 'different:old_id_table'],
+            'user_id' => $this->userValidationRules($request),
         ]);
 
         if ($validator->fails()) {
@@ -601,7 +604,33 @@ class TableController extends Controller
 
     private function userId(Request $request): int
     {
-        return (int) $request->input('user_id', 1);
+        if (!$request->filled('user_id')) {
+            throw new \InvalidArgumentException('user_id is required');
+        }
+
+        return (int) $request->input('user_id');
+    }
+
+    private function userValidationRules(Request $request): array
+    {
+        app()->setLocale($request->input('isCheckLanguage', 'vi'));
+        $storeId = $this->storeId($request);
+
+        return [
+            'required',
+            'integer',
+            'min:1',
+            function (string $attribute, $value, \Closure $fail) use ($storeId) {
+                $belongsToStore = User::query()
+                    ->whereKey((int) $value)
+                    ->where('store_id', $storeId)
+                    ->exists();
+
+                if (!$belongsToStore) {
+                    $fail(__('api.user_not_in_current_store'));
+                }
+            },
+        ];
     }
 
     private function success(string $message, array $payload = [], int $statusCode = 200)
