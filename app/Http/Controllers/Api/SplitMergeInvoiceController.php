@@ -468,6 +468,10 @@ class SplitMergeInvoiceController extends Controller
 
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
+        $storeId = (int) $filters['store_id'];
+        $resolvedUserId = $this->resolveUserForStore($storeId, $filters['user_id'] ?? null, $originalInvoice->user_id);
+        $resolvedAdminId = $this->resolveUserForStore($storeId, $filters['admin_id'] ?? null, $originalInvoice->admin_id ?: $resolvedUserId);
+
         $paramCreatePayment = [
             "reason" => $filters['reason'] ?? null,
             "customer_id" => $filters['customer_id'] ?? null,
@@ -481,10 +485,10 @@ class SplitMergeInvoiceController extends Controller
             "status" => 1, // Paid
             "surcharge_reason" => $filters['surcharge_reason'] ?? null,
             "amount_received" => $filters['amount_received'] ?? null,
-            "admin_id" => $filters['admin_id'] ?? 1,
-            "user_id" => $originalInvoice->user_id,
+            "admin_id" => $resolvedAdminId,
+            "user_id" => $resolvedUserId,
             "payment_code" => $paymentCode,
-            "store_id" => $filters['store_id'],
+            "store_id" => $storeId,
             "table_id" => $originalInvoice->table_id,
             "parent_id" => $originalInvoice->id,
             "valuetotal" => $valuetotal,
@@ -807,8 +811,9 @@ class SplitMergeInvoiceController extends Controller
             }
         }
 
-        $userId = $filters['user_id'] ?? ($originalInvoice ? $originalInvoice->user_id : 1);
-        $adminId = $filters['admin_id'] ?? ($originalInvoice ? $originalInvoice->admin_id : 1);
+        $storeId = (int) $filters['store_id'];
+        $userId = $this->resolveUserForStore($storeId, $filters['user_id'] ?? null, $originalInvoice ? $originalInvoice->user_id : null);
+        $adminId = $this->resolveUserForStore($storeId, $filters['admin_id'] ?? null, $originalInvoice ? $originalInvoice->admin_id : $userId);
         $paymentCode = 'EDGE-' . date('YmdHis') . '-' . random_int(1000, 9999);
 
         return [
@@ -827,7 +832,7 @@ class SplitMergeInvoiceController extends Controller
             "admin_id" => $adminId,
             "user_id" => $userId,
             "payment_code" => $paymentCode,
-            "store_id" => $filters['store_id'],
+            "store_id" => $storeId,
             "table_id" => $filters['target_table_id'],
             "valuetotal" => $totals['total_value'],
             "total_tax" => $totals['total_tax'],
@@ -1515,5 +1520,21 @@ class SplitMergeInvoiceController extends Controller
         }
 
         return $decoded;
+    }
+
+    private function resolveUserForStore(int $storeId, $requestedUserId = null, $originalUserId = null): int
+    {
+        if ($requestedUserId && \App\Models\User::where('store_id', $storeId)->where('id', (int) $requestedUserId)->exists()) {
+            return (int) $requestedUserId;
+        }
+        if ($originalUserId && \App\Models\User::where('store_id', $storeId)->where('id', (int) $originalUserId)->exists()) {
+            return (int) $originalUserId;
+        }
+        $storeAdmin = \App\Models\User::where('store_id', $storeId)->where('role', 'admin')->orderBy('id')->first();
+        if ($storeAdmin) {
+            return (int) $storeAdmin->id;
+        }
+        $storeUser = \App\Models\User::where('store_id', $storeId)->orderBy('id')->first();
+        return $storeUser ? (int) $storeUser->id : ($requestedUserId ? (int) $requestedUserId : 1);
     }
 }

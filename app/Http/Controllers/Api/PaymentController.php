@@ -78,7 +78,7 @@ class PaymentController extends Controller
                     $status = self::STATUS_PAYMENT_PENDING;
                 }
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
-                $userId = (int) $request->input('user_id', 1);
+                $userId = $this->resolveStoreUser($storeId, $request->input('user_id'));
                 $paymentTime = now();
                 $paymentCodeTime = $this->storeNow($storeId);
                 $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
@@ -204,7 +204,7 @@ class PaymentController extends Controller
                 } else {
                     $status = $requestedStatus;
                 }
-                $userId = (int) $request->input('user_id', $payment->user_id ?: 1);
+                $userId = $this->resolveStoreUser((int) $payment->store_id, $request->input('user_id', $payment->user_id));
                 $paymentTime = now();
 
                 $updates = [];
@@ -1391,7 +1391,12 @@ class PaymentController extends Controller
     public function getPayment($id)
     {
         try {
-            $payment = Payment::with('details')->where('id', $id)->withTrashed()->first();
+            $storeId = (int) (config('edge_box.store_id') ?? Store::first()?->id ?? 1);
+            $payment = Payment::with('details')
+                ->where('store_id', $storeId)
+                ->where('id', $id)
+                ->withTrashed()
+                ->first();
             if (!$payment) {
                 return response()->json(['status' => false, 'message' => __('api.payment_not_found')], 404);
             }
@@ -1891,5 +1896,18 @@ class PaymentController extends Controller
                 'message' => __('api.ISError'),
             ], 500);
         }
+    }
+
+    private function resolveStoreUser(int $storeId, $requestedUserId = null): int
+    {
+        if ($requestedUserId && User::where('store_id', $storeId)->where('id', (int) $requestedUserId)->exists()) {
+            return (int) $requestedUserId;
+        }
+        $storeAdmin = User::where('store_id', $storeId)->where('role', 'admin')->orderBy('id')->first();
+        if ($storeAdmin) {
+            return (int) $storeAdmin->id;
+        }
+        $storeUser = User::where('store_id', $storeId)->orderBy('id')->first();
+        return $storeUser ? (int) $storeUser->id : ($requestedUserId ? (int) $requestedUserId : 1);
     }
 }
