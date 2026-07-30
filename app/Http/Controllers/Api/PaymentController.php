@@ -78,7 +78,7 @@ class PaymentController extends Controller
                     $status = self::STATUS_PAYMENT_PENDING;
                 }
                 $storeId = (int) $request->input('store_id', config('edge_box.store_id') ?? config('app.store_id'));
-                $userId = (int) $request->input('user_id', 1);
+                $userId = $this->resolveStoreUser($storeId, $request->input('user_id'));
                 $paymentTime = now();
                 $paymentCodeTime = $this->storeNow($storeId);
                 $calculation = $this->buildCalculatedPaymentData($request->input('items'), $storeId, $request->all());
@@ -204,7 +204,7 @@ class PaymentController extends Controller
                 } else {
                     $status = $requestedStatus;
                 }
-                $userId = (int) $request->input('user_id', $payment->user_id ?: 1);
+                $userId = $this->resolveStoreUser((int) $payment->store_id, $request->input('user_id', $payment->user_id));
                 $paymentTime = now();
 
                 $updates = [];
@@ -275,16 +275,13 @@ class PaymentController extends Controller
                 $payment->save();
 
                 if (!empty($itemsInput) && isset($calculation)) {
-                    $payment->details()->delete();
-                    foreach ($calculation['items'] as $item) {
-                        PaymentDetail::create($this->buildPaymentDetailAttributes(
-                            $payment,
-                            $item,
-                            $storeId,
-                            (int) $request->input('admin_id', $payment->admin_id ?: $userId),
-                            $paymentTime
-                        ));
-                    }
+                    $this->reconcilePaymentDetails(
+                        $payment,
+                        $calculation['items'],
+                        $storeId,
+                        (int) $request->input('admin_id', $payment->admin_id ?: $userId),
+                        $paymentTime
+                    );
 
                     if ($oldStatus !== self::STATUS_PAYMENT_ACTIVE && $status === self::STATUS_PAYMENT_ACTIVE) {
                         $this->deductInventoryForPayment($payment, array_values($calculation['items']), $storeId, $userId);
@@ -631,6 +628,43 @@ class PaymentController extends Controller
         }
 
         return (float) $value;
+    }
+
+    private function reconcilePaymentDetails(Payment $payment, array $items, int $storeId, int $adminId, $timestamp): void
+    {
+        $existingByKey = [];
+
+        foreach ($payment->details()->lockForUpdate()->orderByDesc('id')->get() as $detail) {
+            $key = trim((string) ($detail->product_key ?: $detail->product_id));
+
+            if (isset($existingByKey[$key])) {
+                $detail->delete();
+                continue;
+            }
+
+            $existingByKey[$key] = $detail;
+        }
+
+        foreach ($items as $item) {
+            $key = trim((string) ($item['product_key'] ?? $item['product_id'] ?? $item['id'] ?? ''));
+            $item['product_key'] = $key;
+            $attributes = $this->buildPaymentDetailAttributes($payment, $item, $storeId, $adminId, $timestamp);
+
+            if (isset($existingByKey[$key])) {
+                $detail = $existingByKey[$key];
+                unset($attributes['created_at']);
+                $detail->fill($attributes);
+                $detail->save();
+                unset($existingByKey[$key]);
+                continue;
+            }
+
+            PaymentDetail::create($attributes);
+        }
+
+        foreach ($existingByKey as $detail) {
+            $detail->delete();
+        }
     }
 
     private function buildPaymentDetailAttributes(Payment $payment, array $item, int $storeId, int $adminId, $timestamp): array
@@ -1357,7 +1391,12 @@ class PaymentController extends Controller
     public function getPayment($id)
     {
         try {
-            $payment = Payment::with('details')->where('id', $id)->withTrashed()->first();
+            $storeId = (int) (config('edge_box.store_id') ?? Store::first()?->id ?? 1);
+            $payment = Payment::with('details')
+                ->where('store_id', $storeId)
+                ->where('id', $id)
+                ->withTrashed()
+                ->first();
             if (!$payment) {
                 return response()->json(['status' => false, 'message' => __('api.payment_not_found')], 404);
             }
@@ -1859,5 +1898,18 @@ class PaymentController extends Controller
                 'message' => __('api.ISError'),
             ], 500);
         }
+    }
+
+    private function resolveStoreUser(int $storeId, $requestedUserId = null): int
+    {
+        if ($requestedUserId && User::where('store_id', $storeId)->where('id', (int) $requestedUserId)->exists()) {
+            return (int) $requestedUserId;
+        }
+        $storeAdmin = User::where('store_id', $storeId)->where('role', 'admin')->orderBy('id')->first();
+        if ($storeAdmin) {
+            return (int) $storeAdmin->id;
+        }
+        $storeUser = User::where('store_id', $storeId)->orderBy('id')->first();
+        return $storeUser ? (int) $storeUser->id : ($requestedUserId ? (int) $requestedUserId : 1);
     }
 }

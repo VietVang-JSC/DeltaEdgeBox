@@ -6,6 +6,7 @@ use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\Product;
 use App\Models\Store;
+use App\Models\Table;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -157,11 +158,27 @@ class OpenPaymentMigrationService
                 $attributes['updated_at'] = $payment['updated_at'];
             }
 
-            $resolved += Payment::query()
+            $updatedCount = Payment::query()
                 ->where('store_id', $storeId)
                 ->whereKey($localId)
                 ->where('status', 0)
                 ->update($attributes);
+
+            if ($updatedCount > 0 && ($status === 1 || $status === 2)) {
+                // Free up local table when associated payment is paid/resolved on Cloud
+                Table::query()
+                    ->where('store_id', $storeId)
+                    ->where('payment_id', $localId)
+                    ->update([
+                        'status' => 1,
+                        'payment_id' => null,
+                        'listitem' => null,
+                        'userordered' => null,
+                        'number_of_people' => 0,
+                    ]);
+            }
+
+            $resolved += $updatedCount;
         }
 
         return $resolved;

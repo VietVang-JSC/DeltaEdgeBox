@@ -47,8 +47,7 @@ class PaymentDetailObserver
                 table: 'payment_details',
                 operation: $operation,
                 recordId: $paymentDetail->id,
-                data: $data,
-                priority: $operation === 'delete' ? 2 : 1
+                data: $data
             );
         } catch (\Exception $e) {
             Log::error('Failed to queue payment detail for sync', [

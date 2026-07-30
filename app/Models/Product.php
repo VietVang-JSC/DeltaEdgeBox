@@ -98,7 +98,10 @@ class Product extends Model
 
     public function inventory()
     {
-        return $this->hasOne(Inventory::class, 'product_id', 'id')->select('id', 'product_id', 'quantity');
+        $storeId = $this->store_id ?: (config('edge_box.store_id') ?? config('app.store_id'));
+        return $this->hasOne(Inventory::class, 'product_id', 'id')
+            ->where('store_id', $storeId)
+            ->select('id', 'product_id', 'store_id', 'quantity');
     }
 
     public function types()

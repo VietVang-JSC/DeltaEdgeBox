@@ -95,6 +95,7 @@ return [
         '6' => 'Ví điện tử',
     ],
     'table_in_use' => 'Bàn đang được sử dụng bởi :name.',
+    'user_not_in_current_store' => 'Người dùng không thuộc cửa hàng hiện tại.',
     'QR activated successfully' => 'QR đã được kích hoạt',
     'QR deactivated successfully' => 'QR đã được vô hiệu hóa',
     'Table changed successfully' => 'Chuyển bàn thành công',

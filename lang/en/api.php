@@ -76,6 +76,7 @@ return [
         '6' => 'e-wallet',
     ],
     'table_in_use' => 'The table is being used by :name.',
+    'user_not_in_current_store' => 'The user does not belong to the current store.',
     'QR activated successfully' => 'QR activated successfully',
     'QR deactivated successfully' => 'QR deactivated successfully',
     'Table changed successfully' => 'Table changed successfully',

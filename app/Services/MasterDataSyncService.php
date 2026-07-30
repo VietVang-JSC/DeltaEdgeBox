@@ -129,7 +129,7 @@ class MasterDataSyncService
                 DB::beginTransaction();
                 Table::withoutEvents(function () use ($data) {
                     foreach ($data['tables'] ?? [] as $table) {
-                        $localTable = Table::where('store_id', $this->storeId)->find($table['id']);
+                        $localTable = Table::withTrashed()->find($table['id']);
 
                         $masterPayload = [
                             'store_id'         => $table['store_id'],
@@ -145,6 +145,9 @@ class MasterDataSyncService
                         ];
 
                         if ($localTable) {
+                            if ($localTable->trashed()) {
+                                $localTable->restore();
+                            }
                             $localTable->update($masterPayload);
                         } else {
                             Table::create(array_merge(
@@ -479,7 +482,7 @@ class MasterDataSyncService
                         if (Product::where('id', $localProductId)->exists()) {
                             Inventory::updateOrCreate(
                                 [
-                                    'store_id' => $inv['store_id'],
+                                    'store_id' => $this->storeId,
                                     'product_id' => $localProductId,
                                 ],
                                 [
@@ -522,7 +525,7 @@ class MasterDataSyncService
                             InventoryHistory::updateOrCreate(
                                 ['id' => $ih['id']],
                                 [
-                                    'store_id' => $ih['store_id'],
+                                    'store_id' => $this->storeId,
                                     'product_id' => $localProductId,
                                     'input_id' => $ih['input_id'],
                                     'input_code' => $ih['input_code'],

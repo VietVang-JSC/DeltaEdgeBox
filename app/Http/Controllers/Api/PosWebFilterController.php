@@ -608,9 +608,7 @@ class PosWebFilterController extends Controller
     private function tables(int $storeId): array
     {
         return Table::with('payment.details.product')
-            ->where(function ($query) use ($storeId) {
-                $query->whereNull('store_id')->orWhere('store_id', $storeId);
-            })
+            ->where('store_id', $storeId)
             ->where('status', '!=', -1)
             ->get()
             ->map(function (Table $table) {
