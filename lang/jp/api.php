@@ -73,6 +73,7 @@ return [
         '6' => '電子ウォレット',
     ],
     'table_in_use' => ':nameがテーブルを使用中です。',
+    'user_not_in_current_store' => 'ユーザーは現在の店舗に所属していません。',
     'No_date' => '開始日と終了日を両方入力してください',
     'QR activated successfully' => 'QRコードが有効化されました',
     'QR deactivated successfully' => 'QRコードが無効化されました',
