@@ -482,7 +482,7 @@ class MasterDataSyncService
                         if (Product::where('id', $localProductId)->exists()) {
                             Inventory::updateOrCreate(
                                 [
-                                    'store_id' => $inv['store_id'],
+                                    'store_id' => $this->storeId,
                                     'product_id' => $localProductId,
                                 ],
                                 [
@@ -525,7 +525,7 @@ class MasterDataSyncService
                             InventoryHistory::updateOrCreate(
                                 ['id' => $ih['id']],
                                 [
-                                    'store_id' => $ih['store_id'],
+                                    'store_id' => $this->storeId,
                                     'product_id' => $localProductId,
                                     'input_id' => $ih['input_id'],
                                     'input_code' => $ih['input_code'],
