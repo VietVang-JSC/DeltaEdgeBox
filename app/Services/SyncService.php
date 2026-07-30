@@ -2,12 +2,13 @@
 
 namespace App\Services;
 
-use App\Models\SyncQueue;
-use App\Models\SyncMetadata;
-use App\Models\SyncConflict;
 use App\Models\Store;
-use Illuminate\Support\Facades\Http;
+use App\Models\SyncConflict;
+use App\Models\SyncMetadata;
+use App\Models\SyncQueue;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class SyncService
@@ -26,13 +27,17 @@ class SyncService
 
     // mutation moi da duoc gop vao failed queue hien tai
     private const FAILED_LIFECYCLE_ABSORBED = 'absorbed';
-    //Queue cu duoc cap nhat payload/operation moi nhat, khong tao queue moi
+
+    // Queue cu duoc cap nhat payload/operation moi nhat, khong tao queue moi
     private const FAILED_LIFECYCLE_PREREQUISITE_REACTIVATED = 'prerequisite_reactivated';
-    //Khong co queue failed nao duoc cap nhat, tao queue moi
+
+    // Khong co queue failed nao duoc cap nhat, tao queue moi
     private const FAILED_LIFECYCLE_NO_ACTION = 'no_action';
 
     protected $cloudApiUrl;
+
     protected $apiKey;
+
     protected $storeId;
 
     public function __construct()
@@ -66,7 +71,7 @@ class SyncService
             'X-Store-ID' => $storeId,
             'X-Store-API-Key' => $apiKey,
         ])->timeout(30)->post(
-            rtrim($this->cloudApiUrl, '/') . "/api/cloud/sync-conflicts/{$conflict->cloud_conflict_id}/resolve",
+            rtrim($this->cloudApiUrl, '/')."/api/cloud/sync-conflicts/{$conflict->cloud_conflict_id}/resolve",
             $request
         );
 
@@ -77,6 +82,7 @@ class SyncService
 
         return $body;
     }
+
     /**
      * Queue record for sync
      */
@@ -172,13 +178,15 @@ class SyncService
         $this->recoverStaleSyncingItems();
 
         // Check internet connectivity first
-        if (!$this->isOnline()) {
+        if (! $this->isOnline()) {
             Log::info('No internet connection, skipping sync');
+
             return ['success' => 0, 'failed' => 0, 'skipped' => true];
         }
 
         // Get pending items, ordered by priority and age
-        $items = SyncQueue::where(function ($query) {
+        $items = SyncQueue::where('store_id', $this->storeId)
+            ->where(function ($query) {
                 $query->where('status', 'pending')
                     ->orWhere(function ($retryQuery) {
                         $retryQuery->where('status', 'retrying')
@@ -218,7 +226,7 @@ class SyncService
                 $results['failed']++;
                 $results['errors'][] = [
                     'id' => $item->id,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ];
             }
         }
@@ -265,8 +273,8 @@ class SyncService
             }
 
             // Build API endpoint
-            $endpoint = "/api/cloud/sync";
-            $url = rtrim($this->cloudApiUrl, '/') . $endpoint;
+            $endpoint = '/api/cloud/sync';
+            $url = rtrim($this->cloudApiUrl, '/').$endpoint;
 
             // Send to cloud
             $response = Http::withHeaders([
@@ -316,7 +324,7 @@ class SyncService
                 if (array_key_exists('success', $responseBody) && $responseBody['success'] === false) {
                     $this->handleSyncFailure(
                         $item,
-                        'Cloud sync rejected item: ' . $response->body(),
+                        'Cloud sync rejected item: '.$response->body(),
                         $response->status(),
                         $responseBody
                     );
@@ -381,14 +389,14 @@ class SyncService
 
     protected function shouldDeferForMissingDependency(SyncQueue $item): bool
     {
-        if (!in_array($item->table_name, ['payment_details', 'table', 'tables'], true)) {
+        if (! in_array($item->table_name, ['payment_details', 'table', 'tables'], true)) {
             return false;
         }
 
         $payload = json_decode($item->payload, true) ?: [];
         $paymentId = $payload['payment_id'] ?? null;
 
-        if (!$paymentId) {
+        if (! $paymentId) {
             return false;
         }
 
@@ -425,7 +433,7 @@ class SyncService
      */
     protected function hasSyncConflicts(array $responseBody): bool
     {
-        if (!empty($responseBody['conflicts'])) {
+        if (! empty($responseBody['conflicts'])) {
             return true;
         }
 
@@ -592,6 +600,7 @@ class SyncService
 
         return ['type' => self::FAILURE_TRANSIENT, 'code' => 'SYNC_TRANSIENT_FAILURE', 'retryable' => true];
     }
+
     protected function incrementPendingCount($storeId): void
     {
         SyncMetadata::firstOrCreate(
@@ -638,7 +647,8 @@ class SyncService
 
     protected function recoverStaleSyncingItems(): int
     {
-        return SyncQueue::where('status', 'syncing')
+        return SyncQueue::where('store_id', $this->storeId)
+            ->where('status', 'syncing')
             ->where('updated_at', '<=', now()->subMinutes(2))
             ->update([
                 'status' => 'retrying',
@@ -650,7 +660,7 @@ class SyncService
             ]);
     }
 
-    //xu ly cac queue dang pending, retrying, syncing
+    // xu ly cac queue dang pending, retrying, syncing
     protected function coalesceQueuedMutation(
         SyncQueue $current,
         string $operation,
@@ -758,7 +768,7 @@ class SyncService
         return false;
     }
 
-    //ghi log khi cac mutation duoc gop
+    // ghi log khi cac mutation duoc gop
     protected function logCoalescedMutation(
         SyncQueue $current,
         string $incomingOperation,
@@ -776,14 +786,14 @@ class SyncService
         ]);
     }
 
-    //so sanh hai payload JSON de xac dinh xem co thay doi gi khong
+    // so sanh hai payload JSON de xac dinh xem co thay doi gi khong
     protected function payloadsMatch(string $currentPayload, string $newPayload): bool
     {
         return (json_decode($currentPayload, true) ?: [])
             === (json_decode($newPayload, true) ?: []);
     }
 
-    //xu ly mutation moi khi co conflict chua giai quyet
+    // xu ly mutation moi khi co conflict chua giai quyet
     protected function coalesceIntoUnresolvedConflict(
         $storeId,
         string $table,
@@ -859,7 +869,7 @@ class SyncService
         return true;
     }
 
-    //xu ly cac queue faild khong bi unresolved conflict
+    // xu ly cac queue faild khong bi unresolved conflict
     protected function reactivateFailedLifecycleForMutation(
         $storeId,
         string $table,
@@ -999,7 +1009,7 @@ class SyncService
             ->whereIn('status', ['pending', 'retrying', 'syncing'])
             ->exists();
 
-        if (!$hasNewerMutation) {
+        if (! $hasNewerMutation) {
             return false;
         }
 
@@ -1052,7 +1062,7 @@ class SyncService
             ->where('synced_at', '<', now()->subDays(30))
             ->delete();
 
-        Log::info("Cleanup completed", [
+        Log::info('Cleanup completed', [
             'deleted_queue_items' => $deletedQueue,
             'deleted_logs' => $deletedLogs,
         ]);
@@ -1064,7 +1074,7 @@ class SyncService
     public function isOnline(): bool
     {
         try {
-            $statusUrl = rtrim($this->cloudApiUrl, '/') . "/api/health";
+            $statusUrl = rtrim($this->cloudApiUrl, '/').'/api/health';
             $statusResponse = Http::withHeaders([
                 'X-Edge-Api-Key' => $this->apiKey,
                 'X-Store-ID' => $this->storeId,
@@ -1074,6 +1084,11 @@ class SyncService
         } catch (\Exception $e) {
             return false;
         }
+    }
+
+    public function getStoreId()
+    {
+        return $this->storeId;
     }
 
     /**
@@ -1087,16 +1102,18 @@ class SyncService
             ->groupBy('status')
             ->pluck('total', 'status');
         $cloudStatus = null;
-        try{  
-                $response = Http::withHeaders([
+        try {
+            $response = Http::withHeaders([
                 'Authorization' => "Bearer {$this->apiKey}",
-                'X-Store-ID'    => $this->storeId,
-            ])->timeout(5)->get(rtrim($this->cloudApiUrl, '/') . '/api/cloud/sync-status');
+                'X-Store-ID' => $this->storeId,
+            ])->timeout(5)->get(rtrim($this->cloudApiUrl, '/').'/api/cloud/sync-status');
 
             if ($response->successful()) {
                 $cloudStatus = $response->json();
             }
-        } catch (\Exception) {}
+        } catch (\Exception) {
+        }
+
         return [
             'store_id' => $this->storeId,
             'is_online' => $this->isOnline(),
@@ -1114,7 +1131,7 @@ class SyncService
     }
 
     // Bulk upload for large datasets (e.g. initial sync or re-sync)
-    public function processBulkUpload(\Illuminate\Support\Collection $items): array
+    public function processBulkUpload(Collection $items): array
     {
         $ids = $items->pluck('id')->toArray();
         SyncQueue::whereIn('id', $ids)->update(['status' => 'syncing']);
@@ -1123,30 +1140,32 @@ class SyncService
             'Authorization' => "Bearer {$this->apiKey}",
             'Content-Type' => 'application/json',
             'X-Store-ID' => $this->storeId,
-        ])->timeout(30)->post(rtrim($this->cloudApiUrl, '/') . '/api/EdgeBox/bulk-upload', [
+        ])->timeout(30)->post(rtrim($this->cloudApiUrl, '/').'/api/EdgeBox/bulk-upload', [
             'store_id' => $this->storeId,
-            'records'  => $items->map(fn($item) => [
-                'queue_id'   => $item->id,
+            'records' => $items->map(fn ($item) => [
+                'queue_id' => $item->id,
                 'table_name' => $item->table_name,
-                'operation'  => $item->operation,
-                'record_id'  => $item->record_id,
-                'data'       => json_decode($item->payload, true),
-                'timestamp'  => now()->toISOString(),
+                'operation' => $item->operation,
+                'record_id' => $item->record_id,
+                'data' => json_decode($item->payload, true),
+                'timestamp' => now()->toISOString(),
             ])->toArray(),
         ]);
 
         if ($response->successful()) {
             SyncQueue::whereIn('id', $ids)->update([
-                'status'    => 'synced',
+                'status' => 'synced',
                 'synced_at' => now(),
             ]);
             SyncMetadata::where('store_id', $this->storeId)
                 ->decrement('pending_records_count', count($ids));
+
             return ['success' => count($ids), 'failed' => 0];
         }
 
         // On failure, reset status to pending for retry
         SyncQueue::whereIn('id', $ids)->update(['status' => 'pending']);
+
         return ['success' => 0, 'failed' => count($ids)];
     }
 
@@ -1158,7 +1177,7 @@ class SyncService
         $startTime = microtime(true);
 
         try {
-            $url = rtrim($this->cloudApiUrl, '/') . '/api/admin/input/addInvoiceInput';
+            $url = rtrim($this->cloudApiUrl, '/').'/api/admin/input/addInvoiceInput';
             $payload = json_decode($item->payload, true);
             $inputCode = $payload['input_code'] ?? '';
 
@@ -1182,13 +1201,13 @@ class SyncService
                     $cloudInvoiceCode = $invoice['input_code'] ?? '';
 
                     // Cập nhật record local history với real ID và real code từ Cloud
-                    if ($cloudInvoiceId > 0 && !empty($inputCode)) {
+                    if ($cloudInvoiceId > 0 && ! empty($inputCode)) {
                         DB::table('inventory_histories')
                             ->where('input_code', $inputCode)
                             ->where('store_id', $item->store_id)
                             ->update([
                                 'input_id' => $cloudInvoiceId,
-                                'input_code' => $cloudInvoiceCode
+                                'input_code' => $cloudInvoiceCode,
                             ]);
                         Log::info("Updated local histories from Code: {$inputCode} to Cloud Code: {$cloudInvoiceCode}, ID: {$cloudInvoiceId}");
                     }
@@ -1208,7 +1227,7 @@ class SyncService
 
                     return true;
                 } else {
-                    throw new \Exception('Cloud rejected offline check-in sync: ' . ($responseBody['message'] ?? $response->body()));
+                    throw new \Exception('Cloud rejected offline check-in sync: '.($responseBody['message'] ?? $response->body()));
                 }
             } else {
                 throw new \Exception("HTTP {$response->status()}: {$response->body()}");
@@ -1222,7 +1241,7 @@ class SyncService
             ]);
 
             $this->logSync($item, 'failed', $e->getMessage(), $duration);
-            Log::error("Failed to sync offline check-in: " . $e->getMessage());
+            Log::error('Failed to sync offline check-in: '.$e->getMessage());
 
             return false;
         }
@@ -1237,7 +1256,7 @@ class SyncService
         $startTime = microtime(true);
 
         try {
-            $url = rtrim($this->cloudApiUrl, '/') . '/api/admin/output/create_export_invoice';
+            $url = rtrim($this->cloudApiUrl, '/').'/api/admin/output/create_export_invoice';
             $payload = json_decode($item->payload, true);
             $outputCode = $payload['output_code'] ?? '';
 
@@ -1261,13 +1280,13 @@ class SyncService
                     $cloudInvoiceCode = $invoice['output_code'] ?? '';
 
                     // Cập nhật record local history với real ID và real code từ Cloud
-                    if ($cloudInvoiceId > 0 && !empty($outputCode)) {
+                    if ($cloudInvoiceId > 0 && ! empty($outputCode)) {
                         DB::table('inventory_histories')
                             ->where('input_code', $outputCode)
                             ->where('store_id', $item->store_id)
                             ->update([
                                 'input_id' => $cloudInvoiceId,
-                                'input_code' => $cloudInvoiceCode
+                                'input_code' => $cloudInvoiceCode,
                             ]);
                         Log::channel('edge')->info("Updated local histories from Code: {$outputCode} to Cloud Code: {$cloudInvoiceCode}, ID: {$cloudInvoiceId}");
                     }
@@ -1287,7 +1306,7 @@ class SyncService
 
                     return true;
                 } else {
-                    throw new \Exception('Cloud rejected offline checkout sync: ' . ($responseBody['message'] ?? $response->body()));
+                    throw new \Exception('Cloud rejected offline checkout sync: '.($responseBody['message'] ?? $response->body()));
                 }
             } else {
                 throw new \Exception("HTTP {$response->status()}: {$response->body()}");
@@ -1301,7 +1320,7 @@ class SyncService
             ]);
 
             $this->logSync($item, 'failed', $e->getMessage(), $duration);
-            Log::channel('edge')->error("Failed to sync offline checkout: " . $e->getMessage());
+            Log::channel('edge')->error('Failed to sync offline checkout: '.$e->getMessage());
 
             return false;
         }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SyncConflict;
 use App\Models\SyncQueue;
 use App\Services\SyncService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -22,7 +23,7 @@ class SyncStatusController extends Controller
     /**
      * Get current sync status
      */
-    public function index(): \Illuminate\Http\JsonResponse
+    public function index(): JsonResponse
     {
         return response()->json($this->syncService->getSyncStatus());
     }
@@ -30,13 +31,17 @@ class SyncStatusController extends Controller
     /**
      * Get pending sync queue count
      */
-    public function pending(): \Illuminate\Http\JsonResponse
+    public function pending(): JsonResponse
     {
+        $storeId = $this->syncService->getStoreId();
+
         $pendingCount = DB::table('sync_queues')
+            ->where('store_id', $storeId)
             ->where('status', 'pending')
             ->count();
 
         $retryingCount = DB::table('sync_queues')
+            ->where('store_id', $storeId)
             ->where('status', 'retrying')
             ->where('next_retry_at', '<=', now())
             ->count();
@@ -51,10 +56,12 @@ class SyncStatusController extends Controller
     /**
      * Get recent sync logs
      */
-    public function logs(Request $request): \Illuminate\Http\JsonResponse
+    public function logs(Request $request): JsonResponse
     {
+        $storeId = $this->syncService->getStoreId();
         $limit = $request->input('limit', 50);
         $logs = DB::table('sync_logs')
+            ->where('store_id', $storeId)
             ->orderBy('synced_at', 'desc')
             ->limit($limit)
             ->get();
@@ -65,22 +72,23 @@ class SyncStatusController extends Controller
     /**
      * Get sync queue details by status for the FE diagnostics modal.
      */
-    public function queue(Request $request): \Illuminate\Http\JsonResponse
+    public function queue(Request $request): JsonResponse
     {
+        $storeId = $this->syncService->getStoreId();
         $type = $request->input('type', 'auto');
         $limit = min(max((int) $request->input('limit', 25), 1), 100);
         $page = max((int) $request->input('page', 1), 1);
         $allowedTypes = ['auto', 'pending', 'retrying', 'failed', 'conflicts', 'logs'];
 
-        if (!in_array($type, $allowedTypes, true)) {
+        if (! in_array($type, $allowedTypes, true)) {
             $type = 'auto';
         }
 
         $counts = [
-            'pending' => DB::table('sync_queues')->where('status', 'pending')->count(),
-            'retrying' => DB::table('sync_queues')->where('status', 'retrying')->count(),
-            'failed' => DB::table('sync_queues')->where('status', 'failed')->count(),
-            'conflicts' => DB::table('sync_conflicts')->where('resolution_status', 'unresolved')->count(),
+            'pending' => DB::table('sync_queues')->where('store_id', $storeId)->where('status', 'pending')->count(),
+            'retrying' => DB::table('sync_queues')->where('store_id', $storeId)->where('status', 'retrying')->count(),
+            'failed' => DB::table('sync_queues')->where('store_id', $storeId)->where('status', 'failed')->count(),
+            'conflicts' => DB::table('sync_conflicts')->where('store_id', $storeId)->where('resolution_status', 'unresolved')->count(),
         ];
 
         if ($type === 'auto') {
@@ -101,6 +109,7 @@ class SyncStatusController extends Controller
 
         if ($type === 'conflicts') {
             $items = DB::table('sync_conflicts')
+                ->where('store_id', $storeId)
                 ->where('resolution_status', 'unresolved')
                 ->orderByDesc('created_at')
                 ->forPage($page, $limit)
@@ -116,8 +125,9 @@ class SyncStatusController extends Controller
                     'created_at',
                 ]);
         } elseif ($type === 'logs') {
-            $total = DB::table('sync_logs')->count();
+            $total = DB::table('sync_logs')->where('store_id', $storeId)->count();
             $items = DB::table('sync_logs')
+                ->where('store_id', $storeId)
                 ->orderByDesc('synced_at')
                 ->forPage($page, $limit)
                 ->get([
@@ -133,6 +143,7 @@ class SyncStatusController extends Controller
                 ]);
         } else {
             $query = DB::table('sync_queues')
+                ->where('store_id', $storeId)
                 ->where('status', $type);
 
             if ($type === 'pending') {
@@ -188,7 +199,7 @@ class SyncStatusController extends Controller
     /**
      * Trigger manual sync
      */
-    public function trigger(): \Illuminate\Http\JsonResponse
+    public function trigger(): JsonResponse
     {
         try {
             $result = $this->syncService->processQueue(50);
@@ -277,7 +288,7 @@ class SyncStatusController extends Controller
         $data = array_diff_key($cloudData, array_flip($blockedFields));
 
         $allowedFieldsByTable = $this->allowedFieldsByTable();
-        if (!isset($allowedFieldsByTable[$tableName])) {
+        if (! isset($allowedFieldsByTable[$tableName])) {
             return [];
         }
 
@@ -288,47 +299,60 @@ class SyncStatusController extends Controller
      * [EDGE ACTION] Reset một sync_queue item về trạng thái pending để retry ngay.
      * Chỉ áp dụng cho item có status = 'failed' hoặc 'retrying'.
      */
-    public function retryQueueItem(Request $request): \Illuminate\Http\JsonResponse
+    public function retryQueueItem(Request $request): JsonResponse
     {
         $id = (int) $request->input('id');
-        Log::info('[SyncAction] retryQueueItem: received request', ['queue_id' => $id]);
+        $storeId = $this->syncService->getStoreId();
+        Log::info('[SyncAction] retryQueueItem: received request', [
+            'queue_id' => $id,
+            'store_id' => $storeId,
+        ]);
 
         if ($id <= 0) {
             Log::warning('[SyncAction] retryQueueItem: invalid id', ['id' => $id]);
+
             return response()->json(['success' => false, 'message' => 'Invalid queue item ID'], 422);
         }
 
         try {
-            $item = DB::table('sync_queues')->where('id', $id)->first();
+            $item = DB::table('sync_queues')
+                ->where('id', $id)
+                ->where('store_id', $storeId)
+                ->first();
 
-            if (!$item) {
+            if (! $item) {
                 Log::warning('[SyncAction] retryQueueItem: item not found', ['id' => $id]);
+
                 return response()->json(['success' => false, 'message' => 'Queue item not found'], 404);
             }
 
-            if (!in_array($item->status, ['failed', 'retrying'], true)) {
+            if (! in_array($item->status, ['failed', 'retrying'], true)) {
                 Log::warning('[SyncAction] retryQueueItem: item status cannot be retried', [
                     'id' => $id,
                     'status' => $item->status,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => "Item status '{$item->status}' cannot be retried. Only 'failed' or 'retrying' items can be retried.",
                 ], 422);
             }
 
-            $updated = DB::table('sync_queues')->where('id', $id)->update([
-                'status' => 'pending',
-                'retry_count' => 0,
-                'priority' => 2, // reset về pending và đẩy lên ưu tiên cao để xử lý ngay
-                'last_error' => null,
-                'failure_type' => null,
-                'error_code' => null,
-                'retryable' => null,
-                'response_code' => null,
-                'next_retry_at' => null,
-                'updated_at' => now(),
-            ]);
+            $updated = DB::table('sync_queues')
+                ->where('id', $id)
+                ->where('store_id', $storeId)
+                ->update([
+                    'status' => 'pending',
+                    'retry_count' => 0,
+                    'priority' => 2, // reset về pending và đẩy lên ưu tiên cao để xử lý ngay
+                    'last_error' => null,
+                    'failure_type' => null,
+                    'error_code' => null,
+                    'retryable' => null,
+                    'response_code' => null,
+                    'next_retry_at' => null,
+                    'updated_at' => now(),
+                ]);
 
             Log::info('[SyncAction] retryQueueItem: item reset to pending', [
                 'id' => $id,
@@ -348,6 +372,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
+
             return response()->json(['success' => false, 'message' => __('sync.err_server_error')], 500);
         }
     }
@@ -355,19 +380,26 @@ class SyncStatusController extends Controller
     /**
      * [EDGE ACTION] Push a pending sync_queue item to urgent priority.
      */
-    public function prioritizeQueueItem(Request $request): \Illuminate\Http\JsonResponse
+    public function prioritizeQueueItem(Request $request): JsonResponse
     {
         $id = (int) $request->input('id');
-        Log::info('[SyncAction] prioritizeQueueItem: received request', ['queue_id' => $id]);
+        $storeId = $this->syncService->getStoreId();
+        Log::info('[SyncAction] prioritizeQueueItem: received request', [
+            'queue_id' => $id,
+            'store_id' => $storeId,
+        ]);
 
         if ($id <= 0) {
             return response()->json(['success' => false, 'message' => __('sync.err_invalid_queue_id')], 422);
         }
 
         try {
-            $item = DB::table('sync_queues')->where('id', $id)->first();
+            $item = DB::table('sync_queues')
+                ->where('id', $id)
+                ->where('store_id', $storeId)
+                ->first();
 
-            if (!$item) {
+            if (! $item) {
                 return response()->json(['success' => false, 'message' => __('sync.err_queue_not_found')], 404);
             }
 
@@ -378,10 +410,13 @@ class SyncStatusController extends Controller
                 ], 422);
             }
 
-            $updated = DB::table('sync_queues')->where('id', $id)->update([
-                'priority' => 2,
-                'updated_at' => now(),
-            ]);
+            $updated = DB::table('sync_queues')
+                ->where('id', $id)
+                ->where('store_id', $storeId)
+                ->update([
+                    'priority' => 2,
+                    'updated_at' => now(),
+                ]);
 
             Log::info('[SyncAction] prioritizeQueueItem: item prioritized', [
                 'id' => $id,
@@ -399,6 +434,7 @@ class SyncStatusController extends Controller
                 'id' => $id,
                 'error' => $th->getMessage(),
             ]);
+
             return response()->json(['success' => false, 'message' => __('sync.err_server_error')], 500);
         }
     }
@@ -407,21 +443,30 @@ class SyncStatusController extends Controller
      * [EDGE ACTION] Đánh dấu một sync_queue item có status 'failed' là 'dismissed'.
      * Hành động này không xoá bản ghi, chỉ đổi trạng thái để dừng retry.
      */
-    public function dismissFailedItem(Request $request): \Illuminate\Http\JsonResponse
+    public function dismissFailedItem(Request $request): JsonResponse
     {
         $id = (int) $request->input('id');
-        Log::info('[SyncAction] dismissFailedItem: received request', ['queue_id' => $id]);
+        $storeId = $this->syncService->getStoreId();
+        Log::info('[SyncAction] dismissFailedItem: received request', [
+            'queue_id' => $id,
+            'store_id' => $storeId,
+        ]);
 
         if ($id <= 0) {
             Log::warning('[SyncAction] dismissFailedItem: invalid id', ['id' => $id]);
+
             return response()->json(['success' => false, 'message' => __('sync.err_invalid_queue_id')], 422);
         }
 
         try {
-            $item = DB::table('sync_queues')->where('id', $id)->first();
+            $item = DB::table('sync_queues')
+                ->where('id', $id)
+                ->where('store_id', $storeId)
+                ->first();
 
-            if (!$item) {
+            if (! $item) {
                 Log::warning('[SyncAction] dismissFailedItem: item not found', ['id' => $id]);
+
                 return response()->json(['success' => false, 'message' => __('sync.err_queue_not_found')], 404);
             }
 
@@ -430,16 +475,20 @@ class SyncStatusController extends Controller
                     'id' => $id,
                     'status' => $item->status,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => __('sync.err_only_failed_dismissed'),
                 ], 422);
             }
 
-            $updated = DB::table('sync_queues')->where('id', $id)->update([
-                'status' => 'dismissed',
-                'updated_at' => now(),
-            ]);
+            $updated = DB::table('sync_queues')
+                ->where('id', $id)
+                ->where('store_id', $storeId)
+                ->update([
+                    'status' => 'dismissed',
+                    'updated_at' => now(),
+                ]);
 
             Log::info('[SyncAction] dismissFailedItem: item dismissed', [
                 'id' => $id,
@@ -459,6 +508,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
+
             return response()->json(['success' => false, 'message' => __('sync.err_server_error')], 500);
         }
     }
@@ -470,30 +520,34 @@ class SyncStatusController extends Controller
      *   'keep_cloud'  → apply cloud_data (lọc field an toàn) vào local DB
      *   'skip'        → bỏ qua, đánh dấu resolved/skipped
      */
-    public function resolveConflict(Request $request): \Illuminate\Http\JsonResponse
+    public function resolveConflict(Request $request): JsonResponse
     {
         $id = (int) $request->input('id');
         $resolution = $request->input('resolution'); // 'keep_local' | 'keep_cloud' | 'skip'
+        $storeId = $this->syncService->getStoreId();
 
         Log::info('[SyncAction] resolveConflict: received request', [
             'conflict_id' => $id,
             'resolution' => $resolution,
+            'store_id' => $storeId,
         ]);
 
         $allowedResolutions = ['keep_local', 'keep_cloud', 'skip'];
-        if ($id <= 0 || !in_array($resolution, $allowedResolutions, true)) {
+        if ($id <= 0 || ! in_array($resolution, $allowedResolutions, true)) {
             Log::warning('[SyncAction] resolveConflict: invalid input', [
                 'id' => $id,
                 'resolution' => $resolution,
             ]);
+
             return response()->json(['success' => false, 'message' => __('sync.err_invalid_conflict_id')], 422);
         }
 
         try {
-            $conflict = SyncConflict::find($id);
+            $conflict = SyncConflict::where('store_id', $storeId)->find($id);
 
-            if (!$conflict) {
+            if (! $conflict) {
                 Log::warning('[SyncAction] resolveConflict: conflict not found', ['id' => $id]);
+
                 return response()->json(['success' => false, 'message' => __('sync.err_conflict_not_found')], 404);
             }
 
@@ -502,6 +556,7 @@ class SyncStatusController extends Controller
                     'id' => $id,
                     'resolution_status' => $conflict->resolution_status,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => __('sync.err_conflict_already_resolved', ['id' => $id]),
@@ -509,11 +564,12 @@ class SyncStatusController extends Controller
             }
 
             // Security: kiểm tra bảng nằm trong allowlist
-            if (!in_array($conflict->table_name, $this->allowedConflictTables(), true)) {
+            if (! in_array($conflict->table_name, $this->allowedConflictTables(), true)) {
                 Log::error('[SyncAction] resolveConflict: table not in allowlist', [
                     'conflict_id' => $id,
                     'table_name' => $conflict->table_name,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => __('sync.err_table_not_allowed', ['table' => $conflict->table_name]),
@@ -548,6 +604,7 @@ class SyncStatusController extends Controller
                 }
 
                 $queueItem = SyncQueue::whereKey($conflict->sync_queue_id)
+                    ->where('store_id', $storeId)
                     ->lockForUpdate()
                     ->first();
                 if (! $queueItem) {
@@ -584,8 +641,12 @@ class SyncStatusController extends Controller
 
                     $affected = DB::table($conflict->table_name)
                         ->where('id', $conflict->record_id)
+                        ->where('store_id', $storeId)
                         ->update($safeData);
-                    if ($affected === 0 && ! DB::table($conflict->table_name)->where('id', $conflict->record_id)->exists()) {
+                    if ($affected === 0 && ! DB::table($conflict->table_name)
+                        ->where('id', $conflict->record_id)
+                        ->where('store_id', $storeId)
+                        ->exists()) {
                         DB::rollBack();
 
                         return response()->json([
@@ -613,6 +674,7 @@ class SyncStatusController extends Controller
                 // Chống race condition: conditional update WHERE resolution_status = 'unresolved'
                 $affected = DB::table('sync_conflicts')
                     ->where('id', $id)
+                    ->where('store_id', $storeId)
                     ->where('resolution_status', 'unresolved')
                     ->update([
                         'resolution_status' => $newStatus,
@@ -626,6 +688,7 @@ class SyncStatusController extends Controller
                     Log::warning('[SyncAction] resolveConflict: race condition – conflict already resolved by another request', [
                         'conflict_id' => $id,
                     ]);
+
                     return response()->json([
                         'success' => false,
                         'message' => __('sync.err_conflict_already_resolved', ['id' => $id]),
@@ -665,6 +728,7 @@ class SyncStatusController extends Controller
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
             ]);
+
             return response()->json(['success' => false, 'message' => __('sync.err_conflict_resolution_failed')], 500);
         }
     }
