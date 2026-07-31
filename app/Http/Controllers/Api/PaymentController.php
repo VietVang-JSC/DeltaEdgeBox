@@ -26,7 +26,14 @@ class PaymentController extends Controller
 
     private function setRequestLocale(Request $request)
     {
-        app()->setLocale($request->header('Accept-Language', $request->input('isCheckLanguage', 'vi')));
+        $locale = $request->header('Accept-Language', $request->input('isCheckLanguage', 'vi'));
+        // Accept-Language có thể là "en-US,en;q=0.9,vi;q=0.8" — chỉ lấy phần đầu hợp lệ
+        $locale = preg_split('/[,;]/', (string) $locale)[0];
+        $locale = trim($locale);
+        if ($locale === '' || $locale === '*') {
+            $locale = 'vi';
+        }
+        app()->setLocale($locale);
     }
 
     private function resolvePaymentMethodName($paymentMethod, $storeId)
