@@ -6,7 +6,6 @@ use Closure;
 use Illuminate\Http\Request;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Tymon\JWTAuth\Exceptions\JWTException;
-use Illuminate\Support\Facades\Log;
 
 class AuthenticateEdgePos
 {
@@ -14,12 +13,10 @@ class AuthenticateEdgePos
     {
         $token = null;
 
-        // 1. Authorization: Bearer header (AJAX calls)
         if ($bearer = $request->bearerToken()) {
             $token = $bearer;
         }
 
-        // 2. edge_pos_token cookie (page navigation)
         if (!$token && $cookie = $request->cookie('edge_pos_token')) {
             $token = $cookie;
         }
