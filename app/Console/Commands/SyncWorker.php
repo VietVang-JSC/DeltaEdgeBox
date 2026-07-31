@@ -55,9 +55,11 @@ class SyncWorker extends Command
      */
     protected function processOnce(): void
     {
-        $lock = Cache::lock('edge-box:sqlite-sync-writer', config('edge_box.sqlite_lock_ttl', 600));
-        if (!$lock->get()) {
+        $storeId = (int) $this->syncService->getStoreId();
+        $lock = Cache::lock('edge-sync-store-'.$storeId, config('edge_box.sqlite_lock_ttl', 120));
+        if (! $lock->get()) {
             $this->warn('Sync worker skipped: another sync process is using SQLite.');
+
             return;
         }
 
@@ -102,13 +104,15 @@ class SyncWorker extends Command
             $iteration++;
 
             if ($iteration % 100 === 0) {
-                $this->info("Memory usage: " . round(memory_get_usage(true) / 1024 / 1024, 2) . " MB");
+                $this->info('Memory usage: '.round(memory_get_usage(true) / 1024 / 1024, 2).' MB');
             }
 
-            $lock = Cache::lock('edge-box:sqlite-sync-writer', config('edge_box.sqlite_lock_ttl', 600));
-            if (!$lock->get()) {
+            $storeId = (int) $this->syncService->getStoreId();
+            $lock = Cache::lock('edge-sync-store-'.$storeId, config('edge_box.sqlite_lock_ttl', 120));
+            if (! $lock->get()) {
                 $this->line("[Iteration {$iteration}] Skipped: another sync process is using SQLite");
                 sleep((int) $this->option('sleep'));
+
                 continue;
             }
 
