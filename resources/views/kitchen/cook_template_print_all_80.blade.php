@@ -263,19 +263,19 @@
                 @if(isset($payment['products']))
                     @foreach ($payment['products'] as $item)
                         @php
-                            $note = '';
-                            if(isset($item['note']) && $item['note'] !== null && $item['note'] != '') $note = $item['note'].',';
-                            if(!empty($item['product_types'])){
-                                foreach ($item['product_types'] as $index => $product_type_item) {
-                                    $note .= $product_type_item['productTypeValue'];
-                                    if ($index < count($item['product_types']) - 1) {
-                                        $note .= ',';
-                                    }
+                            $noteParts = [];
+                            if (!empty($item['note'])) {
+                                $noteParts[] = $item['note'];
+                            }
+                            foreach (($item['product_types'] ?? []) as $product_type_item) {
+                                $productTypeValue = $product_type_item['productTypeValue']
+                                    ?? $product_type_item['name']
+                                    ?? null;
+                                if ($productTypeValue !== null && $productTypeValue !== '') {
+                                    $noteParts[] = $productTypeValue;
                                 }
                             }
-                            else{
-                                $note = rtrim($note, ',');
-                            }
+                            $note = implode(',', $noteParts);
                         @endphp
                         <tr class="item-row">
                             <td class="d-flex flex-column">
