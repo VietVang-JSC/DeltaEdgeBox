@@ -227,7 +227,7 @@
         <div class="invoice-details">
             <div class="table-name">
                 <span style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'table') }}">{{ __('front/pos_order.kitchen_order_ticket.Tên bàn') }}:</span>
-                <span style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'table') }}" class="table_name">{{ $payment['tablename'] }}/</span>
+                <span style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'table') }}" class="table_name">{{ $payment['tablename'] ?? ($payment['table']['tablename'] ?? '') }}/</span>
                 {{-- <span>NO.</span> --}}
                 <span style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'code') }}">NO.{{ $paymentCodeExploded[1] ?? '' }}</span>
             </div>
@@ -248,7 +248,7 @@
             </div> --}}
                     {{-- <div class="Info_staff row">
                     <label>{{ __('front/pos_order.kitchen_order_ticket.Tên bàn') }}:</label>
-                    <label class="table_name">{{$payment['tablename']}}</label>
+                    <label class="table_name">{{ $payment['tablename'] ?? ($payment['table']['tablename'] ?? '') }}</label>
             </div> --}}
                 </div>
             </div>
