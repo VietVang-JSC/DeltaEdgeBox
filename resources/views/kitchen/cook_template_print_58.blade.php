@@ -218,7 +218,7 @@
         <div class="invoice-details">
             <div class="table-name">
                 <span style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'table') }}">{{ __('front/pos_order.kitchen_order_ticket.Tên bàn') }}:</span>
-                <span style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'table') }}" class="table_name">{{$payment['tablename']}}/</span>
+                <span style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'table') }}" class="table_name">{{ $payment['tablename'] ?? ($payment['table']['tablename'] ?? '') }}/</span>
                 {{-- <span>NO.</span> --}}
                 <span style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'code') }}">NO.{{$paymentCodeExploded[1] ?? ''}}</span>
             </div>
@@ -248,20 +248,19 @@
                 @if (isset($payment['products']))
                     @foreach ($payment['products'] as $item)
                         @php
-                            $note = '';
-                            if (isset($item['note']) && $item['note'] !== null && $item['note'] != '') {
-                                $note = $item['note'] . ',';
+                            $noteParts = [];
+                            if (!empty($item['note'])) {
+                                $noteParts[] = $item['note'];
                             }
-                            if (!empty($item['product_types'])) {
-                                foreach ($item['product_types'] as $index => $product_type_item) {
-                                    $note .= $product_type_item['productTypeValue'];
-                                    if ($index < count($item['product_types']) - 1) {
-                                        $note .= ',';
-                                    }
+                            foreach (($item['product_types'] ?? []) as $product_type_item) {
+                                $productTypeValue = $product_type_item['productTypeValue']
+                                    ?? $product_type_item['name']
+                                    ?? null;
+                                if ($productTypeValue !== null && $productTypeValue !== '') {
+                                    $noteParts[] = $productTypeValue;
                                 }
-                            } else {
-                                $note = rtrim($note, ',');
                             }
+                            $note = implode(',', $noteParts);
                         @endphp
                         @if (isset($item['diff_quantity']) && (int) $item['diff_quantity'] > 0)
                             <tr class="item-row" style="{{ \App\Helpers\SettingKitchenHelper::printStyle($setting_print_kitchen, 58, 'foodqty') }}">

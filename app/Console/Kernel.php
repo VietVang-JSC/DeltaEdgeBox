@@ -30,6 +30,25 @@ class Kernel extends ConsoleKernel
         // $cron = $this->intervalToCron(config('edge_box.sync_interval', '1m'));
         // $schedule->command('sync:worker --batch=50')->cron($cron)->withoutOverlapping();
 
+        if (config('edge_box.payment_reconcile_enabled', true)) {
+            $reconcile = $schedule->command('edge:reconcile-payments')->withoutOverlapping();
+            $reconcileSeconds = max(10, (int) config('edge_box.payment_reconcile_interval', 30));
+            if ($reconcileSeconds <= 10) {
+                $reconcile->everyTenSeconds();
+            } elseif ($reconcileSeconds <= 30) {
+                $reconcile->everyThirtySeconds();
+            } else {
+                $reconcile->cron($this->intervalToCron(ceil($reconcileSeconds / 60).'m'));
+            }
+        }
+
+        if (config('edge_box.master_sync_enabled', true)) {
+            $masterSeconds = max(60, (int) config('edge_box.master_sync_interval', 300));
+            $schedule->command('edge:sync-master')
+                ->cron($this->intervalToCron(ceil($masterSeconds / 60).'m'))
+                ->withoutOverlapping();
+        }
+
         // No auto master sync — Cloud → Box is manual only (click Sync Data button in Edge Manager)
     }
 

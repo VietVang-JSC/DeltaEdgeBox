@@ -8,6 +8,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Printer;
 use App\Models\Table;
+use App\Services\PaymentDetailCanonicalizer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -96,7 +97,10 @@ class PaymentPrintController extends Controller
     private function paymentPayload(Payment $payment): array
     {
         $payload = $payment->toArray();
-        $details = $payment->getRelation('details');
+        $details = app(PaymentDetailCanonicalizer::class)->canonicalize(
+            $payment,
+            $payment->getRelation('details')
+        );
         $table = $payment->relationLoaded('table')
             ? $payment->getRelation('table')
             : $payment->table()->first();

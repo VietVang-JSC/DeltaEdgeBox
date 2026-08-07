@@ -129,7 +129,7 @@ class MasterDataSyncService
                 DB::beginTransaction();
                 Table::withoutEvents(function () use ($data) {
                     foreach ($data['tables'] ?? [] as $table) {
-                        $localTable = Table::where('store_id', $this->storeId)->find($table['id']);
+                        $localTable = Table::withTrashed()->find($table['id']);
 
                         $masterPayload = [
                             'store_id'         => $table['store_id'],
@@ -145,6 +145,9 @@ class MasterDataSyncService
                         ];
 
                         if ($localTable) {
+                            if ($localTable->trashed()) {
+                                $localTable->restore();
+                            }
                             $localTable->update($masterPayload);
                         } else {
                             Table::create(array_merge(
@@ -479,7 +482,7 @@ class MasterDataSyncService
                         if (Product::where('id', $localProductId)->exists()) {
                             Inventory::updateOrCreate(
                                 [
-                                    'store_id' => $inv['store_id'],
+                                    'store_id' => $this->storeId,
                                     'product_id' => $localProductId,
                                 ],
                                 [
@@ -522,7 +525,7 @@ class MasterDataSyncService
                             InventoryHistory::updateOrCreate(
                                 ['id' => $ih['id']],
                                 [
-                                    'store_id' => $ih['store_id'],
+                                    'store_id' => $this->storeId,
                                     'product_id' => $localProductId,
                                     'input_id' => $ih['input_id'],
                                     'input_code' => $ih['input_code'],
@@ -871,7 +874,7 @@ class MasterDataSyncService
                                     Payment::updateOrCreate(
                                         ['id' => $paymentId],
                                         [
-                                            'paid_date'                    => $pmt['paid_date'] ?? $pmt['created_at'] ?? now(),
+                                            'paid_date'                    => $this->normalizeSqliteDateTime($pmt['paid_date'] ?? $pmt['created_at'] ?? now()),
                                             'store_id'                     => $pmt['store_id'],
                                             'table_id'                     => $pmt['table_id'] ?? null,
                                             'customer_id'                  => $pmt['customer_id'] ?? 0,
@@ -898,8 +901,8 @@ class MasterDataSyncService
                                             'parent_id'                    => $pmt['parent_id'] ?? null,
                                             'sub_total_before_discount'    => $pmt['sub_total_before_discount'] ?? $pmt['sub_total'] ?? 0,
                                             'total_incl_vat_before_discount' => $pmt['total_incl_vat_before_discount'] ?? 0,
-                                            'created_at'                   => $pmt['created_at'] ?? now(),
-                                            'updated_at'                   => $pmt['updated_at'] ?? now(),
+                                            'created_at'                   => $this->normalizeSqliteDateTime($pmt['created_at'] ?? now()),
+                                            'updated_at'                   => $this->normalizeSqliteDateTime($pmt['updated_at'] ?? now()),
                                         ]
                                     );
     
@@ -1017,6 +1020,13 @@ class MasterDataSyncService
             'customers' => $this->formatSyncTime(Customer::where('store_id', $this->storeId)->max('updated_at')),
             'payments' => $this->formatSyncTime(Payment::where('store_id', $this->storeId)->max('updated_at')),
         ];
+    }
+
+    private function normalizeSqliteDateTime($value): string
+    {
+        return Carbon::parse($value)
+            ->setTimezone(config('app.timezone'))
+            ->format('Y-m-d H:i:s');
     }
 
     private function formatSyncTime($value): ?string
