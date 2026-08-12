@@ -412,6 +412,26 @@ class PaymentPrintController extends Controller
             $pdfContent = $this->generateReceiptPDF($params, $storeId, $tpl, $language, $paperSize);
             $base64Pdf = base64_encode($pdfContent);
 
+            // Mark split items as printed in local DB (giống Cloud) để check-payment-printed trả nền trắng
+            if ($payment) {
+                $detailKeys = [];
+                foreach ($filters['split_merge_item'] as $it) {
+                    if (!empty($it['product_key'])) {
+                        $detailKeys[] = $it['product_key'];
+                    }
+                }
+                if (!empty($detailKeys)) {
+                    \App\Models\PaymentDetail::where('payment_id', $payment->id)
+                        ->whereIn('product_key', $detailKeys)
+                        ->whereNull('deleted_at')
+                        ->update([
+                            'printed_quantity' => \Illuminate\Support\Facades\DB::raw('quantity'),
+                            'updated_at' => now(),
+                        ]);
+                    \Illuminate\Support\Facades\Log::info('Edge temp split bill marked printed', ['payment_id' => $payment->id, 'keys' => $detailKeys]);
+                }
+            }
+
             return response()->json([
                 'status' => true,
                 'status_code' => 200,
