@@ -313,7 +313,7 @@ class PaymentPrintController extends Controller
             return $this->error($validator->errors()->first(), 400);
         }
 
-        $paymentId = $filters['original_invoice_id'] ?? null;
+        $paymentId = $filters['original_invoice_id'] ?? $filters['oriiginal_invoice_id'] ?? null;
         $payment = null;
         if ($paymentId) {
             $payment = Payment::with(['table', 'user', 'store'])->find($paymentId);
@@ -415,6 +415,27 @@ class PaymentPrintController extends Controller
             // Generate receipt PDF bytes locally
             $pdfContent = $this->generateReceiptPDF($params, $storeId, $tpl, $language, $paperSize);
             $base64Pdf = base64_encode($pdfContent);
+
+            // Mark split items as printed in local DB so check-payment-printed returns them as done (white background)
+            if ($payment) {
+                $detailKeys = [];
+                foreach ($filters['split_merge_item'] as $k => $it) {
+                    $key = is_array($it) ? ($it['product_key'] ?? $it['key'] ?? $k) : $k;
+                    if (!empty($key)) {
+                        $detailKeys[] = $key;
+                    }
+                }
+                if (!empty($detailKeys)) {
+                    \App\Models\PaymentDetail::where('payment_id', $payment->id)
+                        ->whereIn('product_key', $detailKeys)
+                        ->whereNull('deleted_at')
+                        ->update([
+                            'printed_quantity' => \Illuminate\Support\Facades\DB::raw('quantity'),
+                            'updated_at' => now(),
+                        ]);
+                    \Illuminate\Support\Facades\Log::info('Edge temp split bill marked printed', ['payment_id' => $payment->id, 'keys' => $detailKeys]);
+                }
+            }
 
             return response()->json([
                 'status' => true,
