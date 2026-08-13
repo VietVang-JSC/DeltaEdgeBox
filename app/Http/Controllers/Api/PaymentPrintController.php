@@ -309,7 +309,7 @@ class PaymentPrintController extends Controller
             return $this->error($validator->errors()->first(), 400);
         }
 
-        $paymentId = $filters['original_invoice_id'] ?? null;
+        $paymentId = $filters['original_invoice_id'] ?? $filters['oriiginal_invoice_id'] ?? null;
         $payment = null;
         if ($paymentId) {
             $payment = Payment::with(['table', 'user', 'store'])->find($paymentId);
@@ -412,12 +412,13 @@ class PaymentPrintController extends Controller
             $pdfContent = $this->generateReceiptPDF($params, $storeId, $tpl, $language, $paperSize);
             $base64Pdf = base64_encode($pdfContent);
 
-            // Mark split items as printed in local DB (giống Cloud) để check-payment-printed trả nền trắng
+            // Mark split items as printed in local DB so check-payment-printed returns them as done (white background)
             if ($payment) {
                 $detailKeys = [];
-                foreach ($filters['split_merge_item'] as $it) {
-                    if (!empty($it['product_key'])) {
-                        $detailKeys[] = $it['product_key'];
+                foreach ($filters['split_merge_item'] as $k => $it) {
+                    $key = is_array($it) ? ($it['product_key'] ?? $it['key'] ?? $k) : $k;
+                    if (!empty($key)) {
+                        $detailKeys[] = $key;
                     }
                 }
                 if (!empty($detailKeys)) {
