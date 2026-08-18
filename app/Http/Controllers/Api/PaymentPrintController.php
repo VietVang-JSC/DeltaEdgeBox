@@ -437,6 +437,13 @@ class PaymentPrintController extends Controller
                             ->whereIn('product_key', $detailKeys)
                             ->whereNull('deleted_at')
                             ->get();
+                        if ($details->isEmpty()) {
+                            $availableKeys = \App\Models\PaymentDetail::where('payment_id', $payment->id)
+                                ->whereNull('deleted_at')
+                                ->pluck('product_key')
+                                ->all();
+                            \Illuminate\Support\Facades\Log::warning('Edge temp split bill mark printed: no matching details', ['payment_id' => $payment->id, 'requested_keys' => $detailKeys, 'available_keys' => $availableKeys]);
+                        }
                         foreach ($details as $detail) {
                             if ($detail->printed_quantity < $detail->quantity) {
                                 $detail->printed_quantity = $detail->quantity;
