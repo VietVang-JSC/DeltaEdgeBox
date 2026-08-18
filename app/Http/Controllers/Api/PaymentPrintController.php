@@ -423,22 +423,32 @@ class PaymentPrintController extends Controller
 
             // Mark split items as printed in local DB so check-payment-printed returns them as done (white background)
             if ($payment) {
-                $detailKeys = [];
-                foreach ($filters['split_merge_item'] as $k => $it) {
-                    $key = is_array($it) ? ($it['product_key'] ?? $it['key'] ?? $k) : $k;
-                    if (!empty($key)) {
-                        $detailKeys[] = $key;
+                try {
+                    $detailKeys = [];
+                    foreach ($filters['split_merge_item'] as $k => $it) {
+                        $key = is_array($it) ? ($it['product_key'] ?? $it['key'] ?? $k) : $k;
+                        if (!empty($key)) {
+                            $detailKeys[] = $key;
+                        }
                     }
-                }
-                if (!empty($detailKeys)) {
-                    \App\Models\PaymentDetail::where('payment_id', $payment->id)
-                        ->whereIn('product_key', $detailKeys)
-                        ->whereNull('deleted_at')
-                        ->update([
-                            'printed_quantity' => \Illuminate\Support\Facades\DB::raw('quantity'),
-                            'updated_at' => now(),
-                        ]);
-                    \Illuminate\Support\Facades\Log::info('Edge temp split bill marked printed', ['payment_id' => $payment->id, 'keys' => $detailKeys]);
+                    if (!empty($detailKeys)) {
+                        $affected = 0;
+                        $details = \App\Models\PaymentDetail::where('payment_id', $payment->id)
+                            ->whereIn('product_key', $detailKeys)
+                            ->whereNull('deleted_at')
+                            ->get();
+                        foreach ($details as $detail) {
+                            if ($detail->printed_quantity < $detail->quantity) {
+                                $detail->printed_quantity = $detail->quantity;
+                                if ($detail->save()) {
+                                    $affected++;
+                                }
+                            }
+                        }
+                        \Illuminate\Support\Facades\Log::info('Edge temp split bill marked printed', ['payment_id' => $payment->id, 'keys' => $detailKeys, 'affected' => $affected]);
+                    }
+                } catch (\Throwable $markTh) {
+                    \Illuminate\Support\Facades\Log::error('Edge temp split bill mark printed FAILED', ['payment_id' => $payment->id, 'error' => $markTh->getMessage()]);
                 }
             }
 

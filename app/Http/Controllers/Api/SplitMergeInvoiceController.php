@@ -1193,6 +1193,10 @@ class SplitMergeInvoiceController extends Controller
             if ($detailTaxAmt == 0 && $detailVat > 0) {
                 $detailTaxAmt = $detailTotal - $detailNetExcl;
             }
+            $existingDetail = PaymentDetail::where('payment_id', $data['id'])->where('product_key', $key)->first();
+            $detailPrintedQty = array_key_exists('printed_quantity', $value)
+                ? (int) ($value['printed_quantity'] ?? 0)
+                : ($existingDetail ? min((int) $existingDetail->printed_quantity, $detailQty) : 0);
             PaymentDetail::updateOrCreate(
                 [
                     'payment_id' => $data['id'],
@@ -1202,7 +1206,7 @@ class SplitMergeInvoiceController extends Controller
                     'product_id' => $value['id'],
                     'product_key' => $key,
                     'quantity' => $detailQty,
-                    'printed_quantity' => $value['printed_quantity'] ?? 0,
+                    'printed_quantity' => $detailPrintedQty,
                     'price' => $detailPrice,
                     'total' => $detailTotal,
                     'note' => $this->buildPaymentDetailNote($value),

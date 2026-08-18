@@ -660,6 +660,9 @@ class PaymentController extends Controller
             if (isset($existingByKey[$key])) {
                 $detail = $existingByKey[$key];
                 unset($attributes['created_at']);
+                if (!array_key_exists('printed_quantity', $item)) {
+                    $attributes['printed_quantity'] = min((int) $detail->printed_quantity, (int) $attributes['quantity']);
+                }
                 $detail->fill($attributes);
                 $detail->save();
                 unset($existingByKey[$key]);
