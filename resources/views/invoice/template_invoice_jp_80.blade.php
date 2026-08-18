@@ -181,6 +181,9 @@
         .txt-left{
             text-align: left !important;
         }
+        .currency-symbol {
+            font-family: 'DejaVu Sans', 'notosansjp-regular', sans-serif;
+        }
     </style>
 </head>
 <body>
