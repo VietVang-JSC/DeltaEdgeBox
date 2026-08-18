@@ -292,6 +292,7 @@ class PaymentPrintController extends Controller
         $acceptFields = [
             'split_merge_item',
             'original_invoice_id',
+            'oriiginal_invoice_id',
             'discount',
             'surcharge',
             'type_discount',
@@ -317,6 +318,12 @@ class PaymentPrintController extends Controller
         $payment = null;
         if ($paymentId) {
             $payment = Payment::with(['table', 'user', 'store'])->find($paymentId);
+        }
+        if (!$payment) {
+            \Illuminate\Support\Facades\Log::warning('Edge temp split bill: payment not resolved', [
+                'original_invoice_id' => $filters['original_invoice_id'] ?? null,
+                'oriiginal_invoice_id' => $filters['oriiginal_invoice_id'] ?? null,
+            ]);
         }
 
         // Get Store configuration
