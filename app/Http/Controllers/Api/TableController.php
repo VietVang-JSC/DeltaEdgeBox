@@ -378,8 +378,18 @@ class TableController extends Controller
             $payment = Payment::create($payload);
         }
 
-        // Clear table_id on other payments for the same table to prevent duplicates
+        // Capture the most recent previous payment BEFORE clearing table_id below,
+        // because the clear would otherwise detach it from the table and the
+        // printed/served fallback would no longer find it.
+        $previousPayment = null;
         if ($table->id) {
+            $previousPayment = Payment::where('table_id', $table->id)
+                ->where('id', '!=', $payment->id)
+                ->whereNull('deleted_at')
+                ->latest('id')
+                ->first();
+
+            // Clear table_id on other payments for the same table to prevent duplicates
             Payment::where('table_id', $table->id)
                 ->where('id', '!=', $payment->id)
                 ->whereNull('deleted_at')
@@ -403,28 +413,20 @@ class TableController extends Controller
             // Fresh payment after checkout → restore printed/served state from the most
             // recent previous payment of the same table so re-order keeps the app's
             // gray-background (printed) and served checkbox state.
-            if ($printedQuantities->isEmpty()) {
-                $previousPayment = Payment::where('table_id', $table->id)
-                    ->where('id', '!=', $payment->id)
+            if ($printedQuantities->isEmpty() && $previousPayment) {
+                $printedQuantities = $previousPayment->details()
                     ->whereNull('deleted_at')
-                    ->latest('id')
-                    ->first();
+                    ->get()
+                    ->mapWithKeys(function ($detail) {
+                        $key = $detail->product_key ?: 'product:' . $detail->product_id;
 
-                if ($previousPayment) {
-                    $printedQuantities = $previousPayment->details()
-                        ->whereNull('deleted_at')
-                        ->get()
-                        ->mapWithKeys(function ($detail) {
-                            $key = $detail->product_key ?: 'product:' . $detail->product_id;
-
-                            return [
-                                $key => [
-                                    'printed_quantity' => (int) $detail->printed_quantity,
-                                    'served' => (bool) $detail->served,
-                                ]
-                            ];
-                        });
-                }
+                        return [
+                            $key => [
+                                'printed_quantity' => (int) $detail->printed_quantity,
+                                'served' => (bool) $detail->served,
+                            ]
+                        ];
+                    });
             }
 
             $payment->details()->delete();
