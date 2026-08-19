@@ -400,6 +400,33 @@ class TableController extends Controller
                     ];
                 });
 
+            // Fresh payment after checkout → restore printed/served state from the most
+            // recent previous payment of the same table so re-order keeps the app's
+            // gray-background (printed) and served checkbox state.
+            if ($printedQuantities->isEmpty()) {
+                $previousPayment = Payment::where('table_id', $table->id)
+                    ->where('id', '!=', $payment->id)
+                    ->whereNull('deleted_at')
+                    ->latest('id')
+                    ->first();
+
+                if ($previousPayment) {
+                    $printedQuantities = $previousPayment->details()
+                        ->whereNull('deleted_at')
+                        ->get()
+                        ->mapWithKeys(function ($detail) {
+                            $key = $detail->product_key ?: 'product:' . $detail->product_id;
+
+                            return [
+                                $key => [
+                                    'printed_quantity' => (int) $detail->printed_quantity,
+                                    'served' => (bool) $detail->served,
+                                ]
+                            ];
+                        });
+                }
+            }
+
             $payment->details()->delete();
             foreach ($items as $item) {
                 $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
@@ -603,6 +630,24 @@ class TableController extends Controller
         );
     }
 
+    private function resolvePaymentId(Request $request, Table $table): ?int
+    {
+        $requested = (int) $request->input('payment_id', 0);
+
+        if ($requested > 0) {
+            $payment = Payment::whereKey($requested)
+                ->where('table_id', $table->id)
+                ->whereNull('deleted_at')
+                ->first();
+
+            if ($payment) {
+                return (int) $payment->id;
+            }
+        }
+
+        return $table->payment_id ? (int) $table->payment_id : null;
+    }
+
     private function userId(Request $request): int
     {
         if (!$request->filled('user_id')) {
@@ -675,11 +720,16 @@ class TableController extends Controller
             }
 
             $table = Table::find($request->input('table_id'));
-            if (!$table || !$table->payment_id) {
+            if (!$table) {
                 return $this->error('api.table_or_payment_not_found', 404);
             }
 
-            $details = PaymentDetail::where('payment_id', $table->payment_id)->get();
+            $paymentId = $this->resolvePaymentId($request, $table);
+            if (!$paymentId) {
+                return $this->error('api.table_or_payment_not_found', 404);
+            }
+
+            $details = PaymentDetail::where('payment_id', $paymentId)->get();
 
             if ($details->isEmpty()) {
                 return $this->error('api.detail_empty', 404);
@@ -723,20 +773,29 @@ class TableController extends Controller
 
             $table = Table::find($request->input('table_id'));
 
-            if (!$table || !$table->payment_id) {
+            if (!$table) {
+                return $this->error('api.table_or_payment_not_found', 404);
+            }
+
+            $paymentId = $this->resolvePaymentId($request, $table);
+            if (!$paymentId) {
                 return $this->error('api.table_or_payment_not_found', 404);
             }
 
             $served = $request->has('served') ? (bool) $request->input('served') : true;
 
-            $updated = PaymentDetail::where('payment_id', $table->payment_id)
+            $detail = PaymentDetail::where('payment_id', $paymentId)
                 ->where('product_id', $request->input('product_id'))
                 ->where('product_key', $request->input('product_key'))
-                ->update(['served' => $served ? 1 : 0]);
+                ->whereNull('deleted_at')
+                ->first();
 
-            if (!$updated) {
+            if (!$detail) {
                 return $this->error('api.served_update_failed', 400);
             }
+
+            $detail->served = $served ? 1 : 0;
+            $detail->save();
 
             $this->processSyncAfterResponse();
 

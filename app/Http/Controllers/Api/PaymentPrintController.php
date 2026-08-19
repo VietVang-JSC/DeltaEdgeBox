@@ -457,6 +457,13 @@ class PaymentPrintController extends Controller
                 } catch (\Throwable $markTh) {
                     \Illuminate\Support\Facades\Log::error('Edge temp split bill mark printed FAILED', ['payment_id' => $payment->id, 'error' => $markTh->getMessage()]);
                 }
+
+                // Sync printed/served state back into table.listitem so the app's item objects stay consistent
+                try {
+                    $this->syncPrintedStateToTableListItem($table, $payment);
+                } catch (\Throwable $syncTh) {
+                    \Illuminate\Support\Facades\Log::error('Edge temp split bill sync listitem FAILED', ['payment_id' => $payment->id, 'error' => $syncTh->getMessage()]);
+                }
             }
 
             return response()->json([
@@ -780,5 +787,46 @@ class PaymentPrintController extends Controller
             'total_with_vat' => 0,
             'total_incl_vat_before_discount' => 0,
         ];
+    }
+
+    private function syncPrintedStateToTableListItem(?Table $table, ?Payment $payment): void
+    {
+        if (!$table || !$payment || !$table->listitem) {
+            return;
+        }
+
+        $decoded = json_decode($table->listitem, true) ?: [];
+        $rawItems = $decoded['item'] ?? $decoded ?? [];
+        $details = $payment->details()->whereNull('deleted_at')->get();
+
+        foreach ($details as $detail) {
+            foreach ($rawItems as $key => $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $productId = $item['product_id'] ?? $item['id'] ?? null;
+                $matchesKey = !empty($detail->product_key) && (string) $key === (string) $detail->product_key;
+                $matchesProduct = (string) $productId === (string) $detail->product_id;
+
+                if (!$matchesKey && !$matchesProduct) {
+                    continue;
+                }
+
+                $rawItems[$key]['printed_quantity'] = (int) $detail->printed_quantity;
+                $rawItems[$key]['diff_quantity'] = max((int) $detail->quantity - (int) $detail->printed_quantity, 0);
+                $rawItems[$key]['print_status'] = (int) $detail->printed_quantity >= (int) $detail->quantity;
+                $rawItems[$key]['served'] = (bool) $detail->served;
+            }
+        }
+
+        if (isset($decoded['item'])) {
+            $decoded['item'] = $rawItems;
+            $table->listitem = json_encode($decoded);
+        } else {
+            $table->listitem = json_encode($rawItems);
+        }
+
+        $table->save();
     }
 }

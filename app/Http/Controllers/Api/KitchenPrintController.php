@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Table;
 use App\Models\Store;
 use App\Models\Printer;
+use App\Models\Payment;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -412,8 +413,22 @@ class KitchenPrintController extends Controller
 
         $notPrintedIds = [];
 
-        if ($table->payment) {
-            $details = $table->payment->details()
+        // Prefer an explicit payment_id (validated against this table) so the app can
+        // point at the active payment; otherwise fall back to table.payment_id.
+        $payment = $table->payment;
+        $requestedPaymentId = (int) $request->input('payment_id', 0);
+        if ($requestedPaymentId > 0) {
+            $candidate = Payment::whereKey($requestedPaymentId)
+                ->where('table_id', $table->id)
+                ->whereNull('deleted_at')
+                ->first();
+            if ($candidate) {
+                $payment = $candidate;
+            }
+        }
+
+        if ($payment) {
+            $details = $payment->details()
                 ->whereColumn('printed_quantity', '<', 'quantity')
                 ->whereNull('deleted_at')
                 ->get();
@@ -624,6 +639,7 @@ class KitchenPrintController extends Controller
                 $rawItems[$key]['printed_quantity'] = (int) $detail->printed_quantity;
                 $rawItems[$key]['diff_quantity'] = max((int) $detail->quantity - (int) $detail->printed_quantity, 0);
                 $rawItems[$key]['print_status'] = (int) $detail->printed_quantity >= (int) $detail->quantity;
+                $rawItems[$key]['served'] = (bool) $detail->served;
             }
         }
 
