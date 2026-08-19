@@ -797,6 +797,36 @@ class TableController extends Controller
             $detail->served = $served ? 1 : 0;
             $detail->save();
 
+            // Mirror served into table.listitem so the app's item objects carry the
+            // checkbox state without needing a separate request.
+            try {
+                if ($table->listitem) {
+                    $decoded = json_decode($table->listitem, true) ?: [];
+                    $rawItems = $decoded['item'] ?? $decoded ?? [];
+                    $targetKey = (string) $request->input('product_key');
+                    foreach ($rawItems as $key => $item) {
+                        if (!is_array($item)) {
+                            continue;
+                        }
+                        $productId = $item['product_id'] ?? $item['id'] ?? null;
+                        if ($targetKey !== '' && (string) $key === $targetKey) {
+                            $rawItems[$key]['served'] = (bool) $detail->served;
+                        } elseif ((string) $productId === (string) $request->input('product_id') && !isset($rawItems[$key]['served'])) {
+                            $rawItems[$key]['served'] = (bool) $detail->served;
+                        }
+                    }
+                    if (isset($decoded['item'])) {
+                        $decoded['item'] = $rawItems;
+                        $table->listitem = json_encode($decoded);
+                    } else {
+                        $table->listitem = json_encode($rawItems);
+                    }
+                    $table->save();
+                }
+            } catch (\Throwable $th) {
+                Log::error('Edge served listitem sync failed: ' . $th->getMessage());
+            }
+
             $this->processSyncAfterResponse();
 
             return $this->success('api.served_update_success');
