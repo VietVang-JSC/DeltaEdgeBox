@@ -396,59 +396,69 @@ class TableController extends Controller
                 ->update(['table_id' => null]);
         }
 
-        $printedQuantities = $payment->details()
+        // Build served/printed state from the current payment first, then fall back to the
+        // most recent previous payment of the same table for keys not present yet, so
+        // re-order keeps the app's gray-background (printed) and served checkbox state.
+        $stateMap = [];
+        $currentDetails = $payment->details()
+            ->whereNull('deleted_at')
+            ->get()
+            ->keyBy(function ($detail) {
+                return $detail->product_key ?: 'product:' . $detail->product_id;
+            });
+        foreach ($currentDetails as $detail) {
+            $key = $detail->product_key ?: 'product:' . $detail->product_id;
+            $stateMap[$key] = [
+                'printed_quantity' => (int) $detail->printed_quantity,
+                'served' => (bool) $detail->served,
+            ];
+        }
+        if ($previousPayment) {
+            $previousPayment->details()
                 ->whereNull('deleted_at')
                 ->get()
-                ->mapWithKeys(function ($detail) {
+                ->each(function ($detail) use (&$stateMap) {
                     $key = $detail->product_key ?: 'product:' . $detail->product_id;
-
-                    return [
-                        $key => [
+                    if (!isset($stateMap[$key])) {
+                        $stateMap[$key] = [
                             'printed_quantity' => (int) $detail->printed_quantity,
                             'served' => (bool) $detail->served,
-                        ]
-                    ];
-                });
-
-            // Fresh payment after checkout → restore printed/served state from the most
-            // recent previous payment of the same table so re-order keeps the app's
-            // gray-background (printed) and served checkbox state.
-            if ($printedQuantities->isEmpty() && $previousPayment) {
-                $printedQuantities = $previousPayment->details()
-                    ->whereNull('deleted_at')
-                    ->get()
-                    ->mapWithKeys(function ($detail) {
-                        $key = $detail->product_key ?: 'product:' . $detail->product_id;
-
-                        return [
-                            $key => [
-                                'printed_quantity' => (int) $detail->printed_quantity,
-                                'served' => (bool) $detail->served,
-                            ]
                         ];
-                    });
-            }
+                    }
+                });
+        }
 
-            $payment->details()->delete();
-            foreach ($items as $item) {
-                $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
-                $previousData = $printedQuantities[$detailKey] ?? [];
-                // Fallback: match by product_id if key not found (e.g. after re-order)
-                if (empty($previousData)) {
-                    foreach ($printedQuantities as $pk => $pd) {
-                        $fallbackKey = 'product:' . ($item['product_id'] ?? 0);
-                        if ($pk === $detailKey || $pk === $fallbackKey) {
-                            $previousData = $pd;
-                            break;
-                        }
+        // Upsert details by product_key (merge instead of replace): preserve served and
+        // printed_quantity for items still on the order, add new ones, and only remove
+        // details that are genuinely absent from the request.
+        $requestedKeys = [];
+        foreach ($items as $item) {
+            $detailKey = $item['product_key'] ?: 'product:' . $item['product_id'];
+            $requestedKeys[$detailKey] = true;
+
+            $previousData = $stateMap[$detailKey] ?? [];
+            if (empty($previousData)) {
+                foreach ($stateMap as $pk => $pd) {
+                    $fallbackKey = 'product:' . ($item['product_id'] ?? 0);
+                    if ($pk === $detailKey || $pk === $fallbackKey) {
+                        $previousData = $pd;
+                        break;
                     }
                 }
-            $printedQuantity = min((int) ($previousData['printed_quantity'] ?? 0), (int) $item['quantity']);
-            $served = $previousData['served'] ?? false;
+            }
+
+            $existing = $currentDetails->get($detailKey);
+            $printedQuantity = min(
+                (int) $item['quantity'],
+                max(
+                    (int) ($item['printed_quantity'] ?? 0),
+                    (int) ($previousData['printed_quantity'] ?? 0)
+                )
+            );
 
             $calcItem = $calcResult['items'][$detailKey] ?? [];
 
-            PaymentDetail::create([
+            $attributes = [
                 'payment_id' => $payment->id,
                 'product_id' => $item['product_id'],
                 'product_key' => $item['product_key'],
@@ -468,13 +478,35 @@ class TableController extends Controller
                 'product_extra' => $item['product_extra'] ?? null,
                 'optional_products' => $item['optional_products'] ?? null,
                 'printed_quantity' => $printedQuantity,
-                'served' => $served,
                 'detail_discount' => $calcItem['detail_discount'] ?? 0.0,
                 'tax_amount' => $calcItem['tax_amount'] ?? 0.0,
                 'detail_discount_excluding_tax' => $calcItem['detail_discount_excluding_tax'] ?? 0.0,
                 'unit_price_excluding_tax' => $calcItem['unit_price_excluding_tax'] ?? 0.0,
                 'discounted_price_excluding_tax' => $calcItem['discounted_price_excluding_tax'] ?? 0.0,
-            ]);
+            ];
+
+            // served priority: value sent by app in listitem > existing detail > previous payment state
+            $served = array_key_exists('served', $item) && $item['served'] !== null
+                ? (bool) $item['served']
+                : ($existing ? (bool) $existing->served : (bool) ($previousData['served'] ?? false));
+            $attributes['served'] = $served;
+
+            if ($existing) {
+                $existing->fill($attributes)->save();
+            } else {
+                PaymentDetail::create($attributes);
+            }
+        }
+
+        // Delete orphan details: present in DB but no longer part of the order
+        $orphanKeys = $currentDetails->keys()->filter(function ($key) use ($requestedKeys) {
+            return !isset($requestedKeys[$key]);
+        });
+        if ($orphanKeys->isNotEmpty()) {
+            PaymentDetail::where('payment_id', $payment->id)
+                ->whereIn('product_key', $orphanKeys->values()->all())
+                ->whereNull('deleted_at')
+                ->delete();
         }
 
         return $payment->load('details');
@@ -535,6 +567,8 @@ class TableController extends Controller
                 'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : null,
                 'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
                 'product_types' => $item['product_types'] ?? [],
+                'served' => $item['served'] ?? null,
+                'printed_quantity' => isset($item['printed_quantity']) ? (int) $item['printed_quantity'] : 0,
             ];
         }
 
