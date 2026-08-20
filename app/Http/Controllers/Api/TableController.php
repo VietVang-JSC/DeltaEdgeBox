@@ -485,11 +485,15 @@ class TableController extends Controller
                 'discounted_price_excluding_tax' => $calcItem['discounted_price_excluding_tax'] ?? 0.0,
             ];
 
+            // served priority: value sent by app in listitem > existing detail > previous payment state
+            $served = array_key_exists('served', $item) && $item['served'] !== null
+                ? (bool) $item['served']
+                : ($existing ? (bool) $existing->served : (bool) ($previousData['served'] ?? false));
+            $attributes['served'] = $served;
+
             if ($existing) {
-                // Preserve existing served state (do not overwrite on update)
                 $existing->fill($attributes)->save();
             } else {
-                $attributes['served'] = (bool) ($previousData['served'] ?? false);
                 PaymentDetail::create($attributes);
             }
         }
@@ -563,6 +567,8 @@ class TableController extends Controller
                 'product_extra' => !empty($item['extra_product_list']) ? json_encode($item['extra_product_list']) : null,
                 'optional_products' => !empty($item['optional_products']) ? json_encode($item['optional_products']) : null,
                 'product_types' => $item['product_types'] ?? [],
+                'served' => $item['served'] ?? null,
+                'printed_quantity' => isset($item['printed_quantity']) ? (int) $item['printed_quantity'] : 0,
             ];
         }
 
