@@ -51,6 +51,12 @@ class KitchenPrintController extends Controller
         foreach ($arrPrint as $key => $itemPrint) {
             if ($key === 'default' || $key == 0) {
                 $defaultPrinter = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
+                if (!$defaultPrinter) {
+                    $defaultPrinter = $printers->where('printer_type', 'kitchen')
+                        ->where(function ($p) { return $p->where('active', 1)->orWhere('is_active', 1); })
+                        ->sortByDesc('id')
+                        ->first();
+                }
             } else {
                 $defaultPrinter = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
             }
@@ -235,6 +241,12 @@ class KitchenPrintController extends Controller
             foreach ($arrPrint as $key => $itemPrint) {
                 if ($key === 'default' || $key == 0) {
                     $defaultPrinter = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
+                    if (!$defaultPrinter) {
+                        $defaultPrinter = $printers->where('printer_type', 'kitchen')
+                            ->where(function ($p) { return $p->where('active', 1)->orWhere('is_active', 1); })
+                            ->sortByDesc('id')
+                            ->first();
+                    }
                 } else {
                     $defaultPrinter = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
                 }

@@ -219,14 +219,21 @@ class MasterDataSyncService
             }
 
             /*
-            | PRINTERS â€” sync Ä‘á»™c láº­p
+            | PRINTERS — sync độc lập
+            |  - upsert by cloud id (keeps printer identity → no duplicate rows)
+            |  - delete local printers that no longer exist on cloud (old/removed)
+            |  - enforce exactly ONE default per printer_type
             */
             try {
+                $printers = $data['printers'] ?? [];
+                $cloudIds = [];
                 DB::beginTransaction();
-                foreach ($data['printers'] ?? [] as $printer) {
+                foreach ($printers as $printer) {
+                    $id = $printer['id'] ?? null;
+                    if ($id !== null) $cloudIds[] = (int) $id;
                     $active = (bool) ($printer['active'] ?? true);
                     Printer::updateOrCreate(
-                        ['id' => $printer['id']],
+                        ['id' => $id],
                         [
                             'store_id' => $printer['store_id'] ?? $this->storeId,
                             'name' => $printer['name'] ?? null,
@@ -246,8 +253,34 @@ class MasterDataSyncService
                         ]
                     );
                 }
+                // Delete local printers that no longer exist on cloud (prevents stale IP/default rows)
+                if (count($printers) > 0) {
+                    $query = Printer::where('store_id', $this->storeId);
+                    if (count($cloudIds) > 0) {
+                        $query->whereNotIn('id', $cloudIds);
+                    }
+                    $removed = $query->delete();
+                    if ($removed > 0) {
+                        Log::info("Sync printers: removed {$removed} stale printer row(s)");
+                    }
+                }
+                // Enforce exactly one default per printer_type (fixes duplicates where all default=1)
+                foreach (Printer::where('store_id', $this->storeId)->select('printer_type')->distinct()->get() as $grp) {
+                    $type = $grp->printer_type;
+                    $default = Printer::where('store_id', $this->storeId)
+                        ->where('printer_type', $type)
+                        ->where('default', 1)
+                        ->orderBy('id')
+                        ->first();
+                    if ($default) {
+                        Printer::where('store_id', $this->storeId)
+                            ->where('printer_type', $type)
+                            ->where('id', '!=', $default->id)
+                            ->update(['default' => 0]);
+                    }
+                }
                 DB::commit();
-                $syncResults['printers'] = count($data['printers'] ?? []);
+                $syncResults['printers'] = count($printers);
             } catch (\Exception $e) {
                 $this->rollbackIfNeeded();
                 Log::error('Sync printers failed: ' . $e->getMessage());

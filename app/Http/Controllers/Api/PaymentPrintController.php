@@ -205,11 +205,18 @@ class PaymentPrintController extends Controller
         $language = $request->input('language', $request->input('isCheckLanguage', 'vi'));
         app()->setLocale($language);
 
-        // Fetch default receipt printer details
+        // Fetch default receipt printer details (fallback: latest active receipt printer)
         $defaultPrinter = Printer::where('store_id', $storeId)
             ->where('printer_type', 'receipt')
             ->where('default', 1)
             ->first();
+        if (!$defaultPrinter) {
+            $defaultPrinter = Printer::where('store_id', $storeId)
+                ->where('printer_type', 'receipt')
+                ->where(function ($q) { $q->where('active', 1)->orWhere('is_active', 1); })
+                ->orderByDesc('id')
+                ->first();
+        }
 
         $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
 
@@ -368,11 +375,18 @@ class PaymentPrintController extends Controller
         $temporaryPayment['updated_at'] = now($timeZone)->format('d-m-Y H:i:s');
         $temporaryPayment['payment_code'] = $payment ? ($payment->payment_code ?: 'EDGE-' . $payment->id) : 'EDGE-TEMP';
 
-        // Fetch printer details
+        // Fetch printer details (fallback: latest active receipt printer)
         $defaultPrinter = Printer::where('store_id', $storeId)
             ->where('printer_type', 'receipt')
             ->where('default', 1)
             ->first();
+        if (!$defaultPrinter) {
+            $defaultPrinter = Printer::where('store_id', $storeId)
+                ->where('printer_type', 'receipt')
+                ->where(function ($q) { $q->where('active', 1)->orWhere('is_active', 1); })
+                ->orderByDesc('id')
+                ->first();
+        }
 
         $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
 
