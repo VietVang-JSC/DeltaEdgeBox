@@ -903,41 +903,49 @@ class MasterDataSyncService
                                 foreach ($data['payments'] as $pmt) {
                                     $paymentId = $pmt['id'];
                                     $paymentDetails = $pmt['payment_details'] ?? ($pmt['paymentDetails'] ?? []);
-    
-                                    Payment::updateOrCreate(
-                                        ['id' => $paymentId],
-                                        [
-                                            'paid_date'                    => $this->normalizeSqliteDateTime($pmt['paid_date'] ?? $pmt['created_at'] ?? now()),
-                                            'store_id'                     => $pmt['store_id'],
-                                            'table_id'                     => $pmt['table_id'] ?? null,
-                                            'customer_id'                  => $pmt['customer_id'] ?? 0,
-                                            'user_id'                      => $pmt['user_id'] ?? 0,
-                                            'admin_id'                     => $pmt['admin_id'] ?? 0,
-                                            'payment_code'                 => $pmt['payment_code'] ?? ('PMT-' . $paymentId),
-                                            'reason'                       => $pmt['reason'] ?? '',
-                                            'items'                        => $pmt['items'] ?? '',
-                                            'total'                        => $pmt['valuetotal'] ?? $pmt['total'] ?? 0,
-                                            'final_total'                  => $pmt['valuetotal'] ?? $pmt['final_total'] ?? 0,
-                                            'discount'                     => $pmt['discount'] ?? 0,
-                                            'surcharge'                    => $pmt['surcharge'] ?? 0,
-                                            'surcharge_reason'             => $pmt['surcharge_reason'] ?? $pmt['reasonSurcharge'] ?? '',
-                                            'surcharge_percent'            => $pmt['surcharge_percent'] ?? 0,
-                                            'service_charge'               => $pmt['service_charge'] ?? 0,
-                                            'service_charge_amount'        => $pmt['service_charge_amount'] ?? 0,
-                                            'tax'                          => $pmt['total_tax'] ?? $pmt['tax'] ?? 0,
-                                            'payment_method'               => $pmt['payment_method'] ?? '',
-                                            'status'                       => $pmt['status'] ?? 1,
-                                            'type_discount'                => $pmt['type_discount'] ?? 'amount',
-                                            'discount_percent'             => $pmt['discount_percent'] ?? 0,
-                                            'is_senior_discount'           => $pmt['is_senior_discount'] ?? 0,
-                                            'senior_discount_amount'       => $pmt['senior_discount_amount'] ?? 0,
-                                            'parent_id'                    => $pmt['parent_id'] ?? null,
-                                            'sub_total_before_discount'    => $pmt['sub_total_before_discount'] ?? $pmt['sub_total'] ?? 0,
-                                            'total_incl_vat_before_discount' => $pmt['total_incl_vat_before_discount'] ?? 0,
-                                            'created_at'                   => $this->normalizeSqliteDateTime($pmt['created_at'] ?? now()),
-                                            'updated_at'                   => $this->normalizeSqliteDateTime($pmt['updated_at'] ?? now()),
-                                        ]
-                                    );
+
+                                    // Look for the payment INCLUDING soft-deleted rows. Without
+                                    // withTrashed(), updateOrCreate skips soft-deleted records and then
+                                    // tries to INSERT the same id → UNIQUE constraint failed: payments.id.
+                                    $paymentRow = Payment::withTrashed()->find($paymentId);
+                                    if (!$paymentRow) {
+                                        $paymentRow = new Payment(['id' => $paymentId]);
+                                    }
+                                    if ($paymentRow->trashed()) {
+                                        $paymentRow->restore();
+                                    }
+                                    $paymentRow->fill([
+                                        'paid_date'                    => $this->normalizeSqliteDateTime($pmt['paid_date'] ?? $pmt['created_at'] ?? now()),
+                                        'store_id'                     => $pmt['store_id'],
+                                        'table_id'                     => $pmt['table_id'] ?? null,
+                                        'customer_id'                  => $pmt['customer_id'] ?? 0,
+                                        'user_id'                      => $pmt['user_id'] ?? 0,
+                                        'admin_id'                     => $pmt['admin_id'] ?? 0,
+                                        'payment_code'                 => $pmt['payment_code'] ?? ('PMT-' . $paymentId),
+                                        'reason'                       => $pmt['reason'] ?? '',
+                                        'items'                        => $pmt['items'] ?? '',
+                                        'total'                        => $pmt['valuetotal'] ?? $pmt['total'] ?? 0,
+                                        'final_total'                  => $pmt['valuetotal'] ?? $pmt['final_total'] ?? 0,
+                                        'discount'                     => $pmt['discount'] ?? 0,
+                                        'surcharge'                    => $pmt['surcharge'] ?? 0,
+                                        'surcharge_reason'             => $pmt['surcharge_reason'] ?? $pmt['reasonSurcharge'] ?? '',
+                                        'surcharge_percent'            => $pmt['surcharge_percent'] ?? 0,
+                                        'service_charge'               => $pmt['service_charge'] ?? 0,
+                                        'service_charge_amount'        => $pmt['service_charge_amount'] ?? 0,
+                                        'tax'                          => $pmt['total_tax'] ?? $pmt['tax'] ?? 0,
+                                        'payment_method'               => $pmt['payment_method'] ?? '',
+                                        'status'                       => $pmt['status'] ?? 1,
+                                        'type_discount'                => $pmt['type_discount'] ?? 'amount',
+                                        'discount_percent'             => $pmt['discount_percent'] ?? 0,
+                                        'is_senior_discount'           => $pmt['is_senior_discount'] ?? 0,
+                                        'senior_discount_amount'       => $pmt['senior_discount_amount'] ?? 0,
+                                        'parent_id'                    => $pmt['parent_id'] ?? null,
+                                        'sub_total_before_discount'    => $pmt['sub_total_before_discount'] ?? $pmt['sub_total'] ?? 0,
+                                        'total_incl_vat_before_discount' => $pmt['total_incl_vat_before_discount'] ?? 0,
+                                        'created_at'                   => $this->normalizeSqliteDateTime($pmt['created_at'] ?? now()),
+                                        'updated_at'                   => $this->normalizeSqliteDateTime($pmt['updated_at'] ?? now()),
+                                    ]);
+                                    $paymentRow->save();
     
                                     if (!empty($paymentDetails)) {
                                         PaymentDetail::where('payment_id', $paymentId)->delete();
