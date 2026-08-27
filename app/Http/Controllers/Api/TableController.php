@@ -232,9 +232,17 @@ class TableController extends Controller
 
     public function changeTable(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'old_id_table' => ['required', 'integer', 'min:1'],
-            'new_id_table' => ['required', 'integer', 'min:1', 'different:old_id_table'],
+        // Accept both old_id_table/new_id_table (cloud legacy) and old_table_id/new_table_id (app current)
+        $oldTableId = (int) ($request->input('old_table_id') ?: $request->input('old_id_table'));
+        $newTableId = (int) ($request->input('new_table_id') ?: $request->input('new_id_table'));
+
+        $validator = Validator::make([
+            'old_table_id' => $oldTableId,
+            'new_table_id' => $newTableId,
+            'user_id' => $request->input('user_id'),
+        ], [
+            'old_table_id' => ['required', 'integer', 'min:1'],
+            'new_table_id' => ['required', 'integer', 'min:1', 'different:old_table_id'],
             'user_id' => $this->userValidationRules($request),
         ]);
 
@@ -243,9 +251,9 @@ class TableController extends Controller
         }
 
         try {
-            $result = DB::transaction(function () use ($request) {
-                $oldTable = $this->findTable($request->input('old_id_table'), $request, true);
-                $newTable = $this->findTable($request->input('new_id_table'), $request, true);
+            $result = DB::transaction(function () use ($request, $oldTableId, $newTableId) {
+                $oldTable = $this->findTable($oldTableId, $request, true);
+                $newTable = $this->findTable($newTableId, $request, true);
                 if (!$oldTable || !$newTable) {
                     return null;
                 }
