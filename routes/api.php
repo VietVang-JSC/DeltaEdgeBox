@@ -54,13 +54,13 @@ Route::get('/edge/cleanup', function () {
 //get all master data for edge sync
 Route::get('/edge/filter', [ApiEdgeController::class, 'filter'])->middleware('edge.api.key');
 
-// Edge box config (public - LAN only)
+// Edge box config (public - LAN only). NOTE: never expose api_key / edge_box_api_key
+// here — it would leak the store's Edge Box API key to anyone hitting this endpoint
+// (acceptance criterion: no fixed API key sent to the browser).
 Route::get('/edge/config', function () {
     return response()->json([
         'store_id' => config('app.store_id'),
-        'api_key' => config('app.api_key'),
         'deployment_mode' => config('app.deployment_mode', 'offline-first'),
-        'edge_box_api_key' => config('edge_box.api_key'),
     ]);
 });
 // Sync status endpoints
