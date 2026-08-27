@@ -399,6 +399,8 @@ class TableController extends Controller
         // Build served/printed state from the current payment first, then fall back to the
         // most recent previous payment of the same table for keys not present yet, so
         // re-order keeps the app's gray-background (printed) and served checkbox state.
+        // Only merge from previousPayment when updating an EXISTING pending payment
+        // (same session, reorder). NOT when creating a NEW payment (after payment cleared).
         $stateMap = [];
         $currentDetails = $payment->details()
             ->whereNull('deleted_at')
@@ -413,7 +415,7 @@ class TableController extends Controller
                 'served' => (bool) $detail->served,
             ];
         }
-        if ($previousPayment) {
+        if ($previousPayment && !$payment->wasRecentlyCreated && $currentDetails->count() > 0) {
             $previousPayment->details()
                 ->whereNull('deleted_at')
                 ->get()
