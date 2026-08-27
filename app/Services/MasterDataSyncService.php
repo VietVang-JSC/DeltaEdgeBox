@@ -123,6 +123,68 @@ class MasterDataSyncService
             $syncErrors  = [];
 
             /*
+            | STORE â€” sync Ä‘á»™c láº­p
+            */
+            try {
+                if (!empty($data['store'])) {
+                    DB::beginTransaction();
+                    $st = $data['store'];
+                    // Free up the code for the correct store (avoid FK cascade by update not delete)
+                    Store::where('code', 'STORE-' . $st['id'])->where('id', '!=', $st['id'])->update(['code' => 'STALE-' . $st['id'] . '-' . time()]);
+                    Store::updateOrCreate(
+                        ['id' => $st['id']],
+                        [
+                            'service_level_id' => $st['service_level_id'] ?? null,
+                            'name' => $st['name'] ?? null,
+                            'storename' => $st['storename'] ?? null,
+                            'address' => $st['address'] ?? null,
+                            'province' => $st['province'] ?? null,
+                            'phone' => $st['phone'] ?? null,
+                            'email' => $st['email'] ?? null,
+                            'referer_phone' => $st['referer_phone'] ?? null,
+                            'note' => $st['note'] ?? null,
+                            'currency' => $st['currency'] ?? 'VND',
+                            'expiry_date' => $st['expiry_date'] ?? null,
+                            'industry_id' => $st['industry_id'] ?? null,
+                            'company_id' => $st['company_id'] ?? null,
+                            'parent_id' => $st['parent_id'] ?? null,
+                            'is_headquarters' => $st['is_headquarters'] ?? false,
+                            'line_user_id' => $st['line_user_id'] ?? null,
+                            'api_key' => $st['api_key'] ?? null,
+                            'is_tax_included' => $st['is_tax_included'] ?? false,
+                            'printer_host' => $st['printer_host'] ?? null,
+                            'time_zone' => $st['time_zone'] ?? 'Asia/Manila',
+                            'use_node_print_driver' => $st['use_node_print_driver'] ?? true,
+                            'type_check_qr' => $st['type_check_qr'] ?? 'pin',
+                            'setting_print_kitchen' => isset($st['setting_print_kitchen']) 
+                                ? (is_array($st['setting_print_kitchen']) ? $st['setting_print_kitchen'] : json_decode($st['setting_print_kitchen'], true)) 
+                                : null,
+                            'current_ip' => $st['current_ip'] ?? null,
+                            'service_charge' => $st['service_charge'] ?? null,
+                            'deployment_mode' => $st['deployment_mode'] ?? 'cloud-only',
+                            'edge_routing_active' => $st['edge_routing_active'] ?? false,
+                            'edge_box_url' => $st['edge_box_url'] ?? null,
+                            'edge_box_store_id' => $st['edge_box_store_id'] ?? null,
+                            'edge_box_api_key' => $st['edge_box_api_key'] ?? null,
+                            'edge_enabled_at' => $st['edge_enabled_at'] ?? null,
+                            'edge_config_version' => $st['edge_config_version'] ?? 1,
+                            'status' => $st['status'] ?? true,
+                            'code' => $st['code'] ?? ('STORE-' . $st['id']),
+                            'created_at' => $st['created_at'] ?? now(),
+                            'updated_at' => $st['updated_at'] ?? now(),
+                        ]
+                    );
+                    DB::commit();
+                    $syncResults['stores'] = 1;
+                }
+            } catch (\Exception $e) {
+                $this->rollbackIfNeeded();
+                Log::error('Sync store failed: ' . $e->getMessage());
+                $syncErrors['store'] = $e->getMessage();
+            }
+
+
+/*
              | TABLES â€” sync Ä‘á»™c láº­p
             */
             try {
@@ -319,7 +381,8 @@ class MasterDataSyncService
                 $syncErrors['payment_methods'] = $e->getMessage();
             }
 
-            /*
+            
+/*
             | PAYMENT STATUS / STORE SETTINGS - Cloud-owned reference data
             */
             try {
@@ -379,68 +442,7 @@ class MasterDataSyncService
                 Log::error('Sync store_payment_settings failed: ' . $e->getMessage());
                 $syncErrors['store_payment_settings'] = $e->getMessage();
             }
-            /*
-            | STORE â€” sync Ä‘á»™c láº­p
-            */
-            try {
-                if (!empty($data['store'])) {
-                    DB::beginTransaction();
-                    $st = $data['store'];
-                    // Free up the code for the correct store (avoid FK cascade by update not delete)
-                    Store::where('code', 'STORE-' . $st['id'])->where('id', '!=', $st['id'])->update(['code' => 'STALE-' . $st['id'] . '-' . time()]);
-                    Store::updateOrCreate(
-                        ['id' => $st['id']],
-                        [
-                            'service_level_id' => $st['service_level_id'] ?? null,
-                            'name' => $st['name'] ?? null,
-                            'storename' => $st['storename'] ?? null,
-                            'address' => $st['address'] ?? null,
-                            'province' => $st['province'] ?? null,
-                            'phone' => $st['phone'] ?? null,
-                            'email' => $st['email'] ?? null,
-                            'referer_phone' => $st['referer_phone'] ?? null,
-                            'note' => $st['note'] ?? null,
-                            'currency' => $st['currency'] ?? 'VND',
-                            'expiry_date' => $st['expiry_date'] ?? null,
-                            'industry_id' => $st['industry_id'] ?? null,
-                            'company_id' => $st['company_id'] ?? null,
-                            'parent_id' => $st['parent_id'] ?? null,
-                            'is_headquarters' => $st['is_headquarters'] ?? false,
-                            'line_user_id' => $st['line_user_id'] ?? null,
-                            'api_key' => $st['api_key'] ?? null,
-                            'is_tax_included' => $st['is_tax_included'] ?? false,
-                            'printer_host' => $st['printer_host'] ?? null,
-                            'time_zone' => $st['time_zone'] ?? 'Asia/Manila',
-                            'use_node_print_driver' => $st['use_node_print_driver'] ?? true,
-                            'type_check_qr' => $st['type_check_qr'] ?? 'pin',
-                            'setting_print_kitchen' => isset($st['setting_print_kitchen']) 
-                                ? (is_array($st['setting_print_kitchen']) ? $st['setting_print_kitchen'] : json_decode($st['setting_print_kitchen'], true)) 
-                                : null,
-                            'current_ip' => $st['current_ip'] ?? null,
-                            'service_charge' => $st['service_charge'] ?? null,
-                            'deployment_mode' => $st['deployment_mode'] ?? 'cloud-only',
-                            'edge_routing_active' => $st['edge_routing_active'] ?? false,
-                            'edge_box_url' => $st['edge_box_url'] ?? null,
-                            'edge_box_store_id' => $st['edge_box_store_id'] ?? null,
-                            'edge_box_api_key' => $st['edge_box_api_key'] ?? null,
-                            'edge_enabled_at' => $st['edge_enabled_at'] ?? null,
-                            'edge_config_version' => $st['edge_config_version'] ?? 1,
-                            'status' => $st['status'] ?? true,
-                            'code' => $st['code'] ?? ('STORE-' . $st['id']),
-                            'created_at' => $st['created_at'] ?? now(),
-                            'updated_at' => $st['updated_at'] ?? now(),
-                        ]
-                    );
-                    DB::commit();
-                    $syncResults['stores'] = 1;
-                }
-            } catch (\Exception $e) {
-                $this->rollbackIfNeeded();
-                Log::error('Sync store failed: ' . $e->getMessage());
-                $syncErrors['store'] = $e->getMessage();
-            }
-
-            /*
+                        /*
             | USERS â€” sync Ä‘á»™c láº­p, xá»­ lÃ½ UNIQUE email constraint
             | Chiáº¿n lÆ°á»£c: XÃ³a táº¥t cáº£ users cÅ© rá»“i insert láº¡i tá»« Cloud
             | Ä‘á»ƒ trÃ¡nh conflict ID mapping vÃ  email UNIQUE
