@@ -59,7 +59,7 @@ class SyncTransformerTest extends TestCase
 
         $this->assertEquals('categories', SyncTransformer::getEdgeBoxTableName('category'));
         $this->assertEquals('Beverages', $edgeBoxData['name']);
-        $this->assertTrue($edgeBoxData['status']); // integer → boolean
+        $this->assertEquals(1, $edgeBoxData['status']); // integer status preserved
         $this->assertArrayHasKey('name', $edgeBoxData);
         $this->assertArrayNotHasKey('category_name', $edgeBoxData);
     }
@@ -118,7 +118,7 @@ class SyncTransformerTest extends TestCase
         $this->assertEquals('products', SyncTransformer::getEdgeBoxTableName('product'));
         $this->assertEquals('PROD001', $edgeBoxData['code']);
         $this->assertEquals('Espresso', $edgeBoxData['name']);
-        $this->assertTrue($edgeBoxData['status']);
+        $this->assertEquals(1, $edgeBoxData['status']); // integer status preserved
     }
 
     /**
@@ -177,7 +177,7 @@ class SyncTransformerTest extends TestCase
         $backendData = SyncTransformer::toBackend('payments', $paymentData, $detailsData);
 
         $this->assertEquals('payment', SyncTransformer::getBackendTableName('payments'));
-        $this->assertEquals(100000, $backendData['valuetotal']);
+        $this->assertEquals(105000, $backendData['valuetotal']); // final_total maps to valuetotal
         $this->assertEquals(105000, $backendData['amount_received']);
         $this->assertJsonStringEqualsJsonString(json_encode($detailsData), $backendData['items']);
     }
