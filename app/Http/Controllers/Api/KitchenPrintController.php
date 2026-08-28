@@ -425,18 +425,28 @@ class KitchenPrintController extends Controller
 
         $notPrintedIds = [];
 
-        // Prefer an explicit payment_id (validated against this table) so the app can
-        // point at the active payment; otherwise fall back to table.payment_id.
-        $payment = $table->payment;
+        // 1. Prefer explicit payment_id from request
+        $payment = null;
         $requestedPaymentId = (int) $request->input('payment_id', 0);
         if ($requestedPaymentId > 0) {
-            $candidate = Payment::whereKey($requestedPaymentId)
+            $payment = Payment::whereKey($requestedPaymentId)
                 ->where('table_id', $table->id)
                 ->whereNull('deleted_at')
                 ->first();
-            if ($candidate) {
-                $payment = $candidate;
-            }
+        }
+
+        // 2. Fall back to table.payment relationship
+        if (!$payment) {
+            $payment = $table->payment;
+        }
+
+        // 3. If still null, find the most recent active payment for this table
+        if (!$payment) {
+            $payment = Payment::where('table_id', $table->id)
+                ->where('status', 0)
+                ->whereNull('deleted_at')
+                ->latest('id')
+                ->first();
         }
 
         if ($payment) {
@@ -527,14 +537,23 @@ class KitchenPrintController extends Controller
 
     private function listPrintableItems(Table $table, bool $markPrinted = false): array
     {
-        if (!$table->payment || !$table->listitem) {
+        // Resolve payment with fallback: table.payment → query by table_id
+        $payment = $table->payment;
+        if (!$payment) {
+            $payment = Payment::where('table_id', $table->id)
+                ->where('status', 0)
+                ->whereNull('deleted_at')
+                ->latest('id')
+                ->first();
+        }
+        if (!$payment || !$table->listitem) {
             return [];
         }
 
         $decoded = json_decode($table->listitem, true) ?: [];
         $rawItems = $decoded['item'] ?? $decoded ?? [];
 
-        $details = $table->payment->details()
+        $details = $payment->details()
             ->with(['product', 'product.print'])
             ->whereColumn('printed_quantity', '<', 'quantity')
             ->whereNull('deleted_at')
@@ -543,10 +562,10 @@ class KitchenPrintController extends Controller
 
         Log::debug('KitchenPrint listPrintableItems', [
             'table_id' => $table->id,
-            'payment_id' => $table->payment_id,
-            'has_payment' => $table->payment ? 'yes' : 'no',
-            'all_details_count' => $table->payment ? $table->payment->details()->withoutGlobalScope('Illuminate\Database\Eloquent\SoftDeletingScope')->count() : 0,
-            'active_details_count' => $table->payment ? $table->payment->details()->count() : 0,
+            'payment_id' => $payment->id,
+            'has_payment' => 'yes',
+            'all_details_count' => $payment->details()->withoutGlobalScope('Illuminate\Database\Eloquent\SoftDeletingScope')->count(),
+            'active_details_count' => $payment->details()->count(),
             'where_count' => $details->count(),
         ]);
 
@@ -600,7 +619,7 @@ class KitchenPrintController extends Controller
         }
 
         if ($markPrinted && !empty($items)) {
-            $this->syncPrintedStateToTableListItem($table);
+            $this->syncPrintedStateToTableListItem($table, $payment);
         }
 
         Log::debug('KitchenPrint listPrintableItems result', ['items_count' => count($items)]);
@@ -628,11 +647,15 @@ class KitchenPrintController extends Controller
         return null;
     }
 
-    private function syncPrintedStateToTableListItem(Table $table): void
+    private function syncPrintedStateToTableListItem(Table $table, ?Payment $payment = null): void
     {
         $decoded = json_decode($table->listitem, true) ?: [];
         $rawItems = $decoded['item'] ?? $decoded ?? [];
-        $details = $table->payment->details()->whereNull('deleted_at')->get();
+        $payment = $payment ?? $table->payment;
+        if (!$payment) {
+            return;
+        }
+        $details = $payment->details()->whereNull('deleted_at')->get();
 
         foreach ($details as $detail) {
             foreach ($rawItems as $key => $item) {
