@@ -385,6 +385,7 @@ class TableController extends Controller
         if ($table->id) {
             $previousPayment = Payment::where('table_id', $table->id)
                 ->where('id', '!=', $payment->id)
+                ->where('status', 0)
                 ->whereNull('deleted_at')
                 ->latest('id')
                 ->first();
