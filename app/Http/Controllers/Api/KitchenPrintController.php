@@ -441,13 +441,25 @@ class KitchenPrintController extends Controller
         }
 
         // 3. If still null, find the most recent active payment for this table
+        $paymentSource = $payment ? 'found' : 'none';
         if (!$payment) {
             $payment = Payment::where('table_id', $table->id)
                 ->where('status', 0)
                 ->whereNull('deleted_at')
                 ->latest('id')
                 ->first();
+            $paymentSource = $payment ? 'fallback' : 'fallback_null';
         }
+
+        Log::debug('checkPrintedStatus debug', [
+            'table_id' => $table->id,
+            'table_payment_id' => $table->payment_id,
+            'paymentSource' => $paymentSource,
+            'payment_id' => $payment ? $payment->id : null,
+            'payment_status' => $payment ? $payment->status : null,
+            'details_count' => $payment ? $payment->details()->whereNull('deleted_at')->count() : 0,
+            'not_printed_count' => count($notPrintedIds),
+        ]);
 
         if ($payment) {
             $details = $payment->details()
@@ -539,13 +551,25 @@ class KitchenPrintController extends Controller
     {
         // Resolve payment with fallback: table.payment → query by table_id
         $payment = $table->payment;
+        $paymentSource = $payment ? 'relationship' : 'none';
         if (!$payment) {
             $payment = Payment::where('table_id', $table->id)
                 ->where('status', 0)
                 ->whereNull('deleted_at')
                 ->latest('id')
                 ->first();
+            $paymentSource = $payment ? 'fallback' : 'fallback_null';
         }
+
+        Log::debug('listPrintableItems debug', [
+            'table_id' => $table->id,
+            'table_payment_id' => $table->payment_id,
+            'paymentSource' => $paymentSource,
+            'payment_id' => $payment ? $payment->id : null,
+            'payment_status' => $payment ? $payment->status : null,
+            'has_listitem' => !empty($table->listitem),
+        ]);
+
         if (!$payment || !$table->listitem) {
             return [];
         }
