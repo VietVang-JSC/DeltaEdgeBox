@@ -49,17 +49,7 @@ class KitchenPrintController extends Controller
         $browserView = [];
 
         foreach ($arrPrint as $key => $itemPrint) {
-            if ($key === 'default' || $key == 0) {
-                $defaultPrinter = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
-                if (!$defaultPrinter) {
-                    $defaultPrinter = $printers->where('printer_type', 'kitchen')
-                        ->where(function ($p) { return $p->where('active', 1)->orWhere('is_active', 1); })
-                        ->sortByDesc('id')
-                        ->first();
-                }
-            } else {
-                $defaultPrinter = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
-            }
+            $defaultPrinter = $this->resolvePrintTarget($printers, $key);
 
             $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
             $tplName = 'kitchen.cook_template_print_all_' . $paperSize;
@@ -239,17 +229,7 @@ class KitchenPrintController extends Controller
             $printerHost = $store ? $store->printer_host : '';
 
             foreach ($arrPrint as $key => $itemPrint) {
-                if ($key === 'default' || $key == 0) {
-                    $defaultPrinter = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
-                    if (!$defaultPrinter) {
-                        $defaultPrinter = $printers->where('printer_type', 'kitchen')
-                            ->where(function ($p) { return $p->where('active', 1)->orWhere('is_active', 1); })
-                            ->sortByDesc('id')
-                            ->first();
-                    }
-                } else {
-                    $defaultPrinter = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
-                }
+                $defaultPrinter = $this->resolvePrintTarget($printers, $key);
 
                 $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
                 $tplName = 'kitchen.cook_template_print_' . $paperSize;
@@ -292,11 +272,7 @@ class KitchenPrintController extends Controller
             // Compile browser view HTML templates for frontend fallback
             $view = [];
             foreach ($arrPrint as $key => $itemPrint) {
-                if ($key === 'default' || $key == 0) {
-                    $defaultPrinter = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
-                } else {
-                    $defaultPrinter = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
-                }
+                $defaultPrinter = $this->resolvePrintTarget($printers, $key);
                 $paperSize = $defaultPrinter ? $defaultPrinter->paper_size : 80;
                 $tplName = 'kitchen.cook_template_print_' . $paperSize;
                 if (!view()->exists($tplName)) {
@@ -498,6 +474,61 @@ class KitchenPrintController extends Controller
         }
 
         return $query->first();
+    }
+
+    /**
+     * Resolve which printer handles a print group.
+     *
+     * Fallback chain for the default group so the API always returns a
+     * usable ip_address whenever ANY usable printer exists:
+     *   1. default kitchen printer
+     *   2. any active kitchen printer (latest id)
+     *   3. default printer of any type
+     *   4. any active printer of any type (latest id)
+     *
+     * For an explicit printer id: prefer the kitchen-typed row, else the row itself.
+     */
+    private function resolvePrintTarget($printers, $key)
+    {
+        $isActive = function ($p) {
+            return !empty($p->active) || !empty($p->is_active);
+        };
+
+        if ($key === 'default' || $key == 0) {
+            $printer = $printers->where('default', 1)->where('printer_type', 'kitchen')->first();
+            if ($printer) {
+                return $printer;
+            }
+
+            $printer = $printers
+                ->filter(function ($p) use ($isActive) {
+                    return ($p->printer_type ?? null) === 'kitchen' && $isActive($p);
+                })
+                ->sortByDesc('id')
+                ->first();
+            if ($printer) {
+                return $printer;
+            }
+
+            $printer = $printers->where('default', 1)->first();
+            if ($printer) {
+                return $printer;
+            }
+
+            $resolved = $printers->filter($isActive)->sortByDesc('id')->first();
+            if ($resolved && ($resolved->printer_type ?? null) !== 'kitchen') {
+                Log::debug('KitchenPrint fallback to non-kitchen printer', [
+                    'printer_id' => $resolved->id,
+                    'printer_type' => $resolved->printer_type,
+                ]);
+            }
+
+            return $resolved;
+        }
+
+        $printer = $printers->where('id', $key)->where('printer_type', 'kitchen')->first();
+
+        return $printer ?: $printers->where('id', $key)->first();
     }
 
     private function tablePrintPayload(Table $table, ?array $products = null): array
