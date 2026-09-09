@@ -10,6 +10,7 @@ use App\Models\PaymentStatus;
 use App\Models\Table;
 use App\Models\User;
 use App\Models\Store;
+use App\Models\SyncQueue;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -102,6 +103,24 @@ class TableController extends Controller
                 'can_order' => 0,
                 'lock_time' => $lockTime,
             ])->save();
+
+            // Fast-track upload of the busy state so Cloud learns it before
+            // any app fallback (B check-in race) can read stale Cloud state.
+            // The observer already queued this table update; mark it urgent
+            // and flush a small batch inline. Failures are non-fatal: the
+            // background worker will retry.
+            try {
+                SyncQueue::where('table_name', 'table')
+                    ->where('record_id', $table->id)
+                    ->where('status', 'pending')
+                    ->orderByDesc('id')
+                    ->limit(1)
+                    ->update(['priority' => 2]);
+
+                app(SyncService::class)->processQueue(5);
+            } catch (\Throwable $th) {
+                Log::warning('Edge check-in fast sync failed', ['error' => $th->getMessage()]);
+            }
 
             $this->processSyncAfterResponse();
 

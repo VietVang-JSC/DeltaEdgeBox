@@ -1078,10 +1078,18 @@ class SyncService
             $statusResponse = Http::withHeaders([
                 'X-Edge-Api-Key' => $this->apiKey,
                 'X-Store-ID' => $this->storeId,
-            ])->connectTimeout(2)->timeout(3)->head($statusUrl);
+            ])->connectTimeout(5)->timeout(8)->head($statusUrl);
 
             return $statusResponse->status() < 500;
         } catch (\Exception $e) {
+            Log::warning('isOnline check failed', [
+                'error' => $e->getMessage(),
+                'php_ini' => php_ini_loaded_file(),
+                'curl_cainfo' => ini_get('curl.cainfo'),
+                'openssl_cafile' => ini_get('openssl.cafile'),
+                'cainfo_exists' => @file_exists((string) ini_get('curl.cainfo')),
+            ]);
+
             return false;
         }
     }
