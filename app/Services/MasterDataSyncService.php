@@ -210,6 +210,16 @@ class MasterDataSyncService
                             if ($localTable->trashed()) {
                                 $localTable->restore();
                             }
+                            // Preserve a live local session: never let a stale Cloud row
+                            // clear an in-progress check-in (can_order) during master sync.
+                            // Without this, a Cloud row with can_order=1 wipes the box's
+                            // busy flag and a second staff member can check in.
+                            if ($this->hasActiveLocalSession($localTable)) {
+                                Log::debug('Master sync: preserve local table session', [
+                                    'table_id' => $localTable->id,
+                                ]);
+                                unset($masterPayload['can_order'], $masterPayload['updated_at']);
+                            }
                             $localTable->update($masterPayload);
                         } else {
                             Table::create(array_merge(
@@ -1024,6 +1034,26 @@ class MasterDataSyncService
                 'error'   => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * A local table holds a live session when it has an open payment or a
+     * busy flag with a fresh lock. Mirrors the check-in gate semantics in
+     * TableController::checkIn (string comparison on Y-m-d H:i:s).
+     */
+    private function hasActiveLocalSession($localTable): bool
+    {
+        if (!empty($localTable->payment_id)) {
+            return true;
+        }
+        if ((int) ($localTable->can_order ?? 1) !== 0) {
+            return false;
+        }
+        if (empty($localTable->lock_time)) {
+            return true;
+        }
+
+        return now()->toDateTimeString() <= (string) $localTable->lock_time;
     }
 
     private function hasMissingCoreTables(): bool
