@@ -74,19 +74,26 @@ class TableController extends Controller
             $userId = $request->has('user_id')
                 ? (int) $request->input('user_id')
                 : ($table->user_id ?: 1);
-            $currentTime = now()->toDateTimeString();
-            $lockTime = now()->addMinutes(5)->toDateTimeString();
+            $currentTime = now();
+            $lockTime = now()->copy()->addMinutes(5);
 
             // Set language locale for translated error messages
             $locale = $request->input('isCheckLanguage', 'vi');
             app()->setLocale($locale);
 
             // Match Cloud logic: if table is busy (can_order=0), verify lock/user
+            Log::debug('checkIn gate', ['table_id'=>$table->id,'can_order'=>$table->can_order,'user_id'=>$table->user_id,'lock_time'=>$table->lock_time,'req_user'=>$userId,'now'=>$currentTime->toDateTimeString()]);
             if ($table->can_order == 0) {
+                $isLockExpired = false;
+                try {
+                    $isLockExpired = $table->lock_time ? $currentTime->gt(\Carbon\Carbon::parse($table->lock_time)) : false;
+                } catch (\Throwable $e) {
+                    $isLockExpired = $currentTime->toDateTimeString() > (string) $table->lock_time;
+                }
                 $conditions = [
                     empty($table->user_id),
                     $userId == $table->user_id,
-                    $currentTime > $table->lock_time,
+                    $isLockExpired,
                     $table->can_order == 1,
                 ];
 
