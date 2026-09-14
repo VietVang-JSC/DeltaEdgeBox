@@ -86,16 +86,22 @@ class PosWebFilterController extends Controller
         try {
             $storeId = $this->storeId($request);
             $user = $this->userPayload($request, $storeId);
-            $products = $this->products($storeId, $request);
-            $categories = $this->categories($storeId);
-            $customers = $this->customers($storeId);
+            $clusters = $request->input('clusters');
+            $need = function($name) use ($clusters) { return empty($clusters) || in_array($name, (array)$clusters, true); };
+            $products = $need('products') ? $this->products($storeId, $request) : [];
+            $categories = $need('categories') ? $this->categories($storeId) : [];
+            $customers = $need('customers') ? $this->customers($storeId) : [];
             $paymentsInput = $request->input('payments', []);
-            if (!empty($paymentsInput)) {
-                $payments = $this->filteredPayments($storeId, $paymentsInput);
+            if ($need('payments')) {
+                if (!empty($paymentsInput)) {
+                    $payments = $this->filteredPayments($storeId, $paymentsInput);
+                } else {
+                    $payments = $this->pendingPayments($storeId);
+                }
             } else {
-                $payments = $this->pendingPayments($storeId);
+                $payments = [];
             }
-            $tables = $this->tables($storeId);
+            $tables = $need('tables') ? $this->tables($storeId) : [];
             $store = $this->storePayload($storeId);
             $billSetting = $this->billSettingPayload($store);
             $bankPayment = $this->bankPaymentPayload();
