@@ -105,6 +105,8 @@ class PosWebFilterController extends Controller
             $store = $this->storePayload($storeId);
             $billSetting = $this->billSettingPayload($store);
             $bankPayment = $this->bankPaymentPayload();
+            $paymentMethods = ($need('payment_method') || $need('payment_methods')) ? $this->paymentMethods($storeId) : [];
+            $needPaymentMethod = $need('payment_method') || $need('payment_methods');
 
             $dataAgencies = [];
             if ($request->has('agencies')) {
@@ -150,6 +152,8 @@ class PosWebFilterController extends Controller
                     'data_stores' => [$store],
                     'data_bill_setting' => [$billSetting],
                     'data_bank_payment' => [$bankPayment],
+                    'payment_method' => $needPaymentMethod ? $paymentMethods : [],
+                    'payment_methods' => $needPaymentMethod ? $paymentMethods : [],
                     'total_records_product' => count($products),
                     'data_agencies' => $dataAgencies,
                     'dataCashDrawer' => $dataCashDrawer,
@@ -245,6 +249,11 @@ class PosWebFilterController extends Controller
             'account_number' => '',
             'account_owner' => '',
         ];
+    }
+
+    private function paymentMethods(int $storeId): array
+    {
+        return \App\Models\PaymentMethod::where('store_id', $storeId)->orWhereNull('store_id')->get()->toArray();
     }
 
     private function products(int $storeId, Request $request = null): array
