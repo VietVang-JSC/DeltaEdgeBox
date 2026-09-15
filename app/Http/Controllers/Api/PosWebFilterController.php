@@ -253,7 +253,7 @@ class PosWebFilterController extends Controller
 
     private function paymentMethods(int $storeId): array
     {
-        return \App\Models\PaymentMethod::where('store_id', $storeId)->orWhereNull('store_id')->get()->toArray();
+        return \App\Models\PaymentMethod::where('store_id', $storeId)->orWhere('store_id', 0)->orWhereNull('store_id')->get()->toArray();
     }
 
     private function products(int $storeId, Request $request = null): array
