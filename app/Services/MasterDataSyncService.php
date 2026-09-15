@@ -368,6 +368,11 @@ class MasterDataSyncService
                 if (array_key_exists('payment_methods', $data)) {
                     PaymentMethod::where('store_id', $this->storeId)->delete();
                     foreach ($data['payment_methods'] as $paymentMethod) {
+                        // Only adopt own-store methods (matches admin view).
+                        // Global (store 0/null) methods would duplicate statuses by value.
+                        if (isset($paymentMethod['store_id']) && (int) $paymentMethod['store_id'] !== (int) $this->storeId) {
+                            continue;
+                        }
                         $localPaymentMethod = PaymentMethod::withTrashed()->updateOrCreate(
                             [
                                 'store_id' => $this->storeId,
