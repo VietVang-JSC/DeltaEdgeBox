@@ -969,14 +969,14 @@ class TableController extends Controller
                 DB::raw("'method' as type"),
                 DB::raw('COALESCE(store_payment_settings.is_show, 1) as is_show'),
                 DB::raw('COALESCE(store_payment_settings.sort_rank, payment_methods.id + 100) as sort_rank')
-            )->where(function($q) use ($storeId) { $q->where('payment_methods.store_id', $storeId)->orWhere('payment_methods.store_id', 0)->orWhereNull('payment_methods.store_id'); })
+            )->where('payment_methods.store_id', $storeId)
                 ->leftJoin('store_payment_settings', function ($join) use ($storeId) {
                     $join->on('payment_methods.id', '=', 'store_payment_settings.ref_id')
                         ->where('store_payment_settings.store_id', $storeId)
                         ->where('store_payment_settings.type', 'method');
                 });
 
-            $data = $methods
+            $data = $statuses->unionAll($methods)
                 ->orderBy('sort_rank')
                 ->get()
                 ->filter(fn($item) => (int) $item->is_show === 1)
