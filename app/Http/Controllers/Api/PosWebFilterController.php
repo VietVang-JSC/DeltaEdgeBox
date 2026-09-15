@@ -253,7 +253,48 @@ class PosWebFilterController extends Controller
 
     private function paymentMethods(int $storeId): array
     {
-        return \App\Models\PaymentMethod::where('store_id', $storeId)->get()->toArray();
+        // Same union as TableController@getPaymentMethods (admin parity):
+        // all statuses + own-store methods, ordered by sort_rank.
+        $statuses = \App\Models\PaymentStatus::select(
+            'payment_status.id as ref_id',
+            'payment_status.name',
+            'payment_status.value',
+            \Illuminate\Support\Facades\DB::raw("'status' as type"),
+            \Illuminate\Support\Facades\DB::raw('COALESCE(store_payment_settings.is_show, 1) as is_show'),
+            \Illuminate\Support\Facades\DB::raw('COALESCE(store_payment_settings.sort_rank, payment_status.id) as sort_rank')
+        )->leftJoin('store_payment_settings', function ($join) use ($storeId) {
+            $join->on('payment_status.id', '=', 'store_payment_settings.ref_id')
+                ->where('store_payment_settings.store_id', $storeId)
+                ->where('store_payment_settings.type', 'status');
+        });
+
+        $methods = \App\Models\PaymentMethod::select(
+            'payment_methods.id as ref_id',
+            'payment_methods.name',
+            'payment_methods.value',
+            \Illuminate\Support\Facades\DB::raw("'method' as type"),
+            \Illuminate\Support\Facades\DB::raw('COALESCE(store_payment_settings.is_show, 1) as is_show'),
+            \Illuminate\Support\Facades\DB::raw('COALESCE(store_payment_settings.sort_rank, payment_methods.id + 100) as sort_rank')
+        )->where('payment_methods.store_id', $storeId)
+            ->leftJoin('store_payment_settings', function ($join) use ($storeId) {
+                $join->on('payment_methods.id', '=', 'store_payment_settings.ref_id')
+                    ->where('store_payment_settings.store_id', $storeId)
+                    ->where('store_payment_settings.type', 'method');
+            });
+
+        return $statuses->unionAll($methods)
+            ->orderBy('sort_rank')
+            ->get()
+            ->filter(fn($item) => (int) $item->is_show === 1)
+            ->values()
+            ->map(fn($item) => [
+                'ref_id' => (int) $item->ref_id,
+                'value' => (int) $item->value,
+                'name' => (string) $item->name,
+                'type' => (string) $item->type,
+                'is_show' => (int) $item->is_show,
+                'sort_rank' => (int) $item->sort_rank,
+            ])->all();
     }
 
     private function products(int $storeId, Request $request = null): array
