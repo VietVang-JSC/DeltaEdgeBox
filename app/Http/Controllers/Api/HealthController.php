@@ -26,7 +26,8 @@ class HealthController extends Controller
             'timestamp' => now()->toISOString(),
             'version' => '1.0.0',
             'deployment_mode' => config('app.deployment_mode', 'offline-first'),
-            'store_id' => config('app.store_id'),
+            'edge_routing_active' => true,
+            'store_id' => (int) config('app.store_id'),
         ]);
     }
 
@@ -56,7 +57,8 @@ class HealthController extends Controller
             'timestamp' => now()->toISOString(),
             'version' => '1.0.0',
             'deployment_mode' => config('app.deployment_mode', 'offline-first'),
-            'store_id' => config('app.store_id'),
+            'edge_routing_active' => true,
+            'store_id' => (int) config('app.store_id'),
             'database' => [
                 'status' => $dbStatus,
                 'type' => 'SQLite',
