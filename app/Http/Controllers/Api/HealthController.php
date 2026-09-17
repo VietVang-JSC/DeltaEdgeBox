@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Store;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,17 +18,20 @@ class HealthController extends Controller
     }
 
     /**
-     * Health check endpoint
+     * Health check endpoint — reflects latest cloud-synced store config.
      */
     public function index(): \Illuminate\Http\JsonResponse
     {
+        $storeId = (int) config('app.store_id');
+        $store = Store::find($storeId);
+
         return response()->json([
             'status' => 'healthy',
             'timestamp' => now()->toISOString(),
             'version' => '1.0.0',
-            'deployment_mode' => config('app.deployment_mode', 'offline-first'),
-            'edge_routing_active' => true,
-            'store_id' => (int) config('app.store_id'),
+            'deployment_mode' => $store?->deployment_mode ?? config('app.deployment_mode', 'offline-first'),
+            'edge_routing_active' => $store ? (bool) $store->edge_routing_active : true,
+            'store_id' => $storeId,
         ]);
     }
 
@@ -52,13 +56,16 @@ class HealthController extends Controller
         $diskTotal = disk_total_space(base_path());
         $diskUsagePercent = $diskTotal > 0 ? round((1 - $diskFree / $diskTotal) * 100, 2) : 0;
 
+        $storeId = (int) config('app.store_id');
+        $store = Store::find($storeId);
+
         return response()->json([
             'status' => 'healthy',
             'timestamp' => now()->toISOString(),
             'version' => '1.0.0',
-            'deployment_mode' => config('app.deployment_mode', 'offline-first'),
-            'edge_routing_active' => true,
-            'store_id' => (int) config('app.store_id'),
+            'deployment_mode' => $store?->deployment_mode ?? config('app.deployment_mode', 'offline-first'),
+            'edge_routing_active' => $store ? (bool) $store->edge_routing_active : true,
+            'store_id' => $storeId,
             'database' => [
                 'status' => $dbStatus,
                 'type' => 'SQLite',
