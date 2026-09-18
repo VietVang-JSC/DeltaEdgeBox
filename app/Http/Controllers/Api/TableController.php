@@ -111,11 +111,10 @@ class TableController extends Controller
                 'lock_time' => $lockTime,
             ])->save();
 
-            // Fast-track upload of the busy state so Cloud learns it before
-            // any app fallback (B check-in race) can read stale Cloud state.
-            // The observer already queued this table update; mark it urgent
-            // and flush a small batch inline. Failures are non-fatal: the
-            // background worker will retry.
+            // Mark the table sync as high priority so the background
+            // SyncWorker (daemon, --sleep=2) picks it up quickly.
+            // Do NOT block the response with a synchronous cloud call
+            // (isOnline HEAD can take 2-8s).
             try {
                 SyncQueue::where('table_name', 'table')
                     ->where('record_id', $table->id)
@@ -123,10 +122,8 @@ class TableController extends Controller
                     ->orderByDesc('id')
                     ->limit(1)
                     ->update(['priority' => 2]);
-
-                app(SyncService::class)->processQueue(5);
             } catch (\Throwable $th) {
-                Log::warning('Edge check-in fast sync failed', ['error' => $th->getMessage()]);
+                Log::warning('Edge check-in priority bump failed', ['error' => $th->getMessage()]);
             }
 
             $this->processSyncAfterResponse();

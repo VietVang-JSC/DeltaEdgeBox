@@ -92,7 +92,7 @@ class HealthController extends Controller
         $cloudUrl = trim((string) config('app.cloud_api_url', ''));
         if ($cloudUrl !== '') {
             try {
-                $resp = Http::timeout(2)->connectTimeout(2)
+                $resp = Http::timeout(1)->connectTimeout(1)
                     ->get(rtrim($cloudUrl, '/') . '/api/edge-cloud/store-config', [
                         'store_id' => $storeId,
                     ]);
